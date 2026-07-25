@@ -24,9 +24,9 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -51,7 +51,7 @@ jobs:
           Compress-Archive -Path "windows/publish/win-x64/*" -DestinationPath $archive -CompressionLevel Optimal -Force
 
       - name: Upload Windows packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ZhuoDazi-Windows-${{ env.APP_VERSION }}
           path: windows/dist/*

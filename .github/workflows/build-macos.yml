@@ -34,7 +34,7 @@ jobs:
             arch: x86_64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Show toolchain
         run: |
@@ -53,7 +53,7 @@ jobs:
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.app"
 
       - name: Upload macOS package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ZhuoDazi-macOS-${{ matrix.arch }}
           path: macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.zip
