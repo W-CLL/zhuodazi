@@ -1,0 +1,61 @@
+name: Build macOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "macos/**"
+      - ".github/workflows/build-macos.yml"
+  pull_request:
+    paths:
+      - "macos/**"
+      - ".github/workflows/build-macos.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Build ad-hoc signed application
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+          ARCH_LABEL: ${{ matrix.arch }}
+        run: bash macos/scripts/build-app.sh
+
+      - name: Verify package architecture
+        run: |
+          file "macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
+          codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.app"
+
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZhuoDazi-macOS-${{ matrix.arch }}
+          path: macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.zip
+          if-no-files-found: error
+          retention-days: 14

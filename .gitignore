@@ -3,8 +3,15 @@
 **/obj/
 
 # Packaged applications and installers
-dist/
-publish/
+**/dist/
+**/publish/
+
+# Swift and Xcode build output
+**/.build/
+**/DerivedData/
+.DS_Store
+xcuserdata/
+*.xcuserstate
 
 # Local IDE state
 .vs/
@@ -13,4 +20,4 @@ publish/
 *.userosscache
 
 # Duplicate local packaging staging files
-build/build/
+**/build/build/
