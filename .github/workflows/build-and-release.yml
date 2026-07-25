@@ -1,0 +1,104 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "windows/**"
+      - "macos/**"
+      - ".github/workflows/**"
+  pull_request:
+    paths:
+      - "windows/**"
+      - "macos/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: build-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    name: Read release metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Read application version
+        id: version
+        shell: pwsh
+        run: |
+          $node = Select-Xml -Path windows/ZhuoDazi/ZhuoDazi.csproj -XPath "/Project/PropertyGroup/Version"
+          $version = $node.Node.InnerText.Trim()
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Application version is missing."
+          }
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+  build-windows:
+    name: Build Windows
+    uses: ./.github/workflows/build-windows.yml
+
+  build-macos:
+    name: Build macOS
+    uses: ./.github/workflows/build-macos.yml
+
+  release:
+    name: Create draft release
+    if: github.event_name != 'pull_request'
+    needs: [metadata, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: v${{ needs.metadata.outputs.version }}
+      RELEASE_TITLE: ZhuoDazi ${{ needs.metadata.outputs.version }}
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+
+      - name: Prepare release notes
+        env:
+          APP_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          cat > release-notes.md <<EOF
+          Automated draft release for ZhuoDazi ${APP_VERSION}.
+
+          Source commit: ${GITHUB_SHA}
+          Build run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          The macOS packages are ad-hoc signed and are not notarized by Apple.
+          EOF
+
+      - name: Create or update draft release
+        run: |
+          mapfile -t assets < <(find release-assets -type f -print | sort)
+          if (( ${#assets[@]} < 4 )); then
+            echo "Expected at least four release assets, found ${#assets[@]}." >&2
+            exit 1
+          fi
+
+          existing_state="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          if [[ "$existing_state" == "false" ]]; then
+            echo "Release $RELEASE_TAG is already published; leaving it unchanged."
+            exit 0
+          fi
+
+          if [[ "$existing_state" == "true" ]]; then
+            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" "${assets[@]}" \
+              --draft \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md
+          fi

@@ -1,15 +1,7 @@
 name: Build Windows
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "windows/**"
-      - ".github/workflows/build-windows.yml"
-  pull_request:
-    paths:
-      - "windows/**"
-      - ".github/workflows/build-windows.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:

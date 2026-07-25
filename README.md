@@ -8,16 +8,17 @@
 zhuodazi/
 ├─ windows/                 # C# / WPF Windows 正式版
 ├─ macos/                   # Swift / AppKit macOS 预览版
-└─ .github/workflows/       # 两个平台的自动构建
+└─ .github/workflows/       # 构建与自动 Release
 ```
 
 ## 自动构建
 
 - `Build Windows`：在 Windows runner 上构建 x64 单文件程序、Inno Setup 安装包和便携 ZIP。
 - `Build macOS`：分别在 Apple Silicon 与 Intel runner 上构建原生 AppKit 应用，执行 ad-hoc 签名并输出 ZIP。
-- 推送到 `main`、创建 Pull Request 或手动触发工作流时会自动运行。
+- 创建 Pull Request 或手动触发工作流时会自动运行构建。
+- 合并到 `main` 后，`Build and Release` 会在三个构建全部成功后自动创建或更新对应版本的 Draft Release，例如 `v2.4.1`。
 
-构建完成后，可在对应 GitHub Actions 运行记录的 Artifacts 区域下载产物。macOS 当前产物没有 Developer ID 签名和 Apple 公证，首次打开需要在“系统设置 > 隐私与安全性”中手动允许。
+构建完成后，可在对应 GitHub Actions 运行记录的 Artifacts 区域下载产物；合并到 `main` 后，产物还会自动附加到 Draft Release。验证通过后，在 GitHub Release 页面手动点击发布即可。已发布的同版本 Release 不会被后续构建覆盖。macOS 当前产物没有 Developer ID 签名和 Apple 公证，首次打开需要在“系统设置 > 隐私与安全性”中手动允许。
 
 ## 平台状态
 
