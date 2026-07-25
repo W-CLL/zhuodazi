@@ -57,6 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
       RELEASE_TAG: v${{ needs.metadata.outputs.version }}
       RELEASE_TITLE: ZhuoDazi ${{ needs.metadata.outputs.version }}
     steps:
