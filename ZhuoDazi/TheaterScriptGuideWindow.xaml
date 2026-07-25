@@ -1,0 +1,70 @@
+<Window x:Class="ZhuoDazi.TheaterScriptGuideWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="小剧场剧本格式与 AI 生成" Width="760" Height="650" MinWidth="640" MinHeight="540"
+        WindowStartupLocation="CenterOwner" Background="#F8FAF9" ShowInTaskbar="False"
+        Icon="pack://application:,,,/assets/app-icon.png" UseLayoutRounding="True"
+        FontFamily="Microsoft YaHei UI" TextOptions.TextFormattingMode="Display">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="15,8" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+        </Style>
+        <Style TargetType="TextBox">
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Background" Value="White" />
+        </Style>
+    </Window.Resources>
+    <Grid Margin="30">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <StackPanel>
+            <TextBlock Text="小剧场剧本格式" FontSize="24" FontWeight="SemiBold"
+                       Foreground="{StaticResource InkBrush}" />
+            <TextBlock Text="每个 JSON 剧本包含 3–5 轮双人对白；导入后，每次演出会从剧本池随机抽取。"
+                       Margin="0,6,0,22" Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" />
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="0,0,8,0">
+                <TextBlock Text="对白字段" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource InkBrush}" Margin="0,0,0,8" />
+                <TextBlock Text="main 是主桌宠台词，companion 是登场搭档台词。建议写满 5 轮，动作会依次呈现登场、靠近、挑战、换位和谢幕。"
+                           Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap" Margin="0,0,0,20" />
+
+                <TextBlock Text="AI 生成提示词" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{StaticResource InkBrush}" Margin="0,0,0,8" />
+                <TextBox x:Name="AiPromptText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" MinHeight="300" Padding="14" />
+                <TextBlock x:Name="GuideStatusText" Margin="0,9,0,0"
+                           Foreground="{StaticResource AccentBrush}" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Grid Grid.Row="2" Margin="0,20,0,0">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+            <WrapPanel>
+                <Button Content="复制 AI 提示词" Style="{StaticResource PrimaryButton}"
+                        Click="CopyPrompt_Click" Margin="0,0,8,0" />
+                <Button Content="保存 JSON 模板" Click="SaveTemplate_Click" Margin="0,0,8,0" />
+                <Button Content="打开模板目录" Click="OpenTemplateFolder_Click" />
+            </WrapPanel>
+            <Button Grid.Column="1" Content="关闭" Click="Close_Click" Margin="16,0,0,0" />
+        </Grid>
+    </Grid>
+</Window>

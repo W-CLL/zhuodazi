@@ -1,0 +1,42 @@
+请为桌面宠物“[角色名称]”生成一份互动词包。
+
+角色设定：
+- 性格：[例如温柔、活泼、毒舌但关心人]
+- 说话方式：[例如简短、口语化、不要使用网络烂梗]
+- 对用户的称呼：[例如主人、搭档，或不使用称呼]
+
+输出要求：
+1. 只输出合法 JSON，不要使用 Markdown 代码块，也不要添加解释。
+2. 根对象必须包含 reactions 对象。
+3. reactions 必须包含以下 24 个键：idle、grab、switch、happy、angry、confused、shy、sleepy、surprised、cheer、sad、calm、chase、dodge、bounce、theater_open、theater_reply、theater_middle、theater_middle_reply、theater_challenge、theater_challenge_reply、theater_twist、theater_twist_reply、theater_finish。
+4. 每个键的值必须是字符串数组，建议生成 8 至 15 句。
+5. 每句不超过 60 个字符，不要包含空字符串或重复内容。
+6. 台词要符合角色设定，适合桌面陪伴场景，不要包含违法、攻击或隐私内容。
+
+场景含义：
+- idle：待机陪伴
+- grab：用户拖动桌宠
+- switch：切换桌宠
+- happy：开心
+- angry：生气
+- confused：疑惑
+- shy：害羞
+- sleepy：困倦
+- surprised：惊讶
+- cheer：鼓励
+- sad：难过
+- calm：安静或安慰
+- chase：追逐鼠标
+- dodge：躲避鼠标
+- bounce：屏幕边缘反弹
+- theater_open：小剧场开场
+- theater_reply：第二个角色回应
+- theater_middle：小剧场中场对白
+- theater_middle_reply：第二个角色中场回应
+- theater_challenge：小剧场移动动作前
+- theater_challenge_reply：第二个角色接受动作挑战
+- theater_twist：小剧场换位后的反转对白
+- theater_twist_reply：第二个角色回应反转
+- theater_finish：小剧场收尾
+
+请严格参考同目录下“互动词包模板.json”的结构生成。

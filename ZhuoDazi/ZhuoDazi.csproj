@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>ZhuoDazi</AssemblyName>
+    <RootNamespace>ZhuoDazi</RootNamespace>
+    <Version>2.4.1</Version>
+    <FileVersion>2.4.1.0</FileVersion>
+    <ApplicationIcon>..\build\app-icon.ico</ApplicationIcon>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Resource Include="..\assets\app-icon.png">
+      <Link>assets\app-icon.png</Link>
+      <LogicalName>assets/app-icon.png</LogicalName>
+    </Resource>
+    <Content Include="..\assets\pet-libraries\**\*" Link="resources\pet-libraries\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\assets\templates\**\*" Link="resources\templates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NSec.Cryptography" Version="26.4.0" />
+  </ItemGroup>
+
+</Project>

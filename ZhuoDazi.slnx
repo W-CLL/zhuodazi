@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ZhuoDazi.Updater/ZhuoDazi.Updater.csproj" />
+  <Project Path="ZhuoDazi/ZhuoDazi.csproj" />
+</Solution>

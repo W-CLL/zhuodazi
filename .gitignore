@@ -1,0 +1,16 @@
+# .NET build output
+**/bin/
+**/obj/
+
+# Packaged applications and installers
+dist/
+publish/
+
+# Local IDE state
+.vs/
+*.suo
+*.user
+*.userosscache
+
+# Duplicate local packaging staging files
+build/build/
