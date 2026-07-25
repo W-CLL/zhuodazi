@@ -95,7 +95,10 @@ jobs:
 
           if [[ "$existing_state" == "true" ]]; then
             gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-            gh release edit "$RELEASE_TAG" --title "$RELEASE_TITLE" --notes-file release-notes.md
+            gh release edit "$RELEASE_TAG" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md
           else
             gh release create "$RELEASE_TAG" "${assets[@]}" \
               --draft \
