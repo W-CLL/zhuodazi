@@ -1,15 +1,7 @@
 name: Build macOS
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "macos/**"
-      - ".github/workflows/build-macos.yml"
-  pull_request:
-    paths:
-      - "macos/**"
-      - ".github/workflows/build-macos.yml"
+  workflow_call:
   workflow_dispatch:
 
 permissions:
