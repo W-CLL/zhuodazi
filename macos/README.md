@@ -11,7 +11,7 @@
 - 菜单栏显示/隐藏和退出
 - Dock 应用图标与 App 图标；可在设置中切换是否显示 Dock 图标
 - 设置窗口：跟随鼠标、随机移动、自动换宠和始终置顶都会保存到本机
-- 首次启动激活与设置中的更换激活码，授权凭据保存在 macOS Keychain
+- 首次使用邀请码完成设备绑定，设置中可更换邀请码；授权凭据保存在 macOS Keychain
 - 在线更新：仅获取当前 CPU 架构的 macOS ZIP，校验 Ed25519 清单签名和 SHA-256 后自动替换 App 并重启
 
 随机换宠会扫描 App 包内 `Resources/Pets/yuexinmiao` 目录中的全部 GIF。打包脚本会复用 Windows 版的 62 张内置“月薪喵”资源，避免两张素材只能固定交替。默认每 5 分钟自动切换一次；每轮会以随机顺序使用完所有 GIF，再重新生成下一轮顺序，并避免两轮交界处连续显示同一张。
@@ -45,7 +45,7 @@ bash macos/scripts/build-app.sh
 
 从 `2.0.0` 开始，App、ZIP 和 GitHub Actions Artifact 都包含三段式版本号。当前版本示例：
 
-- `ZhuoDazi-macOS-2.1.0-arm64.zip`
-- `ZhuoDazi-macOS-2.1.0-x86_64.zip`
+- `ZhuoDazi-macOS-2.1.1-arm64.zip`
+- `ZhuoDazi-macOS-2.1.1-x86_64.zip`
 
 在线更新后台按 `macos/arm64` 与 `macos/x86_64` 分别上传、发布，不能上传 Windows EXE。以后配置 Developer ID 和公证凭据时，可在现有打包脚本后追加正式签名、公证和 DMG 步骤。

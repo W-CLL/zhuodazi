@@ -4,24 +4,13 @@ import AppKit
 enum ActivationPrompts {
     static func activate(licenses: LicenseService, required: Bool, replacingExisting: Bool = false) async -> Bool {
         while true {
-            let input = NSTextField(string: "")
-            input.placeholderString = "6 位激活码"
-            input.font = .monospacedSystemFont(ofSize: 18, weight: .medium)
-            input.alignment = .center
-            input.frame = NSRect(x: 0, y: 0, width: 260, height: 30)
-
-            let alert = NSAlert()
-            alert.messageText = required ? "激活桌搭子" : "重新激活设备"
-            alert.informativeText = required ? "请输入激活码后继续使用桌搭子。" : "输入新的激活码以更新此设备的授权。"
-            alert.accessoryView = input
-            alert.addButton(withTitle: "激活")
-            alert.addButton(withTitle: required ? "退出" : "取消")
-            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            let prompt = InvitationWindowController(required: required)
+            guard let code = prompt.runModal() else { return false }
 
             do {
-                try await licenses.activate(input.stringValue, replacingExisting: replacingExisting)
+                try await licenses.activate(code, replacingExisting: replacingExisting)
                 let success = NSAlert()
-                success.messageText = "设备已激活"
+                success.messageText = "设备已完成绑定"
                 success.informativeText = licenses.summary
                 success.runModal()
                 return true
@@ -271,10 +260,10 @@ final class SettingsWindowController: NSWindowController {
         autoUpdateCheckbox.action = #selector(autoUpdateChanged(_:))
         stack.addArrangedSubview(autoUpdateCheckbox)
         stack.addArrangedSubview(separator())
-        addSection("设备授权", to: stack)
+        addSection("使用授权", to: stack)
         activationLabel.textColor = .secondaryLabelColor
         stack.addArrangedSubview(activationLabel)
-        stack.addArrangedSubview(NSButton(title: "重新激活设备", target: self, action: #selector(activateDevice)))
+        stack.addArrangedSubview(NSButton(title: "更换邀请码", target: self, action: #selector(activateDevice)))
         stack.addArrangedSubview(separator())
         addSection("当前状态", to: stack)
         updateLabel.textColor = .secondaryLabelColor
@@ -697,8 +686,8 @@ final class SettingsWindowController: NSWindowController {
             guard let self else { return }
             if licenses.isActivated {
                 let confirm = NSAlert()
-                confirm.messageText = "更换设备授权"
-                confirm.informativeText = "需要输入新的激活码，当前设备会改用新的授权记录。"
+                confirm.messageText = "更换邀请码"
+                confirm.informativeText = "输入新的邀请码后，当前设备会更新绑定记录。"
                 confirm.addButton(withTitle: "继续")
                 confirm.addButton(withTitle: "取消")
                 guard confirm.runModal() == .alertFirstButtonReturn else { return }

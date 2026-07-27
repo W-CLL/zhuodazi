@@ -22,6 +22,8 @@ mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 cp "$BIN_DIR/ZhuoDaziMac" "$CONTENTS_DIR/MacOS/ZhuoDazi"
 cp "$ROOT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp -R "$ROOT_DIR/Resources/." "$CONTENTS_DIR/Resources/"
+cp "$ROOT_DIR/../windows/assets/contact-author-wechat.png" \
+    "$CONTENTS_DIR/Resources/contact-author-wechat.png"
 ICON_WORK_DIR="$(mktemp -d "$DIST_DIR/app-icon.XXXXXX")"
 ICONSET_DIR="$ICON_WORK_DIR/AppIcon.iconset"
 mkdir -p "$ICONSET_DIR"

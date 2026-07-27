@@ -204,7 +204,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.4";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.5";
 
     internal static int CompareVersions(string left, string right)
     {
@@ -261,7 +261,7 @@ public sealed class UpdateService : IDisposable
     private static void EnsureAuthorizedResponse(HttpResponseMessage response)
     {
         if (response.StatusCode is System.Net.HttpStatusCode.Unauthorized or System.Net.HttpStatusCode.Forbidden)
-            throw new InvalidOperationException("设备授权无效或已撤销，无法更新。");
+            throw new InvalidOperationException("设备绑定已失效，暂时无法更新。");
     }
 
     private static async Task<bool> IsNoReleaseResponseAsync(

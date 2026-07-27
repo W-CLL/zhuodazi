@@ -24,13 +24,13 @@ enum LicenseError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .inactive:
-            return "设备尚未激活"
+            return "此设备尚未完成绑定"
         case .invalidActivationCode:
-            return "请输入 6 位有效激活码"
+            return "请输入 6 位有效邀请码"
         case .server(let message):
             return message
         case .invalidResponse:
-            return "激活服务器返回的数据无效"
+            return "邀请服务返回的数据无效"
         case .keychain:
             return "无法安全保存本机授权信息"
         }
@@ -49,8 +49,8 @@ final class LicenseService {
     }
 
     var summary: String {
-        guard let identifier = record.licenseId, isActivated else { return "此设备尚未激活" }
-        return "已激活 - \(identifier.suffix(8))"
+        guard let identifier = record.licenseId, isActivated else { return "此设备尚未绑定" }
+        return "已完成绑定 - \(identifier.suffix(8))"
     }
 
     init() throws {
@@ -90,7 +90,7 @@ final class LicenseService {
             throw LicenseError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw LicenseError.server(Self.readError(data) ?? "激活失败，请检查激活码后重试")
+            throw LicenseError.server(Self.readError(data) ?? "邀请码验证失败，请检查后重试")
         }
         guard let result = try? JSONDecoder().decode(ActivationResponse.self, from: data),
               UUID(uuidString: result.licenseId) != nil else {
