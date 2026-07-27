@@ -1,14 +1,23 @@
 import AppKit
+import ZhuoDaziCore
 
 final class PetWindowController {
     var mouseInteractionEnabled = true
     var randomMovementEnabled = true
+    var randomPetEnabled = true {
+        didSet { restartRandomPetTimer() }
+    }
     var isVisible: Bool { window.isVisible }
+    var canRandomizePet: Bool { petURLs.count > 1 }
 
     private let size = NSSize(width: 220, height: 250)
     private let window: NSPanel
     private let petView: PetCanvasView
+    private let petBag = RandomBag<URL>()
+    private var petURLs: [URL] = []
+    private var currentPetURL: URL?
     private var timer: Timer?
+    private var randomPetTimer: Timer?
     private var velocity = CGVector.zero
     private var dragging = false
     private var dragOffset = NSPoint.zero
@@ -45,15 +54,23 @@ final class PetWindowController {
         petView.dragEnded = { [weak self] point in self?.endDrag(at: point) }
         petView.clicked = { [weak self] in self?.petView.showBubble("我在这里。") }
 
+        petURLs = Self.scanPetURLs()
+        if let initialPet = petBag.next(from: petURLs) {
+            currentPetURL = initialPet
+            petView.showPet(at: initialPet)
+        }
+
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             self?.tick()
         }
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
+        restartRandomPetTimer()
     }
 
     deinit {
         timer?.invalidate()
+        randomPetTimer?.invalidate()
     }
 
     func show() {
@@ -62,6 +79,54 @@ final class PetWindowController {
 
     func hide() {
         window.orderOut(nil)
+    }
+
+    @discardableResult
+    func randomizePet() -> Bool {
+        guard let selected = petBag.next(from: petURLs, excluding: currentPetURL) else { return false }
+        currentPetURL = selected
+        petView.showPet(at: selected)
+        petView.showBubble("换班完成，新选手登场。")
+        return true
+    }
+
+    private func restartRandomPetTimer() {
+        randomPetTimer?.invalidate()
+        randomPetTimer = nil
+        guard randomPetEnabled, canRandomizePet else { return }
+
+        let timer = Timer(timeInterval: 300, repeats: true) { [weak self] _ in
+            self?.randomizePet()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        randomPetTimer = timer
+    }
+
+    private static func scanPetURLs() -> [URL] {
+        let sourceRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let bundledPets = Bundle.main.resourceURL?.appendingPathComponent("Pets", isDirectory: true)
+        let bundledLibrary = bundledPets?.appendingPathComponent("yuexinmiao", isDirectory: true)
+        let sharedDevelopmentLibrary = sourceRoot
+            .deletingLastPathComponent()
+            .appendingPathComponent("windows/assets/pet-libraries/yuexinmiao", isDirectory: true)
+        let developmentFallback = sourceRoot.appendingPathComponent("Resources/Pets", isDirectory: true)
+        let candidates = [bundledLibrary, sharedDevelopmentLibrary, bundledPets, developmentFallback]
+            .compactMap { $0 }
+        guard let directory = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+            return []
+        }
+
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return urls
+            .filter { $0.pathExtension.caseInsensitiveCompare("gif") == .orderedSame }
+            .sorted { $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending }
     }
 
     private func beginDrag(at point: NSPoint) {

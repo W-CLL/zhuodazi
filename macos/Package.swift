@@ -11,9 +11,19 @@ let package = Package(
         .executable(name: "ZhuoDaziMac", targets: ["ZhuoDaziMac"])
     ],
     targets: [
+        .target(
+            name: "ZhuoDaziCore",
+            path: "Sources/ZhuoDaziCore"
+        ),
         .executableTarget(
             name: "ZhuoDaziMac",
+            dependencies: ["ZhuoDaziCore"],
             path: "Sources/ZhuoDaziMac"
+        ),
+        .testTarget(
+            name: "ZhuoDaziCoreTests",
+            dependencies: ["ZhuoDaziCore"],
+            path: "Tests/ZhuoDaziCoreTests"
         )
     ]
 )
