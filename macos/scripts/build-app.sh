@@ -22,6 +22,15 @@ mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 cp "$BIN_DIR/ZhuoDaziMac" "$CONTENTS_DIR/MacOS/ZhuoDazi"
 cp "$ROOT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp -R "$ROOT_DIR/Resources/." "$CONTENTS_DIR/Resources/"
+ICON_WORK_DIR="$(mktemp -d "$DIST_DIR/app-icon.XXXXXX")"
+ICONSET_DIR="$ICON_WORK_DIR/AppIcon.iconset"
+mkdir -p "$ICONSET_DIR"
+trap 'rm -rf "$ICON_WORK_DIR"' EXIT
+for size in 16 32 128 256 512; do
+    sips -z "$size" "$size" "$ROOT_DIR/../windows/assets/app-icon.png" --out "$ICONSET_DIR/icon_${size}x${size}.png" >/dev/null
+    sips -z "$((size * 2))" "$((size * 2))" "$ROOT_DIR/../windows/assets/app-icon.png" --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
+done
+iconutil -c icns "$ICONSET_DIR" -o "$CONTENTS_DIR/Resources/AppIcon.icns"
 mkdir -p "$CONTENTS_DIR/Resources/Pets/yuexinmiao"
 cp "$ROOT_DIR/../windows/assets/pet-libraries/yuexinmiao/"*.gif \
     "$CONTENTS_DIR/Resources/Pets/yuexinmiao/"
