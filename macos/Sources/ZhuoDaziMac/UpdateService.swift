@@ -54,7 +54,9 @@ final class UpdateService {
         didSet { statusChanged?(status) }
     }
     private(set) var availableManifest: UpdateManifest?
+    private(set) var downloadedArchive: URL?
     var statusChanged: ((UpdateStatus) -> Void)?
+    private var downloadDelegate: UpdateDownloadDelegate?
 
     init(licenses: LicenseService) {
         self.licenses = licenses
@@ -102,33 +104,52 @@ final class UpdateService {
         }
     }
 
-    func downloadAndInstall(_ manifest: UpdateManifest) async throws -> Never {
-        guard Bundle.main.bundleURL.pathExtension == "app",
-              FileManager.default.isWritableFile(atPath: Bundle.main.bundleURL.deletingLastPathComponent().path) else {
-            throw UpdateError.unsupportedInstallLocation
-        }
+    func download(_ manifest: UpdateManifest) async throws {
         setStatus(.downloading, "正在下载 v\(manifest.version)", 0)
         do {
             var request = URLRequest(url: manifest.url)
             request.timeoutInterval = 10 * 60
             try licenses.authorize(&request)
-            let (temporaryURL, response) = try await URLSession.shared.download(for: request)
+            let destination = try archiveURL(version: manifest.version)
+            let delegate = UpdateDownloadDelegate(destination: destination) { [weak self] progress in
+                DispatchQueue.main.async {
+                    self?.setStatus(.downloading, "正在下载 v\(manifest.version)", progress)
+                }
+            }
+            downloadDelegate = delegate
+            defer { downloadDelegate = nil }
+            let (archive, response) = try await delegate.download(request)
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
                 throw UpdateError.server("下载更新失败")
             }
-            let archive = try moveDownload(from: temporaryURL, version: manifest.version)
-            defer { try? FileManager.default.removeItem(at: archive) }
             guard try Self.sha256(of: archive) == manifest.sha256.lowercased() else {
+                try? FileManager.default.removeItem(at: archive)
                 throw UpdateError.hashMismatch
             }
-            setStatus(.downloaded, "更新包已校验，正在重启安装", 100)
-            try MacUpdateInstaller.install(archive: archive)
-            NSApplication.shared.terminate(nil)
-            fatalError("Application termination returned unexpectedly")
+            downloadedArchive = archive
+            setStatus(.downloaded, "更新包已下载并通过校验", 100)
         } catch {
+            downloadedArchive = nil
             setStatus(.failed, error.localizedDescription, 0)
             throw error
         }
+    }
+
+    func installDownloaded() throws -> Never {
+        guard Bundle.main.bundleURL.pathExtension == "app",
+              FileManager.default.isWritableFile(atPath: Bundle.main.bundleURL.deletingLastPathComponent().path),
+              let downloadedArchive else {
+            throw UpdateError.unsupportedInstallLocation
+        }
+        setStatus(.downloaded, "正在重启安装", 100)
+        try MacUpdateInstaller.install(archive: downloadedArchive)
+        NSApplication.shared.terminate(nil)
+        fatalError("Application termination returned unexpectedly")
+    }
+
+    func downloadAndInstall(_ manifest: UpdateManifest) async throws -> Never {
+        try await download(manifest)
+        try installDownloaded()
     }
 
     private func validate(_ manifest: UpdateManifest) throws {
@@ -153,12 +174,9 @@ final class UpdateService {
         }
     }
 
-    private func moveDownload(from temporaryURL: URL, version: String) throws -> URL {
+    private func archiveURL(version: String) throws -> URL {
         let directory = try updatesDirectory()
-        let destination = directory.appendingPathComponent("ZhuoDazi-macOS-\(version)-\(Self.architecture).zip")
-        try? FileManager.default.removeItem(at: destination)
-        try FileManager.default.moveItem(at: temporaryURL, to: destination)
-        return destination
+        return directory.appendingPathComponent("ZhuoDazi-macOS-\(version)-\(Self.architecture).zip")
     }
 
     private func updatesDirectory() throws -> URL {
@@ -230,6 +248,68 @@ final class UpdateService {
               let error = object["error"] as? String,
               !error.isEmpty else { return nil }
         return error
+    }
+}
+
+private final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate {
+    private let destination: URL
+    private let progressChanged: (Int) -> Void
+    private var continuation: CheckedContinuation<(URL, URLResponse), Error>?
+    private var session: URLSession?
+
+    init(destination: URL, progressChanged: @escaping (Int) -> Void) {
+        self.destination = destination
+        self.progressChanged = progressChanged
+    }
+
+    func download(_ request: URLRequest) async throws -> (URL, URLResponse) {
+        try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+            let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
+            self.session = session
+            session.downloadTask(with: request).resume()
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        guard totalBytesExpectedToWrite > 0 else { return }
+        progressChanged(min(99, Int(totalBytesWritten * 100 / totalBytesExpectedToWrite)))
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        guard let response = downloadTask.response else {
+            finish(.failure(UpdateError.server("下载更新失败")))
+            return
+        }
+        do {
+            try? FileManager.default.removeItem(at: destination)
+            try FileManager.default.moveItem(at: location, to: destination)
+            finish(.success((destination, response)))
+        } catch {
+            finish(.failure(error))
+        }
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        if let error { finish(.failure(error)) }
+    }
+
+    private func finish(_ result: Result<(URL, URLResponse), Error>) {
+        guard let continuation else { return }
+        self.continuation = nil
+        session?.finishTasksAndInvalidate()
+        session = nil
+        continuation.resume(with: result)
     }
 }
 
