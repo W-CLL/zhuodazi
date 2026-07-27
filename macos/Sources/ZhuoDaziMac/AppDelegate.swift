@@ -5,7 +5,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
     private var mouseItem: NSMenuItem!
-    private var randomItem: NSMenuItem!
+    private var movementItem: NSMenuItem!
+    private var randomPetItem: NSMenuItem!
+    private var randomizeNowItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         petController = PetWindowController()
@@ -25,9 +27,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         visibilityItem = menu.addItem(withTitle: "隐藏桌搭子", action: #selector(toggleVisibility(_:)), keyEquivalent: "")
         mouseItem = menu.addItem(withTitle: "跟随鼠标", action: #selector(toggleMouseInteraction(_:)), keyEquivalent: "")
-        randomItem = menu.addItem(withTitle: "随机移动", action: #selector(toggleRandomMovement(_:)), keyEquivalent: "")
+        movementItem = menu.addItem(withTitle: "随机移动", action: #selector(toggleRandomMovement(_:)), keyEquivalent: "")
         mouseItem.state = .on
-        randomItem.state = .on
+        movementItem.state = .on
+        menu.addItem(.separator())
+        randomPetItem = menu.addItem(withTitle: "自动随机换宠", action: #selector(toggleRandomPet(_:)), keyEquivalent: "")
+        randomizeNowItem = menu.addItem(withTitle: "立即换一只", action: #selector(randomizePet(_:)), keyEquivalent: "")
+        randomPetItem.state = petController.canRandomizePet ? .on : .off
+        randomPetItem.isEnabled = petController.canRandomizePet
+        randomizeNowItem.isEnabled = petController.canRandomizePet
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出桌搭子", action: #selector(quit), keyEquivalent: "q")
 
@@ -55,6 +63,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleRandomMovement(_ sender: NSMenuItem) {
         sender.state = sender.state == .on ? .off : .on
         petController.randomMovementEnabled = sender.state == .on
+    }
+
+    @objc private func toggleRandomPet(_ sender: NSMenuItem) {
+        sender.state = sender.state == .on ? .off : .on
+        petController.randomPetEnabled = sender.state == .on
+    }
+
+    @objc private func randomizePet(_ sender: NSMenuItem) {
+        _ = petController.randomizePet()
     }
 
     @objc private func quit() {

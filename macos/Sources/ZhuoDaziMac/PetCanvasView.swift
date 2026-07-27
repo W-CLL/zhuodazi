@@ -31,11 +31,7 @@ final class PetCanvasView: NSView {
         bubble.isHidden = true
         addSubview(bubble)
 
-        if let url = Bundle.main.url(forResource: "default-pet", withExtension: "gif", subdirectory: "Pets") {
-            imageView.image = NSImage(contentsOf: url)
-        } else {
-            imageView.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "桌搭子")
-        }
+        imageView.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "桌搭子")
     }
 
     required init?(coder: NSCoder) {
@@ -63,6 +59,11 @@ final class PetCanvasView: NSView {
         bubble.isHidden = false
         NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(hideBubble), object: nil)
         perform(#selector(hideBubble), with: nil, afterDelay: 2.4)
+    }
+
+    func showPet(at url: URL) {
+        imageView.image = NSImage(contentsOf: url)
+            ?? NSImage(systemSymbolName: "sparkles", accessibilityDescription: "桌搭子")
     }
 
     @objc private func hideBubble() {

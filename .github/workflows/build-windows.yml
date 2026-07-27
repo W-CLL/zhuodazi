@@ -22,6 +22,10 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - name: Test GIF randomization
+        shell: pwsh
+        run: dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
+
       - name: Read application version
         shell: pwsh
         run: |

@@ -17,6 +17,9 @@ mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 cp "$BIN_DIR/ZhuoDaziMac" "$CONTENTS_DIR/MacOS/ZhuoDazi"
 cp "$ROOT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp -R "$ROOT_DIR/Resources/." "$CONTENTS_DIR/Resources/"
+mkdir -p "$CONTENTS_DIR/Resources/Pets/yuexinmiao"
+cp "$ROOT_DIR/../windows/assets/pet-libraries/yuexinmiao/"*.gif \
+    "$CONTENTS_DIR/Resources/Pets/yuexinmiao/"
 chmod +x "$CONTENTS_DIR/MacOS/ZhuoDazi"
 
 codesign --force --deep --sign - --timestamp=none "$APP_DIR"
