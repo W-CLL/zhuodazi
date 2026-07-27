@@ -22,7 +22,7 @@ public sealed class LicenseService : IDisposable
 
     public bool IsActivated => Guid.TryParse(_record.LicenseId, out _);
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
-    public string Summary => IsActivated ? $"设备授权已激活 · {LicenseId[^8..]}" : "设备尚未激活";
+    public string Summary => IsActivated ? $"此设备已完成绑定 · {LicenseId[^8..]}" : "此设备尚未绑定";
 
     public LicenseService()
     {
@@ -41,7 +41,7 @@ public sealed class LicenseService : IDisposable
     {
         var code = new string((activationCode ?? string.Empty)
             .Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
-        if (code.Length != 6) throw new InvalidOperationException("请输入有效的 6 位激活码。");
+        if (code.Length != 6) throw new InvalidOperationException("请输入有效的 6 位邀请码。");
 
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -63,21 +63,21 @@ public sealed class LicenseService : IDisposable
         }
         catch (Exception error)
         {
-            var message = NetworkConnectionErrors.Format(error, "连接激活服务器超时。");
+            var message = NetworkConnectionErrors.Format(error, "连接邀请服务超时。");
             throw new InvalidOperationException(message, error);
         }
         using (response)
         {
             var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-            if (responseBytes.Length > 32 * 1024) throw new InvalidOperationException("激活服务器响应无效。");
+            if (responseBytes.Length > 32 * 1024) throw new InvalidOperationException("邀请服务响应无效。");
             if (!response.IsSuccessStatusCode)
             {
-                var message = TryReadError(responseBytes) ?? "激活失败，请检查激活码后重试。";
+                var message = TryReadError(responseBytes) ?? "邀请码验证失败，请检查后重试。";
                 throw new InvalidOperationException(message);
             }
             var result = JsonSerializer.Deserialize<ActivationResponse>(responseBytes, JsonOptions);
             if (result is null || !Guid.TryParse(result.LicenseId, out _))
-                throw new InvalidOperationException("激活服务器返回的授权无效。");
+                throw new InvalidOperationException("邀请服务返回的授权无效。");
             _record.LicenseId = result.LicenseId;
             _record.ActivatedAt = result.ActivatedAt;
             Save();
@@ -86,7 +86,7 @@ public sealed class LicenseService : IDisposable
 
     public void Authorize(HttpRequestMessage request)
     {
-        if (!IsActivated) throw new InvalidOperationException("桌搭子尚未激活。");
+        if (!IsActivated) throw new InvalidOperationException("此设备尚未完成绑定。");
         request.Headers.Authorization = new("Bearer", $"{_record.LicenseId}.{_record.Credential}");
         request.Headers.TryAddWithoutValidation("X-DeskPet-Version", UpdateService.CurrentVersion);
         request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");

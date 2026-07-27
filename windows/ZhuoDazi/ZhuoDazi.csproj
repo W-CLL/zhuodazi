@@ -9,8 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ZhuoDazi</AssemblyName>
     <RootNamespace>ZhuoDazi</RootNamespace>
-    <Version>2.4.4</Version>
-    <FileVersion>2.4.4.0</FileVersion>
+    <Version>2.4.5</Version>
+    <FileVersion>2.4.5.0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\build\app-icon.ico</ApplicationIcon>
@@ -21,6 +21,10 @@
     <Resource Include="..\assets\app-icon.png">
       <Link>assets\app-icon.png</Link>
       <LogicalName>assets/app-icon.png</LogicalName>
+    </Resource>
+    <Resource Include="..\assets\contact-author-wechat.png">
+      <Link>assets\contact-author-wechat.png</Link>
+      <LogicalName>assets/contact-author-wechat.png</LogicalName>
     </Resource>
     <Content Include="..\assets\pet-libraries\**\*" Link="resources\pet-libraries\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\assets\templates\**\*" Link="resources\templates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

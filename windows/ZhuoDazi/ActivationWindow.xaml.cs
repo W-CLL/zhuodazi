@@ -34,7 +34,7 @@ public partial class ActivationWindow : Window
     {
         if (CodeTextBox.Text.Length != 6)
         {
-            StatusText.Text = "请输入完整的 6 位激活码。";
+            StatusText.Text = "请输入完整的 6 位邀请码。";
             CodeTextBox.Focus();
             return;
         }
@@ -47,11 +47,11 @@ public partial class ActivationWindow : Window
         }
         catch (TaskCanceledException)
         {
-            StatusText.Text = "连接激活服务器超时，请稍后重试。";
+            StatusText.Text = "连接邀请服务超时，请稍后重试。";
         }
         catch (HttpRequestException)
         {
-            StatusText.Text = "无法连接激活服务器，请检查网络后重试。";
+            StatusText.Text = "无法连接邀请服务，请检查网络后重试。";
         }
         catch (InvalidOperationException error)
         {
@@ -59,7 +59,7 @@ public partial class ActivationWindow : Window
         }
         catch
         {
-            StatusText.Text = "激活失败，请稍后重试。";
+            StatusText.Text = "邀请码验证失败，请稍后重试。";
         }
         finally
         {
@@ -72,6 +72,14 @@ public partial class ActivationWindow : Window
         ActivateButton.IsEnabled = !busy;
         CodeTextBox.IsEnabled = !busy;
         ActivationProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ContactToggleButton_Click(object sender, RoutedEventArgs e)
+    {
+        var show = ContactPanel.Visibility != Visibility.Visible;
+        ContactPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        ContactToggleButton.Content = show ? "收起联系方式  ‹" : "没有邀请码？联系作者获取  ›";
+        Height = show ? 735 : 500;
     }
 
     private void Exit_Click(object sender, RoutedEventArgs e) => DialogResult = false;

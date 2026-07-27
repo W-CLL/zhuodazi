@@ -538,7 +538,7 @@
                     <TextBlock x:Name="LicenseStatusText" Margin="0,4,0,22" Style="{StaticResource Hint}" Foreground="{StaticResource AccentBrush}" />
                     <WrapPanel>
                         <CheckBox x:Name="AutoUpdateCheck" Content="自动检查更新" Click="AutoUpdateCheck_Click" Margin="0,6,24,6" />
-                        <Button Content="重新激活设备" Click="Reactivate_Click" />
+                        <Button Content="更换邀请码" Click="Reactivate_Click" />
                     </WrapPanel>
                     <Border Margin="0,20,0,16" Padding="18" Background="White" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6">
                         <Grid>

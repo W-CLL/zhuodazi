@@ -109,7 +109,7 @@ public sealed class AppController : IDisposable
         if (activated)
         {
             StateChanged?.Invoke();
-            _petWindow?.ShowReaction("新设备授权已生效。");
+            _petWindow?.ShowReaction("新的邀请码已经绑定完成。");
         }
         return activated;
     }
