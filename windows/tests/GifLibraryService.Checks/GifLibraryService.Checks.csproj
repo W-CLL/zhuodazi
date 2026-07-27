@@ -1,11 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\ZhuoDazi\Services\GifLibraryService.cs" Link="GifLibraryService.cs" />
+    <Compile Include="..\..\ZhuoDazi\Controls\GifFrameCompositor.cs" Link="GifFrameCompositor.cs" />
+    <None Include="..\..\assets\pet-libraries\yuexinmiao\017-90d741d6.gif" Link="assets\partial-frame.gif" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
