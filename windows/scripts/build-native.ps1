@@ -1,6 +1,5 @@
 param(
-    [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '2.4.1'
+    [string]$Version
 )
 
 $ErrorActionPreference = 'Stop'
@@ -14,6 +13,14 @@ $compilerCandidates = @(
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
 )
 $compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    [xml]$project = Get-Content -LiteralPath $projectPath
+    $Version = [string]$project.Project.PropertyGroup.Version
+}
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version must use MAJOR.MINOR.PATCH format, received '$Version'."
+}
 
 if (-not $compiler) {
     throw 'Inno Setup 6 was not found. Install it with: winget install --id JRSoftware.InnoSetup --exact'

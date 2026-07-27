@@ -46,10 +46,18 @@ jobs:
           $archive = "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"
           Compress-Archive -Path "windows/publish/win-x64/*" -DestinationPath $archive -CompressionLevel Optimal -Force
 
-      - name: Upload Windows packages
+      - name: Upload Windows installer
         uses: actions/upload-artifact@v7
         with:
-          name: ZhuoDazi-Windows-${{ env.APP_VERSION }}
-          path: windows/dist/*
+          name: ZhuoDazi-Windows-Installer-${{ env.APP_VERSION }}
+          path: windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}.exe
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Windows portable package
+        uses: actions/upload-artifact@v7
+        with:
+          name: ZhuoDazi-Windows-Portable-${{ env.APP_VERSION }}
+          path: windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}-portable.zip
           if-no-files-found: error
           retention-days: 14

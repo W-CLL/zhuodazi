@@ -5,8 +5,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_ARCH="${BUILD_ARCH:-$(uname -m)}"
 ARCH_LABEL="${ARCH_LABEL:-$BUILD_ARCH}"
+APP_VERSION="${APP_VERSION:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/Info.plist")}"
+if [[ ! "$APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "Version must use MAJOR.MINOR.PATCH format, received '$APP_VERSION'." >&2
+    exit 1
+fi
 DIST_DIR="$ROOT_DIR/dist"
-APP_DIR="$DIST_DIR/ZhuoDazi-macOS-$ARCH_LABEL.app"
+APP_DIR="$DIST_DIR/ZhuoDazi-macOS-$APP_VERSION-$ARCH_LABEL.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 
 swift build --package-path "$ROOT_DIR" --configuration release --arch "$BUILD_ARCH"
@@ -25,7 +30,7 @@ chmod +x "$CONTENTS_DIR/MacOS/ZhuoDazi"
 codesign --force --deep --sign - --timestamp=none "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 
-ARCHIVE_PATH="$DIST_DIR/ZhuoDazi-macOS-$ARCH_LABEL.zip"
+ARCHIVE_PATH="$DIST_DIR/ZhuoDazi-macOS-$APP_VERSION-$ARCH_LABEL.zip"
 rm -f "$ARCHIVE_PATH"
 ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ARCHIVE_PATH"
 

@@ -36,6 +36,9 @@ jobs:
       - name: Test GIF randomization
         run: swift test --package-path macos
 
+      - name: Read application version
+        run: echo "APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Info.plist)" >> "$GITHUB_ENV"
+
       - name: Build ad-hoc signed application
         env:
           BUILD_ARCH: ${{ matrix.arch }}
@@ -44,13 +47,13 @@ jobs:
 
       - name: Verify package architecture
         run: |
-          file "macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
-          codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.app"
+          file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
+          codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
 
       - name: Upload macOS package
         uses: actions/upload-artifact@v7
         with:
-          name: ZhuoDazi-macOS-${{ matrix.arch }}
-          path: macos/dist/ZhuoDazi-macOS-${{ matrix.arch }}.zip
+          name: ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}
+          path: macos/dist/ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}.zip
           if-no-files-found: error
           retention-days: 14
