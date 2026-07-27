@@ -33,6 +33,9 @@ jobs:
           swift --version
           xcodebuild -version
 
+      - name: Test GIF randomization
+        run: swift test --package-path macos
+
       - name: Build ad-hoc signed application
         env:
           BUILD_ARCH: ${{ matrix.arch }}
