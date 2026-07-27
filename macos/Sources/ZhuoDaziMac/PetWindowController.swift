@@ -2,13 +2,39 @@ import AppKit
 import ZhuoDaziCore
 
 final class PetWindowController {
-    var mouseInteractionEnabled = true
-    var randomMovementEnabled = true
-    var randomPetEnabled = true {
-        didSet { restartRandomPetTimer() }
+    var mouseInteractionEnabled: Bool {
+        get { settings.mouseInteractionEnabled }
+        set {
+            settings.mouseInteractionEnabled = newValue
+            saveSettings()
+        }
+    }
+    var randomMovementEnabled: Bool {
+        get { settings.randomMovementEnabled }
+        set {
+            settings.randomMovementEnabled = newValue
+            saveSettings()
+        }
+    }
+    var randomPetEnabled: Bool {
+        get { settings.randomPetEnabled }
+        set {
+            settings.randomPetEnabled = newValue
+            restartRandomPetTimer()
+            saveSettings()
+        }
+    }
+    var alwaysOnTop: Bool {
+        get { settings.alwaysOnTop }
+        set {
+            settings.alwaysOnTop = newValue
+            applyWindowLevel()
+            saveSettings()
+        }
     }
     var isVisible: Bool { window.isVisible }
     var canRandomizePet: Bool { petURLs.count > 1 }
+    var currentSettings: AppSettings { settings }
 
     private let size = NSSize(width: 220, height: 250)
     private let window: NSPanel
@@ -24,12 +50,20 @@ final class PetWindowController {
     private var previousDragPoint = NSPoint.zero
     private var previousDragTime = Date()
     private var nextWanderDecision = Date()
+    private var settings: AppSettings
+    private let settingsChanged: (AppSettings) -> Void
 
-    init() {
+    init(settings: AppSettings, settingsChanged: @escaping (AppSettings) -> Void) {
+        self.settings = settings
+        self.settingsChanged = settingsChanged
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let origin = NSPoint(
+        let defaultOrigin = NSPoint(
             x: visibleFrame.maxX - size.width - 28,
             y: visibleFrame.minY + 24
+        )
+        let origin = NSPoint(
+            x: settings.positionX ?? defaultOrigin.x,
+            y: settings.positionY ?? defaultOrigin.y
         )
         window = NSPanel(
             contentRect: NSRect(origin: origin, size: size),
@@ -42,9 +76,9 @@ final class PetWindowController {
         window.backgroundColor = .clear
         window.isOpaque = false
         window.hasShadow = false
-        window.isFloatingPanel = true
+        window.isFloatingPanel = settings.alwaysOnTop
         window.hidesOnDeactivate = false
-        window.level = .floating
+        window.level = settings.alwaysOnTop ? .floating : .normal
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.contentView = petView
         window.acceptsMouseMovedEvents = true
@@ -79,6 +113,18 @@ final class PetWindowController {
 
     func hide() {
         window.orderOut(nil)
+    }
+
+    func showBubble(_ text: String) {
+        petView.showBubble(text)
+    }
+
+    func apply(_ settings: AppSettings) {
+        let randomPetChanged = self.settings.randomPetEnabled != settings.randomPetEnabled
+        self.settings = settings
+        applyWindowLevel()
+        if randomPetChanged { restartRandomPetTimer() }
+        saveSettings()
     }
 
     @discardableResult
@@ -155,6 +201,9 @@ final class PetWindowController {
         dragging = false
         velocity.dx = max(-34, min(34, velocity.dx))
         velocity.dy = max(-34, min(34, velocity.dy))
+        settings.positionX = window.frame.origin.x
+        settings.positionY = window.frame.origin.y
+        saveSettings()
     }
 
     private func tick() {
@@ -202,5 +251,14 @@ final class PetWindowController {
         }
 
         window.setFrameOrigin(origin)
+    }
+
+    private func applyWindowLevel() {
+        window.isFloatingPanel = settings.alwaysOnTop
+        window.level = settings.alwaysOnTop ? .floating : .normal
+    }
+
+    private func saveSettings() {
+        settingsChanged(settings)
     }
 }

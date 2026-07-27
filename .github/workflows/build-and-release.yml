@@ -27,7 +27,8 @@ jobs:
     name: Read release metadata
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.value }}
+      windows_version: ${{ steps.version.outputs.windows }}
+      macos_version: ${{ steps.version.outputs.macos }}
     steps:
       - uses: actions/checkout@v7
 
@@ -49,13 +50,14 @@ jobs:
 
           if not re.fullmatch(r"\d+\.\d+\.\d+", windows_version):
               raise SystemExit(f"Version must use MAJOR.MINOR.PATCH format, received {windows_version!r}.")
-          if windows_version != macos_version:
-              raise SystemExit(f"Platform versions differ: Windows {windows_version}, macOS {macos_version}.")
+          if not re.fullmatch(r"\d+\.\d+\.\d+", macos_version):
+              raise SystemExit(f"Version must use MAJOR.MINOR.PATCH format, received {macos_version!r}.")
           if windows_file_version != f"{windows_version}.0":
               raise SystemExit(f"Windows file version must be {windows_version}.0, received {windows_file_version!r}.")
           if macos_build_version != macos_version:
               raise SystemExit(f"macOS build version must be {macos_version}, received {macos_build_version!r}.")
-          print(f"value={windows_version}")
+          print(f"windows={windows_version}")
+          print(f"macos={macos_version}")
           PY
 
   build-windows:
@@ -76,51 +78,39 @@ jobs:
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
-      RELEASE_TAG: v${{ needs.metadata.outputs.version }}
-      RELEASE_TITLE: ZhuoDazi ${{ needs.metadata.outputs.version }}
+      WINDOWS_VERSION: ${{ needs.metadata.outputs.windows_version }}
+      MACOS_VERSION: ${{ needs.metadata.outputs.macos_version }}
     steps:
       - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
           path: release-assets
 
-      - name: Prepare release notes
-        env:
-          APP_VERSION: ${{ needs.metadata.outputs.version }}
+      - name: Create or update platform draft releases
         run: |
-          cat > release-notes.md <<EOF
-          Automated draft release for ZhuoDazi ${APP_VERSION}.
-
-          Source commit: ${GITHUB_SHA}
-          Build run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-
-          The macOS packages are ad-hoc signed and are not notarized by Apple.
-          EOF
-
-      - name: Create or update draft release
-        run: |
-          mapfile -t assets < <(find release-assets -type f -print | sort)
-          if (( ${#assets[@]} < 4 )); then
-            echo "Expected at least four release assets, found ${#assets[@]}." >&2
+          mapfile -t windows_assets < <(find release-assets -type f -name 'ZhuoDazi-Desktop-Pet-*' -print | sort)
+          mapfile -t macos_assets < <(find release-assets -type f -name 'ZhuoDazi-macOS-*' -print | sort)
+          if (( ${#windows_assets[@]} != 2 || ${#macos_assets[@]} != 2 )); then
+            echo "Expected two Windows and two macOS assets." >&2
             exit 1
           fi
 
-          existing_state="$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft 2>/dev/null || true)"
-          if [[ "$existing_state" == "false" ]]; then
-            echo "Release $RELEASE_TAG is already published; leaving it unchanged."
-            exit 0
-          fi
+          publish_draft() {
+            local tag="$1" title="$2" notes="$3"
+            shift 3
+            local existing_state
+            existing_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
+            if [[ "$existing_state" == "false" ]]; then
+              echo "Release $tag is already published; leaving it unchanged."
+            elif [[ "$existing_state" == "true" ]]; then
+              gh release upload "$tag" "$@" --clobber
+              gh release edit "$tag" --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+            else
+              gh release create "$tag" "$@" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes"
+            fi
+          }
 
-          if [[ "$existing_state" == "true" ]]; then
-            gh release upload "$RELEASE_TAG" "${assets[@]}" --clobber
-            gh release edit "$RELEASE_TAG" \
-              --target "$GITHUB_SHA" \
-              --title "$RELEASE_TITLE" \
-              --notes-file release-notes.md
-          else
-            gh release create "$RELEASE_TAG" "${assets[@]}" \
-              --draft \
-              --target "$GITHUB_SHA" \
-              --title "$RELEASE_TITLE" \
-              --notes-file release-notes.md
-          fi
+          publish_draft "v${WINDOWS_VERSION}" "ZhuoDazi Windows ${WINDOWS_VERSION}" \
+            "Windows release. Source commit: ${GITHUB_SHA}" "${windows_assets[@]}"
+          publish_draft "macos-v${MACOS_VERSION}" "ZhuoDazi macOS ${MACOS_VERSION}" \
+            "macOS release. Ad-hoc signed and not notarized. Source commit: ${GITHUB_SHA}" "${macos_assets[@]}"

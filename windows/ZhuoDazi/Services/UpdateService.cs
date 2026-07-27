@@ -46,7 +46,7 @@ public sealed class UpdateManifest
 
 public sealed class UpdateService : IDisposable
 {
-    private const string ManifestUrl = "https://8.134.130.155/api/update/latest";
+    private const string ManifestUrl = "https://8.134.130.155/api/update/latest?platform=windows&architecture=x64";
     private const int MaxManifestBytes = 512 * 1024;
     private const long MaxDownloadBytes = 300L * 1024 * 1024;
     private const int DownloadBufferSize = 1024 * 1024;
@@ -204,7 +204,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.0.0";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.4";
 
     internal static int CompareVersions(string left, string right)
     {
