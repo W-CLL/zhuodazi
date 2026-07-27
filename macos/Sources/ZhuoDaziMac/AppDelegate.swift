@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
@@ -13,6 +14,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var movementItem: NSMenuItem!
     private var randomPetItem: NSMenuItem!
     private var randomizeNowItem: NSMenuItem!
+    private var theaterItem: NSMenuItem!
+    private var topmostItem: NSMenuItem!
+    private var clickThroughItem: NSMenuItem!
+    private var reminderTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -56,11 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPet() {
         petController.show()
+        startReminderChecks()
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard settings.autoCheckUpdates else { return }
             try? await Task.sleep(for: .seconds(3))
             _ = try? await updates.check()
-            if let manifest = updates.availableManifest {
+            if let manifest = updates.availableManifest, manifest.version != settings.ignoredUpdateVersion {
                 petController.showBubble("发现新版本 v\(manifest.version)，可在设置中安装。")
             }
         }
@@ -82,6 +89,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomPetItem = menu.addItem(withTitle: "自动随机换宠", action: #selector(toggleRandomPet(_:)), keyEquivalent: "")
         randomizeNowItem = menu.addItem(withTitle: "立即换一只", action: #selector(randomizePet(_:)), keyEquivalent: "")
         menu.addItem(.separator())
+        theaterItem = menu.addItem(withTitle: "随机小剧场", action: #selector(toggleTheater(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "立即上演", action: #selector(startTheater(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
+        topmostItem = menu.addItem(withTitle: "始终置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
+        clickThroughItem = menu.addItem(withTitle: "鼠标穿透", action: #selector(toggleClickThrough(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         menu.addItem(withTitle: "退出桌搭子", action: #selector(quit), keyEquivalent: "q")
 
         for item in menu.items where item.action != nil {
@@ -99,6 +112,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomPetItem.state = petController.randomPetEnabled ? .on : .off
         randomPetItem.isEnabled = petController.canRandomizePet
         randomizeNowItem.isEnabled = petController.canRandomizePet
+        theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
+        topmostItem.state = petController.alwaysOnTop ? .on : .off
+        clickThroughItem.state = petController.clickThrough ? .on : .off
     }
 
     private func applyDockVisibility(_ visible: Bool) {
@@ -150,6 +166,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func randomizePet(_ sender: NSMenuItem) {
         _ = petController.randomizePet()
+    }
+
+    @objc private func toggleTheater(_ sender: NSMenuItem) {
+        petController.update { $0.theaterEnabled.toggle() }
+        refreshMenuState()
+    }
+
+    @objc private func startTheater(_ sender: NSMenuItem) {
+        _ = petController.startTheater()
+    }
+
+    @objc private func toggleTopmost(_ sender: NSMenuItem) {
+        petController.alwaysOnTop.toggle()
+        refreshMenuState()
+    }
+
+    @objc private func toggleClickThrough(_ sender: NSMenuItem) {
+        petController.clickThrough.toggle()
+        refreshMenuState()
+    }
+
+    private func startReminderChecks() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        reminderTimer?.invalidate()
+        checkReminders()
+        let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in self?.checkReminders() }
+        RunLoop.main.add(timer, forMode: .common)
+        reminderTimer = timer
+    }
+
+    private func checkReminders() {
+        for reminder in petController.fireDueReminders() {
+            petController.showReminder(reminder)
+            let content = UNMutableNotificationContent()
+            content.title = "桌搭子提醒"
+            content.body = reminder.message
+            content.sound = .default
+            let request = UNNotificationRequest(identifier: reminder.id, content: content, trigger: nil)
+            UNUserNotificationCenter.current().add(request)
+        }
     }
 
     @objc private func quit() {

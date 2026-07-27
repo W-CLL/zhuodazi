@@ -16,13 +16,13 @@ zhuodazi/
 - `Build Windows`：在 Windows runner 上构建 x64 单文件程序、Inno Setup 安装包和便携 ZIP，安装版与便携版分别上传，避免同一 Artifact 重复包含两份程序。
 - `Build macOS`：分别在 Apple Silicon 与 Intel runner 上构建原生 AppKit 应用，执行 ad-hoc 签名并输出 ZIP。
 - 创建 Pull Request 或手动触发工作流时会自动运行构建。
-- 合并到 `main` 后，`Build and Release` 会在三个构建全部成功后分别创建或更新 Windows 与 macOS 的 Draft Release，例如 `v2.4.4` 和 `macos-v2.0.0`。
+- 合并到 `main` 后，`Build and Release` 会在三个构建全部成功后分别创建或更新 Windows 与 macOS 的 Draft Release，例如 `v2.4.4` 和 `macos-v2.1.0`。
 
 构建完成后，可在对应 GitHub Actions 运行记录的 Artifacts 区域下载产物；合并到 `main` 后，产物还会自动附加到 Draft Release。验证通过后，在 GitHub Release 页面手动点击发布即可。已发布的同版本 Release 不会被后续构建覆盖。macOS 当前产物没有 Developer ID 签名和 Apple 公证，首次打开需要在“系统设置 > 隐私与安全性”中手动允许。
 
 ## 平台状态
 
-Windows 版当前为 2.4.4。macOS 版当前为 2.0.0，提供透明桌宠窗口、GIF 播放、拖拽投掷、惯性、边缘反弹、跟随鼠标、随机移动、随机换宠、Dock 应用图标、设置窗口、Keychain 设备授权和签名校验后的在线更新。macOS 更新会按 Apple Silicon（arm64）和 Intel（x86_64）分别获取对应安装包；Windows 只获取 Windows x64 安装包。两个系统的随机换宠都会使用系统随机源，每轮不重复，并避免轮次交界处连续出现同一张 GIF。
+Windows 版当前为 2.4.4。macOS 版当前为 2.1.0，现已具备与 Windows 对等的外观行为、GIF 桌宠管理、资源库、互动词包、小剧场、提醒、设备激活和在线更新设置，并保留 Dock 图标与菜单栏控制。macOS 更新会按 Apple Silicon（arm64）和 Intel（x86_64）分别获取对应安装包；Windows 只获取 Windows x64 安装包。两个系统的随机换宠都会使用系统随机源，每轮不重复，并避免轮次交界处连续出现同一张 GIF。
 
 具体开发和打包方式见 [Windows 说明](windows/README.md) 与 [macOS 说明](macos/README.md)。
 

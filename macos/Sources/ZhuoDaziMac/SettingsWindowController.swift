@@ -12,26 +12,21 @@ enum ActivationPrompts {
 
             let alert = NSAlert()
             alert.messageText = required ? "激活桌搭子" : "重新激活设备"
-            alert.informativeText = required
-                ? "请输入激活码后继续使用桌搭子。"
-                : "输入新的激活码以更新此设备的授权。"
+            alert.informativeText = required ? "请输入激活码后继续使用桌搭子。" : "输入新的激活码以更新此设备的授权。"
             alert.accessoryView = input
             alert.addButton(withTitle: "激活")
             alert.addButton(withTitle: required ? "退出" : "取消")
-            let result = alert.runModal()
-            guard result == .alertFirstButtonReturn else { return false }
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
 
             do {
                 try await licenses.activate(input.stringValue, replacingExisting: replacingExisting)
                 let success = NSAlert()
                 success.messageText = "设备已激活"
                 success.informativeText = licenses.summary
-                success.addButton(withTitle: "完成")
                 success.runModal()
                 return true
             } catch {
-                let failure = NSAlert(error: error)
-                failure.runModal()
+                NSAlert(error: error).runModal()
             }
         }
     }
@@ -42,14 +37,56 @@ final class SettingsWindowController: NSWindowController {
     private let licenses: LicenseService
     private let updates: UpdateService
     private let dockVisibilityChanged: (Bool) -> Void
-    private let mouseCheckbox = NSButton(checkboxWithTitle: "跟随鼠标", target: nil, action: nil)
-    private let movementCheckbox = NSButton(checkboxWithTitle: "随机移动", target: nil, action: nil)
-    private let randomPetCheckbox = NSButton(checkboxWithTitle: "自动随机换宠", target: nil, action: nil)
+    private var refreshing = false
+    private var editingReminderId: String?
+
+    private let sizeSlider = NSSlider(value: 220, minValue: 140, maxValue: 300, target: nil, action: nil)
+    private let sizeValue = NSTextField(labelWithString: "220")
+    private let opacitySlider = NSSlider(value: 100, minValue: 20, maxValue: 100, target: nil, action: nil)
+    private let opacityValue = NSTextField(labelWithString: "100%")
+    private let personalityPopup = NSPopUpButton()
+    private let mouseCheckbox = NSButton(checkboxWithTitle: "跟随与躲避鼠标", target: nil, action: nil)
+    private let movementCheckbox = NSButton(checkboxWithTitle: "自动随机走动", target: nil, action: nil)
+    private let theaterCheckbox = NSButton(checkboxWithTitle: "自动随机上演小剧场", target: nil, action: nil)
+    private let theaterIntervalPopup = NSPopUpButton()
     private let alwaysOnTopCheckbox = NSButton(checkboxWithTitle: "始终置顶", target: nil, action: nil)
+    private let startupCheckbox = NSButton(checkboxWithTitle: "开机自动启动", target: nil, action: nil)
+    private let mirrorCheckbox = NSButton(checkboxWithTitle: "水平镜像桌宠", target: nil, action: nil)
+    private let clickThroughCheckbox = NSButton(checkboxWithTitle: "鼠标穿透（Control+Shift+P）", target: nil, action: nil)
     private let dockCheckbox = NSButton(checkboxWithTitle: "在 Dock 显示应用图标", target: nil, action: nil)
+
+    private let petsPopup = NSPopUpButton()
+    private let petsDetail = NSTextField(labelWithString: "")
+    private let librariesPopup = NSPopUpButton()
+    private let libraryDetail = NSTextField(labelWithString: "")
+    private let randomPetCheckbox = NSButton(checkboxWithTitle: "自动随机切换桌宠", target: nil, action: nil)
+    private let randomIntervalPopup = NSPopUpButton()
+
+    private let wordPacksPopup = NSPopUpButton()
+    private let wordPackDetail = NSTextField(labelWithString: "")
+    private let scriptsPopup = NSPopUpButton()
+    private let scriptDetail = NSTextField(labelWithString: "")
+
+    private let remindersPopup = NSPopUpButton()
+    private let reminderDatePicker = NSDatePicker()
+    private let reminderMessage = NSTextField(string: "休息一下吧")
+    private let reminderEmotionPopup = NSPopUpButton()
+    private let reminderEnabledCheckbox = NSButton(checkboxWithTitle: "启用提醒", target: nil, action: nil)
+    private let reminderDailyCheckbox = NSButton(checkboxWithTitle: "每天重复", target: nil, action: nil)
+
+    private let autoUpdateCheckbox = NSButton(checkboxWithTitle: "自动检查更新", target: nil, action: nil)
     private let activationLabel = NSTextField(labelWithString: "")
     private let updateLabel = NSTextField(labelWithString: "")
-    private let updateButton = NSButton(title: "检查更新", target: nil, action: nil)
+    private let updateProgress = NSProgressIndicator()
+    private let checkUpdateButton = NSButton(title: "检查更新", target: nil, action: nil)
+    private let downloadUpdateButton = NSButton(title: "下载更新", target: nil, action: nil)
+    private let installUpdateButton = NSButton(title: "更新并重启", target: nil, action: nil)
+    private let ignoreUpdateButton = NSButton(title: "忽略该版本", target: nil, action: nil)
+
+    private let personalityValues = ["lively", "shy", "clingy", "chaotic"]
+    private let theaterIntervals = [60, 180, 300, 600, 1800]
+    private let randomIntervals = [30, 60, 300, 600, 1800]
+    private let emotionValues = ["happy", "cheer", "shy", "surprised", "angry", "confused", "sad", "sleepy", "calm"]
 
     init(
         petController: PetWindowController,
@@ -61,9 +98,8 @@ final class SettingsWindowController: NSWindowController {
         self.licenses = licenses
         self.updates = updates
         self.dockVisibilityChanged = dockVisibilityChanged
-
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 430, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 650),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -73,12 +109,11 @@ final class SettingsWindowController: NSWindowController {
         window.center()
         super.init(window: window)
         buildInterface(in: window)
+        updates.statusChanged = { [weak self] _ in DispatchQueue.main.async { self?.refreshUpdateState() } }
         refresh()
     }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     override func showWindow(_ sender: Any?) {
         refresh()
@@ -88,76 +123,573 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildInterface(in window: NSWindow) {
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        tabs.addChild(buildBehaviorPage())
+        tabs.addChild(buildPetsPage())
+        tabs.addChild(buildLibrariesPage())
+        tabs.addChild(buildContentPage())
+        tabs.addChild(buildRemindersPage())
+        tabs.addChild(buildUpdatePage())
+        window.contentViewController = tabs
+    }
+
+    private func buildBehaviorPage() -> NSViewController {
+        let (page, stack) = makePage("外观与行为")
+        addTitle("外观与行为", to: stack)
+
+        sizeSlider.target = self
+        sizeSlider.action = #selector(appearanceChanged(_:))
+        sizeSlider.isContinuous = true
+        sizeSlider.widthAnchor.constraint(equalToConstant: 360).isActive = true
+        stack.addArrangedSubview(labeledRow("桌宠大小", controls: [sizeSlider, sizeValue]))
+
+        opacitySlider.target = self
+        opacitySlider.action = #selector(appearanceChanged(_:))
+        opacitySlider.isContinuous = true
+        opacitySlider.widthAnchor.constraint(equalToConstant: 360).isActive = true
+        stack.addArrangedSubview(labeledRow("透明度", controls: [opacitySlider, opacityValue]))
+
+        personalityPopup.addItems(withTitles: ["活泼", "害羞", "黏人", "混乱"])
+        personalityPopup.target = self
+        personalityPopup.action = #selector(behaviorChanged(_:))
+        stack.addArrangedSubview(labeledRow("行为性格", controls: [personalityPopup]))
+        stack.addArrangedSubview(separator())
+
+        for control in [mouseCheckbox, movementCheckbox, theaterCheckbox, alwaysOnTopCheckbox, startupCheckbox, mirrorCheckbox, clickThroughCheckbox, dockCheckbox] {
+            control.target = self
+            control.action = #selector(behaviorChanged(_:))
+            stack.addArrangedSubview(control)
+        }
+        theaterIntervalPopup.addItems(withTitles: ["每 1 分钟", "每 3 分钟", "每 5 分钟", "每 10 分钟", "每 30 分钟"])
+        theaterIntervalPopup.target = self
+        theaterIntervalPopup.action = #selector(behaviorChanged(_:))
+        let play = NSButton(title: "立即上演", target: self, action: #selector(startTheater))
+        stack.addArrangedSubview(labeledRow("小剧场间隔", controls: [theaterIntervalPopup, play]))
+        return page
+    }
+
+    private func buildPetsPage() -> NSViewController {
+        let (page, stack) = makePage("我的桌宠")
+        addTitle("我的桌宠", to: stack)
+        stack.addArrangedSubview(hint("最多可添加 3 个自己的 GIF 桌宠，文件会复制到桌搭子目录中。"))
+        petsPopup.target = self
+        petsPopup.action = #selector(petSelectionChanged(_:))
+        stack.addArrangedSubview(labeledRow("可用桌宠", controls: [petsPopup]))
+        petsDetail.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(petsDetail)
+        let add = NSButton(title: "添加 GIF", target: self, action: #selector(addPet))
+        let use = NSButton(title: "使用所选", target: self, action: #selector(useSelectedPet))
+        let useDefault = NSButton(title: "使用默认", target: self, action: #selector(useDefaultPet))
+        let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedPet))
+        stack.addArrangedSubview(buttonRow([add, use, useDefault, delete]))
+        return page
+    }
+
+    private func buildLibrariesPage() -> NSViewController {
+        let (page, stack) = makePage("资源库")
+        addTitle("GIF 资源库", to: stack)
+        stack.addArrangedSubview(hint("可绑定 3 个包含 GIF 的目录；“内置资源库”始终可用。"))
+        librariesPopup.target = self
+        librariesPopup.action = #selector(librarySelectionChanged(_:))
+        stack.addArrangedSubview(labeledRow("可用资源库", controls: [librariesPopup]))
+        libraryDetail.textColor = .secondaryLabelColor
+        libraryDetail.lineBreakMode = .byTruncatingMiddle
+        stack.addArrangedSubview(libraryDetail)
+        let bind = NSButton(title: "绑定目录", target: self, action: #selector(addLibrary))
+        let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedLibrary))
+        stack.addArrangedSubview(buttonRow([bind, delete]))
+        stack.addArrangedSubview(separator())
+        addSection("随机切换", to: stack)
+        randomPetCheckbox.target = self
+        randomPetCheckbox.action = #selector(randomSettingsChanged(_:))
+        stack.addArrangedSubview(randomPetCheckbox)
+        randomIntervalPopup.addItems(withTitles: ["每 30 秒", "每 1 分钟", "每 5 分钟", "每 10 分钟", "每 30 分钟"])
+        randomIntervalPopup.target = self
+        randomIntervalPopup.action = #selector(randomSettingsChanged(_:))
+        let now = NSButton(title: "立即换一只", target: self, action: #selector(randomizeNow))
+        stack.addArrangedSubview(labeledRow("切换间隔", controls: [randomIntervalPopup, now]))
+        return page
+    }
+
+    private func buildContentPage() -> NSViewController {
+        let (page, stack) = makePage("互动词包")
+        addTitle("互动词包", to: stack)
+        wordPacksPopup.target = self
+        wordPacksPopup.action = #selector(wordPackSelectionChanged(_:))
+        stack.addArrangedSubview(labeledRow("可用词包", controls: [wordPacksPopup]))
+        wordPackDetail.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(wordPackDetail)
+        let importWords = NSButton(title: "导入词包", target: self, action: #selector(importWordPack))
+        let deleteWords = NSButton(title: "删除所选", target: self, action: #selector(deleteWordPack))
+        let wordGuide = NSButton(title: "格式与 AI 生成", target: self, action: #selector(showWordGuide))
+        stack.addArrangedSubview(buttonRow([importWords, deleteWords, wordGuide]))
+        stack.addArrangedSubview(separator())
+        addSection("小剧场剧本", to: stack)
+        scriptsPopup.target = self
+        scriptsPopup.action = #selector(scriptSelectionChanged(_:))
+        stack.addArrangedSubview(labeledRow("可用剧本", controls: [scriptsPopup]))
+        scriptDetail.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(scriptDetail)
+        let importScript = NSButton(title: "导入剧本", target: self, action: #selector(importScriptFile))
+        let deleteScript = NSButton(title: "删除所选", target: self, action: #selector(deleteScript))
+        let scriptGuide = NSButton(title: "剧本格式与 AI 生成", target: self, action: #selector(showScriptGuide))
+        stack.addArrangedSubview(buttonRow([importScript, deleteScript, scriptGuide]))
+        return page
+    }
+
+    private func buildRemindersPage() -> NSViewController {
+        let (page, stack) = makePage("提醒")
+        addTitle("提醒", to: stack)
+        stack.addArrangedSubview(hint("最多可保存 20 条提醒，到点后桌宠会显示消息并播放提示音。"))
+        remindersPopup.target = self
+        remindersPopup.action = #selector(reminderSelectionChanged(_:))
+        let newButton = NSButton(title: "新建提醒", target: self, action: #selector(newReminder))
+        stack.addArrangedSubview(labeledRow("已有提醒", controls: [remindersPopup, newButton]))
+        stack.addArrangedSubview(separator())
+        reminderDatePicker.datePickerStyle = .textFieldAndStepper
+        reminderDatePicker.datePickerElements = [.yearMonthDay, .hourMinuteSecond]
+        reminderDatePicker.dateValue = Date().addingTimeInterval(600)
+        stack.addArrangedSubview(labeledRow("日期与时间", controls: [reminderDatePicker]))
+        reminderMessage.placeholderString = "提醒内容（最多 40 字）"
+        reminderMessage.widthAnchor.constraint(equalToConstant: 360).isActive = true
+        stack.addArrangedSubview(labeledRow("提醒内容", controls: [reminderMessage]))
+        reminderEmotionPopup.addItems(withTitles: ["开心", "加油", "害羞", "惊讶", "生气", "疑惑", "难过", "困倦", "安静"])
+        stack.addArrangedSubview(labeledRow("情绪", controls: [reminderEmotionPopup]))
+        reminderEnabledCheckbox.state = .on
+        stack.addArrangedSubview(buttonRow([reminderEnabledCheckbox, reminderDailyCheckbox]))
+        let save = NSButton(title: "保存提醒", target: self, action: #selector(saveReminder))
+        let delete = NSButton(title: "删除提醒", target: self, action: #selector(deleteReminder))
+        stack.addArrangedSubview(buttonRow([save, delete]))
+        return page
+    }
+
+    private func buildUpdatePage() -> NSViewController {
+        let (page, stack) = makePage("更新")
+        addTitle("软件更新", to: stack)
+        autoUpdateCheckbox.target = self
+        autoUpdateCheckbox.action = #selector(autoUpdateChanged(_:))
+        stack.addArrangedSubview(autoUpdateCheckbox)
+        stack.addArrangedSubview(separator())
+        addSection("设备授权", to: stack)
+        activationLabel.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(activationLabel)
+        stack.addArrangedSubview(NSButton(title: "重新激活设备", target: self, action: #selector(activateDevice)))
+        stack.addArrangedSubview(separator())
+        addSection("当前状态", to: stack)
+        updateLabel.textColor = .secondaryLabelColor
+        updateLabel.maximumNumberOfLines = 2
+        stack.addArrangedSubview(updateLabel)
+        updateProgress.minValue = 0
+        updateProgress.maxValue = 100
+        updateProgress.isIndeterminate = false
+        updateProgress.widthAnchor.constraint(equalToConstant: 480).isActive = true
+        stack.addArrangedSubview(updateProgress)
+        checkUpdateButton.target = self
+        checkUpdateButton.action = #selector(checkForUpdates)
+        downloadUpdateButton.target = self
+        downloadUpdateButton.action = #selector(downloadUpdate)
+        installUpdateButton.target = self
+        installUpdateButton.action = #selector(installUpdate)
+        ignoreUpdateButton.target = self
+        ignoreUpdateButton.action = #selector(ignoreUpdate)
+        stack.addArrangedSubview(buttonRow([checkUpdateButton, downloadUpdateButton, installUpdateButton, ignoreUpdateButton]))
+        return page
+    }
+
+    private func makePage(_ title: String) -> (NSViewController, NSStackView) {
+        let controller = NSViewController()
+        controller.title = title
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 590))
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 10
-        stack.edgeInsets = NSEdgeInsets(top: 22, left: 24, bottom: 22, right: 24)
-        window.contentView = stack
+        stack.spacing = 11
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 34),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -34),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 26)
+        ])
+        controller.view = view
+        return (controller, stack)
+    }
 
-        let title = NSTextField(labelWithString: "桌宠行为")
-        title.font = .systemFont(ofSize: 16, weight: .semibold)
-        stack.addArrangedSubview(title)
+    private func addTitle(_ text: String, to stack: NSStackView) {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 22, weight: .bold)
+        stack.addArrangedSubview(label)
+    }
 
-        for checkbox in [mouseCheckbox, movementCheckbox, randomPetCheckbox, alwaysOnTopCheckbox, dockCheckbox] {
-            checkbox.target = self
-            checkbox.action = #selector(changeSettings(_:))
-            stack.addArrangedSubview(checkbox)
-        }
+    private func addSection(_ text: String, to stack: NSStackView) {
+        let label = NSTextField(labelWithString: text)
+        label.font = .systemFont(ofSize: 15, weight: .semibold)
+        stack.addArrangedSubview(label)
+    }
 
-        stack.addArrangedSubview(separator())
-        let licenseTitle = NSTextField(labelWithString: "设备授权")
-        licenseTitle.font = .systemFont(ofSize: 16, weight: .semibold)
-        stack.addArrangedSubview(licenseTitle)
-        activationLabel.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(activationLabel)
-        let activationButton = NSButton(title: "激活设备", target: self, action: #selector(activateDevice))
-        stack.addArrangedSubview(activationButton)
+    private func hint(_ text: String) -> NSTextField {
+        let label = NSTextField(wrappingLabelWithString: text)
+        label.textColor = .secondaryLabelColor
+        label.maximumNumberOfLines = 2
+        label.widthAnchor.constraint(equalToConstant: 650).isActive = true
+        return label
+    }
 
-        stack.addArrangedSubview(separator())
-        let updateTitle = NSTextField(labelWithString: "软件更新")
-        updateTitle.font = .systemFont(ofSize: 16, weight: .semibold)
-        stack.addArrangedSubview(updateTitle)
-        updateLabel.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(updateLabel)
-        updateButton.target = self
-        updateButton.action = #selector(checkForUpdates)
-        stack.addArrangedSubview(updateButton)
+    private func labeledRow(_ title: String, controls: [NSView]) -> NSStackView {
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.widthAnchor.constraint(equalToConstant: 125).isActive = true
+        return buttonRow([label] + controls)
+    }
+
+    private func buttonRow(_ controls: [NSView]) -> NSStackView {
+        let row = NSStackView(views: controls)
+        row.orientation = .horizontal
+        row.alignment = .centerY
+        row.spacing = 9
+        return row
     }
 
     private func separator() -> NSBox {
         let box = NSBox()
         box.boxType = .separator
-        box.translatesAutoresizingMaskIntoConstraints = false
-        box.widthAnchor.constraint(equalToConstant: 380).isActive = true
+        box.widthAnchor.constraint(equalToConstant: 700).isActive = true
         return box
     }
 
     private func refresh() {
+        refreshing = true
+        defer { refreshing = false }
         let settings = petController.currentSettings
+        sizeSlider.integerValue = settings.size
+        sizeValue.stringValue = "\(settings.size) px"
+        opacitySlider.integerValue = settings.opacity
+        opacityValue.stringValue = "\(settings.opacity)%"
+        personalityPopup.selectItem(at: personalityValues.firstIndex(of: settings.personality) ?? 0)
         mouseCheckbox.state = settings.mouseInteractionEnabled ? .on : .off
         movementCheckbox.state = settings.randomMovementEnabled ? .on : .off
-        randomPetCheckbox.state = settings.randomPetEnabled ? .on : .off
+        theaterCheckbox.state = settings.theaterEnabled ? .on : .off
+        theaterIntervalPopup.selectItem(at: theaterIntervals.firstIndex(of: settings.theaterIntervalSeconds) ?? 2)
         alwaysOnTopCheckbox.state = settings.alwaysOnTop ? .on : .off
+        startupCheckbox.state = LoginItemService.isEnabled ? .on : .off
+        mirrorCheckbox.state = settings.mirrored ? .on : .off
+        clickThroughCheckbox.state = settings.clickThrough ? .on : .off
         dockCheckbox.state = settings.dockIconVisible ? .on : .off
-        activationLabel.stringValue = licenses.summary
-        updateLabel.stringValue = "当前版本 v\(AppVersion.current) - \(updates.status.message)"
+        randomPetCheckbox.state = settings.randomPetEnabled ? .on : .off
+        randomIntervalPopup.selectItem(at: randomIntervals.firstIndex(of: settings.randomPetIntervalSeconds) ?? 2)
+        autoUpdateCheckbox.state = settings.autoCheckUpdates ? .on : .off
+        refreshPets(settings)
+        refreshLibraries(settings)
+        refreshContent(settings)
+        refreshReminders(settings)
+        refreshUpdateState()
     }
 
-    @objc private func changeSettings(_ sender: NSButton) {
-        var settings = petController.currentSettings
-        let enabled = sender.state == .on
-        switch sender {
-        case mouseCheckbox: settings.mouseInteractionEnabled = enabled
-        case movementCheckbox: settings.randomMovementEnabled = enabled
-        case randomPetCheckbox: settings.randomPetEnabled = enabled
-        case alwaysOnTopCheckbox: settings.alwaysOnTop = enabled
-        case dockCheckbox:
-            settings.dockIconVisible = enabled
-            dockVisibilityChanged(enabled)
-        default: return
+    private func refreshPets(_ settings: AppSettings) {
+        let selected = petsPopup.selectedItem?.representedObject as? String
+        petsPopup.removeAllItems()
+        for pet in settings.pets {
+            petsPopup.addItem(withTitle: pet.name)
+            petsPopup.lastItem?.representedObject = pet.id
         }
-        petController.apply(settings)
+        select(popup: petsPopup, id: selected ?? settings.activePetId)
+        petsDetail.stringValue = settings.pets.isEmpty ? "尚未添加自定义桌宠" : "已添加 \(settings.pets.count)/3；当前使用：\(settings.pets.first(where: { $0.id == settings.activePetId })?.name ?? "资源库桌宠")"
+    }
+
+    private func refreshLibraries(_ settings: AppSettings) {
+        librariesPopup.removeAllItems()
+        librariesPopup.addItem(withTitle: "内置资源库")
+        for library in settings.libraries {
+            librariesPopup.addItem(withTitle: library.name)
+            librariesPopup.lastItem?.representedObject = library.id
+        }
+        if let active = settings.activeLibraryId { select(popup: librariesPopup, id: active) } else { librariesPopup.selectItem(at: 0) }
+        if let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
+            libraryDetail.stringValue = library.path
+        } else {
+            libraryDetail.stringValue = "正在使用随应用提供的 GIF 资源库"
+        }
+    }
+
+    private func refreshContent(_ settings: AppSettings) {
+        wordPacksPopup.removeAllItems()
+        wordPacksPopup.addItem(withTitle: "内置互动词包")
+        for pack in settings.interactionWordPacks {
+            wordPacksPopup.addItem(withTitle: pack.name)
+            wordPacksPopup.lastItem?.representedObject = pack.id
+        }
+        if let active = settings.activeInteractionWordPackId { select(popup: wordPacksPopup, id: active) } else { wordPacksPopup.selectItem(at: 0) }
+        if let pack = settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId }) {
+            wordPackDetail.stringValue = "\(pack.wordCount) 句互动台词"
+        } else {
+            wordPackDetail.stringValue = "正在使用内置互动台词"
+        }
+        let selectedScript = scriptsPopup.selectedItem?.representedObject as? String
+        scriptsPopup.removeAllItems()
+        scriptsPopup.addItem(withTitle: "内置小剧场（3 套）")
+        for script in settings.theaterScripts {
+            scriptsPopup.addItem(withTitle: script.name)
+            scriptsPopup.lastItem?.representedObject = script.id
+        }
+        select(popup: scriptsPopup, id: selectedScript)
+        if let id = scriptsPopup.selectedItem?.representedObject as? String,
+           let script = settings.theaterScripts.first(where: { $0.id == id }) {
+            scriptDetail.stringValue = "\(script.scenes.count) 轮对话"
+        } else {
+            scriptDetail.stringValue = "内置长对话剧本会参与随机上演"
+        }
+    }
+
+    private func refreshReminders(_ settings: AppSettings) {
+        let selected = editingReminderId
+        remindersPopup.removeAllItems()
+        remindersPopup.addItem(withTitle: "选择提醒…")
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd HH:mm"
+        for reminder in settings.reminders.sorted(by: { $0.at < $1.at }) {
+            remindersPopup.addItem(withTitle: "\(reminder.enabled ? "●" : "○") \(formatter.string(from: reminder.at))  \(reminder.message)")
+            remindersPopup.lastItem?.representedObject = reminder.id
+        }
+        if let selected { select(popup: remindersPopup, id: selected) }
+    }
+
+    private func refreshUpdateState() {
+        activationLabel.stringValue = licenses.summary
+        let status = updates.status
+        updateLabel.stringValue = "当前版本 v\(AppVersion.current) - \(status.message)"
+        updateProgress.doubleValue = Double(status.progress)
+        let ignored = updates.availableManifest.map { $0.version == petController.currentSettings.ignoredUpdateVersion } ?? false
+        checkUpdateButton.isEnabled = status.phase != .checking && status.phase != .downloading
+        downloadUpdateButton.isHidden = status.phase != .available || ignored
+        installUpdateButton.isHidden = status.phase != .downloaded
+        ignoreUpdateButton.isHidden = ![.available, .downloaded].contains(status.phase)
+        if ignored, let manifest = updates.availableManifest {
+            updateLabel.stringValue = "当前版本 v\(AppVersion.current) - 已忽略 v\(manifest.version)"
+        }
+    }
+
+    private func select(popup: NSPopUpButton, id: String?) {
+        guard let id else { return }
+        if let item = popup.itemArray.first(where: { ($0.representedObject as? String) == id }) { popup.select(item) }
+    }
+
+    @objc private func appearanceChanged(_ sender: NSSlider) {
+        guard !refreshing else { return }
+        petController.update {
+            $0.size = sizeSlider.integerValue
+            $0.opacity = opacitySlider.integerValue
+        }
+        sizeValue.stringValue = "\(sizeSlider.integerValue) px"
+        opacityValue.stringValue = "\(opacitySlider.integerValue)%"
+    }
+
+    @objc private func behaviorChanged(_ sender: Any) {
+        guard !refreshing else { return }
+        if sender as AnyObject === startupCheckbox {
+            do { try LoginItemService.setEnabled(startupCheckbox.state == .on) }
+            catch { startupCheckbox.state = LoginItemService.isEnabled ? .on : .off; show(error) }
+        }
+        let previousDock = petController.currentSettings.dockIconVisible
+        petController.update {
+            $0.personality = personalityValues[personalityPopup.indexOfSelectedItem]
+            $0.mouseInteractionEnabled = mouseCheckbox.state == .on
+            $0.randomMovementEnabled = movementCheckbox.state == .on
+            $0.theaterEnabled = theaterCheckbox.state == .on
+            $0.theaterIntervalSeconds = theaterIntervals[theaterIntervalPopup.indexOfSelectedItem]
+            $0.alwaysOnTop = alwaysOnTopCheckbox.state == .on
+            $0.startAtLogin = startupCheckbox.state == .on
+            $0.mirrored = mirrorCheckbox.state == .on
+            $0.clickThrough = clickThroughCheckbox.state == .on
+            $0.dockIconVisible = dockCheckbox.state == .on
+        }
+        if previousDock != (dockCheckbox.state == .on) { dockVisibilityChanged(dockCheckbox.state == .on) }
+    }
+
+    @objc private func startTheater() { _ = petController.startTheater() }
+
+    @objc private func addPet() {
+        guard petController.currentSettings.pets.count < 3 else { show(ContentImportError.limitReached("最多只能添加 3 个自定义桌宠")); return }
+        let panel = NSOpenPanel()
+        panel.title = "选择桌宠 GIF"
+        panel.allowedFileTypes = ["gif"]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let pet = try ContentStorage.importPet(from: url)
+            petController.update { $0.pets.append(pet); $0.activePetId = pet.id; $0.activeLibraryId = nil }
+            refresh()
+        } catch { show(error) }
+    }
+
+    @objc private func petSelectionChanged(_ sender: NSPopUpButton) {
+        if let id = sender.selectedItem?.representedObject as? String,
+           let pet = petController.currentSettings.pets.first(where: { $0.id == id }) {
+            petsDetail.stringValue = pet.path
+        }
+    }
+
+    @objc private func useSelectedPet() {
+        guard let id = petsPopup.selectedItem?.representedObject as? String else { return }
+        petController.update { $0.activePetId = id; $0.activeLibraryId = nil }
+        refresh()
+    }
+
+    @objc private func useDefaultPet() {
+        petController.update { $0.activePetId = nil; $0.activeLibraryId = nil }
+        refresh()
+    }
+
+    @objc private func deleteSelectedPet() {
+        guard let id = petsPopup.selectedItem?.representedObject as? String,
+              let pet = petController.currentSettings.pets.first(where: { $0.id == id }), confirmDelete(pet.name) else { return }
+        ContentStorage.deleteImportedPet(pet)
+        petController.update { $0.pets.removeAll { $0.id == id }; if $0.activePetId == id { $0.activePetId = nil } }
+        refresh()
+    }
+
+    @objc private func addLibrary() {
+        guard petController.currentSettings.libraries.count < 3 else { show(ContentImportError.limitReached("最多只能绑定 3 个 GIF 资源库")); return }
+        let panel = NSOpenPanel()
+        panel.title = "选择包含 GIF 的资源库目录"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard gifCount(in: url) > 0 else { show(ContentImportError.unsupportedGIF); return }
+        if petController.currentSettings.libraries.contains(where: { $0.path.standardizedPath == url.path.standardizedPath }) { return }
+        let library = LibraryDefinition(name: url.lastPathComponent.cleaned(limit: 40), path: url.path)
+        petController.update { $0.libraries.append(library); $0.activeLibraryId = library.id; $0.activePetId = nil }
+        refresh()
+    }
+
+    @objc private func librarySelectionChanged(_ sender: NSPopUpButton) {
+        guard !refreshing else { return }
+        let id = sender.selectedItem?.representedObject as? String
+        petController.update { $0.activeLibraryId = id; $0.activePetId = nil }
+        refresh()
+    }
+
+    @objc private func deleteSelectedLibrary() {
+        guard let id = librariesPopup.selectedItem?.representedObject as? String,
+              let library = petController.currentSettings.libraries.first(where: { $0.id == id }), confirmDelete(library.name) else { return }
+        petController.update { $0.libraries.removeAll { $0.id == id }; if $0.activeLibraryId == id { $0.activeLibraryId = nil } }
+        refresh()
+    }
+
+    @objc private func randomSettingsChanged(_ sender: Any) {
+        guard !refreshing else { return }
+        petController.update {
+            $0.randomPetEnabled = randomPetCheckbox.state == .on
+            $0.randomPetIntervalSeconds = randomIntervals[randomIntervalPopup.indexOfSelectedItem]
+        }
+    }
+
+    @objc private func randomizeNow() { _ = petController.randomizePet() }
+
+    @objc private func importWordPack() {
+        guard petController.currentSettings.interactionWordPacks.count < 5 else { show(ContentImportError.limitReached("最多只能导入 5 个互动词包")); return }
+        let panel = NSOpenPanel()
+        panel.title = "导入互动词包"
+        panel.allowedFileTypes = ["json", "txt"]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let pack = try InteractionWordPackImporter.load(from: url)
+            petController.update { $0.interactionWordPacks.append(pack); $0.activeInteractionWordPackId = pack.id }
+            refresh()
+        } catch { show(error) }
+    }
+
+    @objc private func wordPackSelectionChanged(_ sender: NSPopUpButton) {
+        guard !refreshing else { return }
+        let id = sender.selectedItem?.representedObject as? String
+        petController.update { $0.activeInteractionWordPackId = id }
+        refresh()
+    }
+
+    @objc private func deleteWordPack() {
+        guard let id = wordPacksPopup.selectedItem?.representedObject as? String,
+              let pack = petController.currentSettings.interactionWordPacks.first(where: { $0.id == id }), confirmDelete(pack.name) else { return }
+        petController.update { $0.interactionWordPacks.removeAll { $0.id == id }; if $0.activeInteractionWordPackId == id { $0.activeInteractionWordPackId = nil } }
+        refresh()
+    }
+
+    @objc private func showWordGuide() { showGuide(title: "互动词包格式", text: InteractionWordPackImporter.guide) }
+
+    @objc private func importScriptFile() {
+        guard petController.currentSettings.theaterScripts.count < 10 else { show(ContentImportError.limitReached("最多只能导入 10 个小剧场剧本")); return }
+        let panel = NSOpenPanel()
+        panel.title = "导入小剧场剧本"
+        panel.allowedFileTypes = ["json"]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let script = try TheaterScriptImporter.load(from: url)
+            petController.update { $0.theaterScripts.append(script) }
+            refresh()
+        } catch { show(error) }
+    }
+
+    @objc private func scriptSelectionChanged(_ sender: NSPopUpButton) { refreshContent(petController.currentSettings) }
+
+    @objc private func deleteScript() {
+        guard let id = scriptsPopup.selectedItem?.representedObject as? String,
+              let script = petController.currentSettings.theaterScripts.first(where: { $0.id == id }), confirmDelete(script.name) else { return }
+        petController.update { $0.theaterScripts.removeAll { $0.id == id } }
+        refresh()
+    }
+
+    @objc private func showScriptGuide() { showGuide(title: "小剧场剧本格式", text: TheaterScriptImporter.guide) }
+
+    @objc private func reminderSelectionChanged(_ sender: NSPopUpButton) {
+        guard !refreshing, let id = sender.selectedItem?.representedObject as? String,
+              let reminder = petController.currentSettings.reminders.first(where: { $0.id == id }) else { return }
+        editingReminderId = id
+        reminderDatePicker.dateValue = reminder.at
+        reminderMessage.stringValue = reminder.message
+        reminderEmotionPopup.selectItem(at: emotionValues.firstIndex(of: reminder.emotion) ?? 0)
+        reminderEnabledCheckbox.state = reminder.enabled ? .on : .off
+        reminderDailyCheckbox.state = reminder.repeatDaily ? .on : .off
+    }
+
+    @objc private func newReminder() {
+        editingReminderId = nil
+        remindersPopup.selectItem(at: 0)
+        reminderDatePicker.dateValue = Date().addingTimeInterval(600)
+        reminderMessage.stringValue = "休息一下吧"
+        reminderEmotionPopup.selectItem(at: 0)
+        reminderEnabledCheckbox.state = .on
+        reminderDailyCheckbox.state = .off
+    }
+
+    @objc private func saveReminder() {
+        let message = reminderMessage.stringValue.cleaned(limit: 40)
+        guard !message.isEmpty else { show(ContentImportError.limitReached("请输入提醒内容")); return }
+        if editingReminderId == nil, petController.currentSettings.reminders.count >= 20 { show(ContentImportError.limitReached("最多只能保存 20 条提醒")); return }
+        let reminder = ReminderDefinition(
+            id: editingReminderId ?? "reminder-\(UUID().uuidString)",
+            enabled: reminderEnabledCheckbox.state == .on,
+            at: reminderDatePicker.dateValue,
+            message: message,
+            emotion: emotionValues[reminderEmotionPopup.indexOfSelectedItem],
+            repeatDaily: reminderDailyCheckbox.state == .on
+        )
+        petController.update {
+            if let index = $0.reminders.firstIndex(where: { $0.id == reminder.id }) { $0.reminders[index] = reminder }
+            else { $0.reminders.append(reminder) }
+        }
+        editingReminderId = reminder.id
+        refresh()
+    }
+
+    @objc private func deleteReminder() {
+        guard let id = editingReminderId,
+              let reminder = petController.currentSettings.reminders.first(where: { $0.id == id }), confirmDelete(reminder.message) else { return }
+        petController.update { $0.reminders.removeAll { $0.id == id } }
+        newReminder()
+        refresh()
+    }
+
+    @objc private func autoUpdateChanged(_ sender: NSButton) {
+        petController.update { $0.autoCheckUpdates = sender.state == .on }
     }
 
     @objc private func activateDevice() {
@@ -166,51 +698,81 @@ final class SettingsWindowController: NSWindowController {
             if licenses.isActivated {
                 let confirm = NSAlert()
                 confirm.messageText = "更换设备授权"
-                confirm.informativeText = "需要输入新的激活码。当前设备会使用新的授权记录。"
+                confirm.informativeText = "需要输入新的激活码，当前设备会改用新的授权记录。"
                 confirm.addButton(withTitle: "继续")
                 confirm.addButton(withTitle: "取消")
                 guard confirm.runModal() == .alertFirstButtonReturn else { return }
             }
-            _ = await ActivationPrompts.activate(
-                licenses: licenses,
-                required: false,
-                replacingExisting: licenses.isActivated
-            )
+            _ = await ActivationPrompts.activate(licenses: licenses, required: false, replacingExisting: licenses.isActivated)
             refresh()
         }
     }
 
     @objc private func checkForUpdates() {
-        updateButton.isEnabled = false
-        updateLabel.stringValue = "当前版本 v\(AppVersion.current) - 正在检查更新"
+        petController.update { $0.ignoredUpdateVersion = nil }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            defer {
-                updateButton.isEnabled = true
-                refresh()
-            }
             do {
-                guard let manifest = try await updates.check() else {
-                    let alert = NSAlert()
-                    alert.messageText = "已经是最新版本"
-                    alert.addButton(withTitle: "完成")
-                    alert.runModal()
-                    return
+                if try await updates.check() == nil {
+                    let alert = NSAlert(); alert.messageText = "已经是最新版本"; alert.runModal()
                 }
-                let alert = NSAlert()
-                alert.messageText = "发现新版本 v\(manifest.version)"
-                alert.informativeText = manifest.notes.isEmpty ? "更新包已通过签名校验。" : manifest.notes
-                alert.addButton(withTitle: "下载并安装")
-                alert.addButton(withTitle: "稍后")
-                guard alert.runModal() == .alertFirstButtonReturn else { return }
-                try await updates.downloadAndInstall(manifest)
-            } catch {
-                NSAlert(error: error).runModal()
-            }
+            } catch { show(error) }
+            refreshUpdateState()
         }
     }
 
-    @objc func checkForUpdatesFromMenu() {
-        checkForUpdates()
+    @objc private func downloadUpdate() {
+        guard let manifest = updates.availableManifest else { return }
+        Task { @MainActor [weak self] in
+            do { try await self?.updates.download(manifest) }
+            catch { self?.show(error) }
+        }
+    }
+
+    @objc private func installUpdate() {
+        do { try updates.installDownloaded() }
+        catch { show(error) }
+    }
+
+    @objc private func ignoreUpdate() {
+        guard let version = updates.availableManifest?.version else { return }
+        petController.update { $0.ignoredUpdateVersion = version }
+        refreshUpdateState()
+    }
+
+    @objc func checkForUpdatesFromMenu() { checkForUpdates() }
+
+    private func gifCount(in directory: URL) -> Int {
+        guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return 0 }
+        return enumerator.compactMap { $0 as? URL }.filter { $0.pathExtension.caseInsensitiveCompare("gif") == .orderedSame }.count
+    }
+
+    private func confirmDelete(_ name: String) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "确认删除“\(name)”？"
+        alert.addButton(withTitle: "删除")
+        alert.addButton(withTitle: "取消")
+        return alert.runModal() == .alertFirstButtonReturn
+    }
+
+    private func show(_ error: Error) { NSAlert(error: error).runModal() }
+
+    private func showGuide(title: String, text: String) {
+        let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 560, height: 300))
+        textView.string = text
+        textView.isEditable = false
+        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        let scroll = NSScrollView(frame: textView.frame)
+        scroll.documentView = textView
+        scroll.hasVerticalScroller = true
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.accessoryView = scroll
+        alert.addButton(withTitle: "完成")
+        alert.addButton(withTitle: "复制示例")
+        if alert.runModal() == .alertSecondButtonReturn {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
     }
 }
