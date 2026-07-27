@@ -39,9 +39,9 @@ bash macos/scripts/build-app.sh
 
 `Build macOS` 工作流分别使用 Apple Silicon 与 Intel runner 编译，并上传：
 
-从 `2.4.2` 开始，App、ZIP 和 GitHub Actions Artifact 都包含三段式版本号，例如：
+从 `2.4.3` 开始，App、ZIP 和 GitHub Actions Artifact 都包含三段式版本号，例如：
 
-- `ZhuoDazi-macOS-2.4.2-arm64.zip`
-- `ZhuoDazi-macOS-2.4.2-x86_64.zip`
+- `ZhuoDazi-macOS-2.4.3-arm64.zip`
+- `ZhuoDazi-macOS-2.4.3-x86_64.zip`
 
 以后配置 Developer ID 和公证凭据时，可在现有打包脚本后追加正式签名、公证和 DMG 步骤。
