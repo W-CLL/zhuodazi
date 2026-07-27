@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using Microsoft.Win32;
 using ZhuoDazi.Models;
 using ZhuoDazi.Services;
@@ -31,6 +32,11 @@ public partial class SettingsWindow : Window
         };
         Closing += OnClosing;
         ReminderDatePicker.SelectedDate = DateTime.Today;
+        ReminderHourCombo.ItemsSource = Enumerable.Range(0, 24)
+            .Select(hour => hour.ToString("00", CultureInfo.InvariantCulture)).ToList();
+        ReminderMinuteCombo.ItemsSource = Enumerable.Range(0, 60)
+            .Select(minute => minute.ToString("00", CultureInfo.InvariantCulture)).ToList();
+        SetReminderTime(DateTime.Now.AddMinutes(10).TimeOfDay);
         RefreshAll();
     }
 
@@ -344,7 +350,7 @@ public partial class SettingsWindow : Window
         ReminderList.SelectedItem = null;
         ReminderFormTitle.Text = "新建提醒";
         ReminderDatePicker.SelectedDate = DateTime.Today;
-        ReminderTimeText.Text = DateTime.Now.AddMinutes(10).ToString("HH:mm");
+        SetReminderTime(DateTime.Now.AddMinutes(10).TimeOfDay);
         ReminderMessageText.Text = "休息一下吧";
         ReminderEnabledCheck.IsChecked = true;
         ReminderDailyCheck.IsChecked = false;
@@ -357,7 +363,7 @@ public partial class SettingsWindow : Window
         _editingReminderId = reminder.Id;
         ReminderFormTitle.Text = "编辑提醒";
         ReminderDatePicker.SelectedDate = reminder.LocalTime.Date;
-        ReminderTimeText.Text = reminder.LocalTime.ToString("HH:mm");
+        SetReminderTime(reminder.LocalTime.TimeOfDay);
         ReminderMessageText.Text = reminder.Message;
         ReminderEnabledCheck.IsChecked = reminder.Enabled;
         ReminderDailyCheck.IsChecked = reminder.RepeatDaily;
@@ -369,9 +375,9 @@ public partial class SettingsWindow : Window
     private void SaveReminder_Click(object sender, RoutedEventArgs e)
     {
         if (ReminderDatePicker.SelectedDate is not { } date
-            || !TimeSpan.TryParseExact(ReminderTimeText.Text.Trim(), ["h\\:mm", "hh\\:mm"], CultureInfo.InvariantCulture, out var time))
+            || !TryGetReminderTime(out var time))
         {
-            WpfMessageBox.Show(this, "请输入有效的日期和时间，例如 09:30。", "提醒时间无效", MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(this, "请选择有效的日期和时间。", "提醒时间无效", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         var reminder = new ReminderDefinition
@@ -386,6 +392,35 @@ public partial class SettingsWindow : Window
         RunUiAction(() => _controller.SaveReminder(reminder));
         _editingReminderId = reminder.Id;
         RefreshAll();
+    }
+
+    private void ReminderTimeSelector_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.ComboBox { Items.Count: > 0 } selector) return;
+
+        var change = e.Delta > 0 ? -1 : 1;
+        var nextIndex = Math.Clamp(selector.SelectedIndex + change, 0, selector.Items.Count - 1);
+        if (nextIndex == selector.SelectedIndex) return;
+
+        selector.SelectedIndex = nextIndex;
+        e.Handled = true;
+    }
+
+    private void SetReminderTime(TimeSpan time)
+    {
+        ReminderHourCombo.SelectedItem = time.Hours.ToString("00", CultureInfo.InvariantCulture);
+        ReminderMinuteCombo.SelectedItem = time.Minutes.ToString("00", CultureInfo.InvariantCulture);
+    }
+
+    private bool TryGetReminderTime(out TimeSpan time)
+    {
+        var hasHour = int.TryParse(ReminderHourCombo.SelectedItem as string, NumberStyles.None,
+            CultureInfo.InvariantCulture, out var hour);
+        var hasMinute = int.TryParse(ReminderMinuteCombo.SelectedItem as string, NumberStyles.None,
+            CultureInfo.InvariantCulture, out var minute);
+
+        time = hasHour && hasMinute ? new TimeSpan(hour, minute, 0) : default;
+        return hasHour && hasMinute;
     }
 
     private void DeleteReminder_Click(object sender, RoutedEventArgs e)

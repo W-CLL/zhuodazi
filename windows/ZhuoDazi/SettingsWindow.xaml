@@ -499,8 +499,17 @@
                             <TextBlock x:Name="ReminderFormTitle" Text="新建提醒" Style="{StaticResource SectionTitle}" FontSize="17" Margin="0,0,0,16" />
                             <TextBlock Text="日期" Style="{StaticResource FieldLabel}" />
                             <DatePicker x:Name="ReminderDatePicker" Margin="0,0,0,12" />
-                            <TextBlock Text="时间（HH:mm）" Style="{StaticResource FieldLabel}" />
-                            <TextBox x:Name="ReminderTimeText" Text="09:30" MaxLength="5" Margin="0,0,0,12" />
+                            <TextBlock Text="时间" Style="{StaticResource FieldLabel}" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                <ComboBox x:Name="ReminderHourCombo" Width="104" MaxDropDownHeight="240"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          PreviewMouseWheel="ReminderTimeSelector_PreviewMouseWheel" />
+                                <TextBlock Text=":" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Margin="10,0" Foreground="{StaticResource MutedBrush}" />
+                                <ComboBox x:Name="ReminderMinuteCombo" Width="104" MaxDropDownHeight="240"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                          PreviewMouseWheel="ReminderTimeSelector_PreviewMouseWheel" />
+                            </StackPanel>
                             <TextBlock Text="提醒内容" Style="{StaticResource FieldLabel}" />
                             <TextBox x:Name="ReminderMessageText" Text="休息一下吧" MaxLength="40" Margin="0,0,0,12" />
                             <TextBlock Text="情绪" Style="{StaticResource FieldLabel}" />
