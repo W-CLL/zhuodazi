@@ -20,7 +20,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: "8.0.x"
 
       - name: Test GIF randomization
         shell: pwsh
@@ -39,6 +39,23 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: ./windows/scripts/build-native.ps1 -Version $env:APP_VERSION
+
+      - name: Smoke test published application
+        shell: pwsh
+        run: |
+          $application = Resolve-Path "windows/publish/win-x64/ZhuoDazi.exe"
+          $process = Start-Process -FilePath $application -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+          $process.Refresh()
+
+          if ($process.HasExited -and $process.ExitCode -ne 0) {
+            $hexExitCode = "{0:X8}" -f ($process.ExitCode -band 0xffffffff)
+            throw "Published application exited during startup: $($process.ExitCode) / 0x$hexExitCode"
+          }
+
+          if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+          }
 
       - name: Build portable archive
         shell: pwsh
