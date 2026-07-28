@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using ZhuoDazi.Controls;
@@ -13,6 +14,7 @@ internal static class Program
     {
         CheckGifLibraryRandomization();
         CheckPartialGifComposition();
+        CheckNetworkErrorsDoNotExposeServiceAddress();
         var reproductionPath = Environment.GetEnvironmentVariable("ZHUODAZI_GIF_REPRO_PATH");
         if (!string.IsNullOrWhiteSpace(reproductionPath))
         {
@@ -21,7 +23,19 @@ internal static class Program
                 : null;
             CheckPartialGifComposition(reproductionPath, requireRetainedPixels: false, maximumDimension);
         }
-        Console.WriteLine("GIF checks passed.");
+        Console.WriteLine("Windows checks passed.");
+    }
+
+    private static void CheckNetworkErrorsDoNotExposeServiceAddress()
+    {
+        const string serviceAddress = "8.134.130.155";
+        var error = new HttpRequestException($"The SSL connection to {serviceAddress} could not be established.");
+        var message = NetworkConnectionErrors.Format(error, "连接超时");
+
+        Require(!message.Contains(serviceAddress, StringComparison.Ordinal),
+            "A network error exposed the update service address.");
+        Require(message.Contains("直接网络", StringComparison.Ordinal),
+            "A network error did not explain that the app uses the computer's direct network.");
     }
 
     private static void CheckGifLibraryRandomization()

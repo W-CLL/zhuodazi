@@ -204,7 +204,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.6";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.7";
 
     internal static int CompareVersions(string left, string right)
     {

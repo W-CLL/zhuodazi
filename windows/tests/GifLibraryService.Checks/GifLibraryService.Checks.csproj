@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="..\..\ZhuoDazi\Services\GifLibraryService.cs" Link="GifLibraryService.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\NetworkConnectionErrors.cs" Link="NetworkConnectionErrors.cs" />
     <Compile Include="..\..\ZhuoDazi\Controls\GifFrameCompositor.cs" Link="GifFrameCompositor.cs" />
     <None Include="..\..\assets\pet-libraries\yuexinmiao\017-90d741d6.gif" Link="assets\partial-frame.gif" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
