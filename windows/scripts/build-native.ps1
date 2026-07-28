@@ -46,9 +46,6 @@ dotnet publish $projectPath `
     --output $publishDirectory `
     -p:Version=$Version `
     -p:FileVersion="$Version.0" `
-    -p:PublishSingleFile=true `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:EnableCompressionInSingleFile=true `
     -p:DebugType=None `
     -p:DebugSymbols=false
 

@@ -21,7 +21,7 @@ dotnet run --project .\windows\ZhuoDazi\ZhuoDazi.csproj -- --settings
 
 ## 生成安装包
 
-先安装 .NET 10 SDK 和 Inno Setup 6，然后运行：
+先安装 .NET 8 SDK 和 Inno Setup 6，然后运行：
 
 ```powershell
 .\windows\scripts\build-native.ps1 -Version <版本号>
@@ -29,11 +29,12 @@ dotnet run --project .\windows\ZhuoDazi\ZhuoDazi.csproj -- --settings
 
 输出位于 `windows\dist\ZhuoDazi-Desktop-Pet-<版本号>.exe`。应用内没有更新地址配置项；激活和更新服务地址及 Ed25519 公钥都保留在程序内部。后台发布时上传该安装包即可。
 
-安装后的程序目录按用途整理为：
+Windows 安装包面向 Windows 10 22H2 和 Windows 11 x64，采用 .NET 8 LTS 自包含发布，用户不需要另行安装 .NET 运行时。安装后的程序目录按用途整理为：
 
 ```text
 ZhuoDazi/
-├─ ZhuoDazi.exe          # 单文件主程序，已包含 .NET 运行时和应用依赖
+├─ ZhuoDazi.exe          # 主程序
+├─ *.dll / *.json        # 随程序附带的 .NET 8 运行时和应用依赖
 ├─ resources/            # 内置 GIF 资源库
 └─ uninstall/            # 卸载程序
 ```
