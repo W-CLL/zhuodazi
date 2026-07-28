@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
@@ -16,7 +17,17 @@ public sealed class LicenseService : IDisposable
         WriteIndented = false
     };
 
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(25) };
+    private readonly HttpClient _httpClient = new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        ConnectTimeout = TimeSpan.FromSeconds(20),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5)
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(25),
+        DefaultRequestVersion = HttpVersion.Version20,
+        DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+    };
     private readonly string _licensePath;
     private LicenseRecord _record;
 

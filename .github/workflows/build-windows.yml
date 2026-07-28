@@ -22,7 +22,7 @@ jobs:
         with:
           dotnet-version: "8.0.x"
 
-      - name: Test GIF randomization
+      - name: Run Windows checks
         shell: pwsh
         run: dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
 

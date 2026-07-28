@@ -85,7 +85,13 @@ final class LicenseService {
         request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await DirectNetworkSession.shared.data(for: request)
+        } catch {
+            throw LicenseError.server(NetworkConnectionErrors.format(error, timeoutMessage: "连接邀请服务超时"))
+        }
         guard data.count <= 32 * 1024, let http = response as? HTTPURLResponse else {
             throw LicenseError.invalidResponse
         }

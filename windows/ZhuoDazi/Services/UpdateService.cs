@@ -60,6 +60,7 @@ public sealed class UpdateService : IDisposable
     private readonly LicenseService _licenses;
     private readonly HttpClient _httpClient = new(new SocketsHttpHandler
     {
+        // Keep update traffic off configured HTTP(S) proxies while preserving TLS validation.
         UseProxy = false,
         ConnectTimeout = TimeSpan.FromSeconds(20),
         PooledConnectionLifetime = TimeSpan.FromMinutes(5)
@@ -204,7 +205,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.6";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.7";
 
     internal static int CompareVersions(string left, string right)
     {
