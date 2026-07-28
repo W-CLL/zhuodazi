@@ -60,7 +60,6 @@ public sealed class UpdateService : IDisposable
     private readonly LicenseService _licenses;
     private readonly HttpClient _httpClient = new(new SocketsHttpHandler
     {
-        // Keep update traffic off configured HTTP(S) proxies while preserving TLS validation.
         UseProxy = false,
         ConnectTimeout = TimeSpan.FromSeconds(20),
         PooledConnectionLifetime = TimeSpan.FromMinutes(5)

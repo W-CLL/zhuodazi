@@ -75,7 +75,7 @@ final class UpdateService {
             request.setValue("application/json", forHTTPHeaderField: "Accept")
             try licenses.authorize(&request)
 
-            let (data, response) = try await DirectNetworkSession.shared.data(for: request)
+            let (data, response) = try await URLSession.shared.data(for: request)
             guard data.count <= 512 * 1024, let http = response as? HTTPURLResponse else {
                 throw UpdateError.invalidManifest("更新清单无效")
             }
@@ -99,9 +99,8 @@ final class UpdateService {
             return manifest
         } catch {
             availableManifest = nil
-            let message = NetworkConnectionErrors.format(error, timeoutMessage: "检查更新超时")
-            setStatus(.failed, message, 0)
-            throw UpdateError.server(message)
+            setStatus(.failed, error.localizedDescription, 0)
+            throw error
         }
     }
 
@@ -131,9 +130,8 @@ final class UpdateService {
             setStatus(.downloaded, "更新包已下载并通过校验", 100)
         } catch {
             downloadedArchive = nil
-            let message = NetworkConnectionErrors.format(error, timeoutMessage: "下载更新超时")
-            setStatus(.failed, message, 0)
-            throw UpdateError.server(message)
+            setStatus(.failed, error.localizedDescription, 0)
+            throw error
         }
     }
 
@@ -267,11 +265,7 @@ private final class UpdateDownloadDelegate: NSObject, URLSessionDownloadDelegate
     func download(_ request: URLRequest) async throws -> (URL, URLResponse) {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
-            let session = URLSession(
-                configuration: DirectNetworkSession.configuration(),
-                delegate: self,
-                delegateQueue: nil
-            )
+            let session = URLSession(configuration: .default, delegate: self, delegateQueue: nil)
             self.session = session
             session.downloadTask(with: request).resume()
         }
