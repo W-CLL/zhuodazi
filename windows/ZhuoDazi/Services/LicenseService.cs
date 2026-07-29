@@ -8,7 +8,8 @@ namespace ZhuoDazi.Services;
 
 public sealed class LicenseService : IDisposable
 {
-    private const string ActivationUrl = "https://8.134.130.155/api/activate";
+    internal const string ServiceBaseUrl = "https://8.134.130.155";
+    private const string ActivationUrl = ServiceBaseUrl + "/api/activate";
     private static readonly byte[] OptionalEntropy = Encoding.UTF8.GetBytes("ZhuoDazi.Native.License.v1");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

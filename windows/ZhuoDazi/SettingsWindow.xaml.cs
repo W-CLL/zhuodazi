@@ -16,6 +16,7 @@ public partial class SettingsWindow : Window
 {
     private readonly AppController _controller;
     private bool _refreshing;
+    private bool _feedbackLoading;
     private string? _editingReminderId;
 
     public SettingsWindow(AppController controller)
@@ -23,6 +24,7 @@ public partial class SettingsWindow : Window
         _controller = controller;
         _refreshing = true;
         InitializeComponent();
+        MainTabs.SelectionChanged += MainTabs_SelectionChanged;
         _controller.StateChanged += Controller_StateChanged;
         _controller.Updates.StateChanged += Updates_StateChanged;
         Loaded += (_, _) =>
@@ -127,6 +129,7 @@ public partial class SettingsWindow : Window
         ReminderList.ItemsSource = reminderItems;
         ReminderList.SelectedItem = reminderItems.FirstOrDefault(item => item.Id == selectedReminderId);
         ReminderCountText.Text = settings.Reminders.Count == 0 ? "暂无提醒" : $"共 {settings.Reminders.Count} 个提醒";
+        ReminderEmptyState.Visibility = settings.Reminders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
@@ -433,6 +436,96 @@ public partial class SettingsWindow : Window
         NewReminder_Click(sender, e);
     }
 
+    private async void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, MainTabs) || MainTabs.SelectedItem != FeedbackTab) return;
+        await LoadFeedbackAsync();
+    }
+
+    private async void FeedbackReload_Click(object sender, RoutedEventArgs e) => await LoadFeedbackAsync();
+
+    private async Task LoadFeedbackAsync()
+    {
+        if (_feedbackLoading) return;
+        _feedbackLoading = true;
+        FeedbackReloadButton.IsEnabled = false;
+        FeedbackSubmitButton.IsEnabled = false;
+        FeedbackErrorText.Visibility = Visibility.Collapsed;
+        try
+        {
+            var response = await _controller.Feedback.GetAsync();
+            FeedbackList.ItemsSource = response.Items.Select(item => new FeedbackListItem(item)).ToList();
+            FeedbackEmptyState.Visibility = response.Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            FeedbackQuotaText.Text = response.Quota.Remaining > 0
+                ? $"当前设备有 {response.Quota.Active}/{response.Quota.Maximum} 条处理中反馈，还可提交 {response.Quota.Remaining} 条"
+                : $"当前设备已有 {response.Quota.Active} 条处理中反馈，请等待后台处理后再提交";
+            SetFeedbackFormEnabled(response.Quota.Remaining > 0);
+        }
+        catch (Exception error)
+        {
+            FeedbackErrorText.Text = error.Message;
+            FeedbackErrorText.Visibility = Visibility.Visible;
+            FeedbackQuotaText.Text = "暂时无法获取反馈记录";
+            SetFeedbackFormEnabled(true);
+        }
+        finally
+        {
+            _feedbackLoading = false;
+            FeedbackReloadButton.IsEnabled = true;
+        }
+    }
+
+    private async void FeedbackSubmit_Click(object sender, RoutedEventArgs e)
+    {
+        if (_feedbackLoading) return;
+        var title = FeedbackTitleText.Text.Trim();
+        var content = FeedbackContentText.Text.Trim();
+        if (title.Length < 2 || content.Length < 5)
+        {
+            FeedbackErrorText.Text = title.Length < 2
+                ? "反馈标题至少需要 2 个字符。"
+                : "请补充至少 5 个字符的详细说明。";
+            FeedbackErrorText.Visibility = Visibility.Visible;
+            return;
+        }
+
+        var type = (FeedbackTypeCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "problem";
+        _feedbackLoading = true;
+        SetFeedbackFormEnabled(false);
+        FeedbackReloadButton.IsEnabled = false;
+        FeedbackErrorText.Visibility = Visibility.Collapsed;
+        try
+        {
+            await _controller.Feedback.SubmitAsync(type, title, content);
+            FeedbackTitleText.Clear();
+            FeedbackContentText.Clear();
+            _feedbackLoading = false;
+            await LoadFeedbackAsync();
+        }
+        catch (Exception error)
+        {
+            FeedbackErrorText.Text = error.Message;
+            FeedbackErrorText.Visibility = Visibility.Visible;
+            SetFeedbackFormEnabled(true);
+        }
+        finally
+        {
+            _feedbackLoading = false;
+            FeedbackReloadButton.IsEnabled = true;
+        }
+    }
+
+    private void SetFeedbackFormEnabled(bool enabled)
+    {
+        FeedbackTypeCombo.IsEnabled = enabled;
+        FeedbackTitleText.IsEnabled = enabled;
+        FeedbackContentText.IsEnabled = enabled;
+        FeedbackSubmitButton.IsEnabled = enabled;
+        FeedbackFormHint.Text = enabled
+            ? "待处理和进行中的反馈最多同时保留 3 条。"
+            : "已有 3 条反馈正在处理，后台处理完成后会自动释放名额。";
+    }
+
     private void AutoUpdateCheck_Click(object sender, RoutedEventArgs e)
     {
         if (!_refreshing) _controller.SetAutoCheckUpdates(AutoUpdateCheck.IsChecked == true);
@@ -485,6 +578,38 @@ public partial class SettingsWindow : Window
         public string Id => Reminder.Id;
         public string Display => $"{(Reminder.Enabled ? "●" : "○")} {Reminder.LocalTime:MM/dd HH:mm}  {Reminder.Message}";
         public ReminderListItem(ReminderDefinition reminder) => Reminder = reminder;
+    }
+
+    private sealed class FeedbackListItem
+    {
+        public string Title { get; }
+        public string Detail { get; }
+
+        public FeedbackListItem(FeedbackItem item)
+        {
+            Title = item.Title;
+            var type = item.Type == "suggestion" ? "功能建议" : "问题反馈";
+            var status = item.Status switch
+            {
+                "in_progress" => "进行中",
+                "resolved" => "已处理",
+                "closed" => "已关闭",
+                _ => "待处理"
+            };
+            var createdAt = DateTimeOffset.TryParse(item.CreatedAt, out var parsed)
+                ? parsed.LocalDateTime.ToString("MM/dd HH:mm", CultureInfo.InvariantCulture)
+                : "时间未知";
+            var note = string.IsNullOrWhiteSpace(item.AdminNote)
+                ? string.Empty
+                : $" · 回复：{Shorten(item.AdminNote, 80)}";
+            Detail = $"{type} · {status} · {createdAt}{note}";
+        }
+
+        private static string Shorten(string value, int length)
+        {
+            var clean = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+            return clean.Length <= length ? clean : $"{clean[..length]}…";
+        }
     }
 
     private sealed record LibraryListItem(string? Id, string Name, string Detail, bool IsBuiltIn);

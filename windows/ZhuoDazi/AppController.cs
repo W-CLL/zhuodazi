@@ -35,6 +35,7 @@ public sealed class AppController : IDisposable
 
     public AppSettings Settings { get; }
     public UpdateService Updates { get; }
+    public FeedbackService Feedback { get; }
     public event Action? StateChanged;
     public bool IsExiting { get; private set; }
     public LibraryDefinition? ActiveLibrary => Settings.Libraries.FirstOrDefault(item => item.Id == Settings.ActiveLibraryId);
@@ -51,6 +52,7 @@ public sealed class AppController : IDisposable
         _licenses = licenses;
         Settings = _store.Load();
         Updates = new UpdateService(_store, _licenses);
+        Feedback = new FeedbackService(_licenses);
         Updates.StateChanged += OnUpdateStateChanged;
         _randomTimer.Tick += (_, _) => RandomizePet();
         _reminderTimer.Tick += (_, _) => CheckReminders();
@@ -758,6 +760,7 @@ public sealed class AppController : IDisposable
         _theaterCancellation?.Cancel();
         Updates.StateChanged -= OnUpdateStateChanged;
         Updates.Dispose();
+        Feedback.Dispose();
         if (_tray is not null) _tray.Visible = false;
         _tray?.Dispose();
         _trayMenu?.Dispose();
