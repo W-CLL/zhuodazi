@@ -38,17 +38,21 @@ public sealed class LicenseService : IDisposable
         Save();
     }
 
-    public async Task ActivateAsync(string activationCode, CancellationToken cancellationToken = default)
+    public async Task ActivateAsync(
+        string activationCode,
+        bool replacingExisting = false,
+        CancellationToken cancellationToken = default)
     {
         var code = new string((activationCode ?? string.Empty)
             .Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
         if (code.Length != 6) throw new InvalidOperationException("请输入有效的 6 位邀请码。");
 
+        var candidate = replacingExisting ? CreatePendingRecord() : _record;
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
             code,
-            installationId = _record.InstallationId,
-            credential = _record.Credential,
+            installationId = candidate.InstallationId,
+            credential = candidate.Credential,
             appVersion = UpdateService.CurrentVersion
         });
         using var request = new HttpRequestMessage(HttpMethod.Post, ActivationUrl)
@@ -79,8 +83,9 @@ public sealed class LicenseService : IDisposable
             var result = JsonSerializer.Deserialize<ActivationResponse>(responseBytes, JsonOptions);
             if (result is null || !Guid.TryParse(result.LicenseId, out _))
                 throw new InvalidOperationException("邀请服务返回的授权无效。");
-            _record.LicenseId = result.LicenseId;
-            _record.ActivatedAt = result.ActivatedAt;
+            candidate.LicenseId = result.LicenseId;
+            candidate.ActivatedAt = result.ActivatedAt;
+            _record = candidate;
             Save();
         }
     }

@@ -9,8 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ZhuoDazi</AssemblyName>
     <RootNamespace>ZhuoDazi</RootNamespace>
-    <Version>2.4.8</Version>
-    <FileVersion>2.4.8.0</FileVersion>
+    <Version>2.4.9</Version>
+    <FileVersion>2.4.9.0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\build\app-icon.ico</ApplicationIcon>
@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="NSec.Cryptography" Version="25.4.0" />
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
 </Project>

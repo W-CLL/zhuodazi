@@ -6,7 +6,6 @@ using System.Text;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using NSec.Cryptography;
 
 namespace ZhuoDazi.Services;
 
@@ -204,7 +203,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.8";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.9";
 
     internal static int CompareVersions(string left, string right)
     {
@@ -245,9 +244,7 @@ public sealed class UpdateService : IDisposable
         }, SignedJsonOptions);
         var spki = Convert.FromBase64String(PublicKeySpki);
         var publicKey = spki[^32..];
-        var algorithm = SignatureAlgorithm.Ed25519;
-        var importedKey = PublicKey.Import(algorithm, publicKey, KeyBlobFormat.RawPublicKey);
-        if (!algorithm.Verify(importedKey, payload, signature))
+        if (!Ed25519SignatureVerifier.Verify(publicKey, payload, signature))
             throw new InvalidOperationException("更新清单签名验证失败。");
     }
 

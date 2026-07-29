@@ -105,7 +105,7 @@ public sealed class AppController : IDisposable
 
     public bool ShowActivation(Window? owner = null)
     {
-        var activationWindow = new ActivationWindow(_licenses);
+        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated);
         if (owner is not null) activationWindow.Owner = owner;
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
