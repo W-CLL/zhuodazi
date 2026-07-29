@@ -25,9 +25,12 @@ final class SettingsWindowController: NSWindowController {
     private let petController: PetWindowController
     private let licenses: LicenseService
     private let updates: UpdateService
+    private let feedbackService: FeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private var refreshing = false
     private var editingReminderId: String?
+    private var feedbackLoading = false
+    private var feedbackItems: [FeedbackItem] = []
 
     private let sizeSlider = NSSlider(value: 220, minValue: 140, maxValue: 300, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "220")
@@ -63,6 +66,15 @@ final class SettingsWindowController: NSWindowController {
     private let reminderEnabledCheckbox = NSButton(checkboxWithTitle: "启用提醒", target: nil, action: nil)
     private let reminderDailyCheckbox = NSButton(checkboxWithTitle: "每天重复", target: nil, action: nil)
 
+    private let feedbackQuotaLabel = NSTextField(labelWithString: "正在获取当前设备的反馈记录…")
+    private let feedbackHistoryPopup = NSPopUpButton()
+    private let feedbackDetail = NSTextField(wrappingLabelWithString: "")
+    private let feedbackTypePopup = NSPopUpButton()
+    private let feedbackTitle = NSTextField(string: "")
+    private let feedbackContent = NSTextView()
+    private let feedbackReloadButton = NSButton(title: "刷新", target: nil, action: nil)
+    private let feedbackSubmitButton = NSButton(title: "提交反馈", target: nil, action: nil)
+
     private let autoUpdateCheckbox = NSButton(checkboxWithTitle: "自动检查更新", target: nil, action: nil)
     private let activationLabel = NSTextField(labelWithString: "")
     private let updateLabel = NSTextField(labelWithString: "")
@@ -86,6 +98,7 @@ final class SettingsWindowController: NSWindowController {
         self.petController = petController
         self.licenses = licenses
         self.updates = updates
+        self.feedbackService = FeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 780, height: 650),
@@ -109,6 +122,9 @@ final class SettingsWindowController: NSWindowController {
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
+        Task { @MainActor [weak self] in
+            await self?.loadFeedback(showAlert: false)
+        }
     }
 
     private func buildInterface(in window: NSWindow) {
@@ -119,6 +135,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.addChild(buildLibrariesPage())
         tabs.addChild(buildContentPage())
         tabs.addChild(buildRemindersPage())
+        tabs.addChild(buildFeedbackPage())
         tabs.addChild(buildUpdatePage())
         window.contentViewController = tabs
     }
@@ -250,6 +267,54 @@ final class SettingsWindowController: NSWindowController {
         let save = NSButton(title: "保存提醒", target: self, action: #selector(saveReminder))
         let delete = NSButton(title: "删除提醒", target: self, action: #selector(deleteReminder))
         stack.addArrangedSubview(buttonRow([save, delete]))
+        return page
+    }
+
+    private func buildFeedbackPage() -> NSViewController {
+        let (page, stack) = makePage("反馈与建议")
+        addTitle("问题反馈与建议", to: stack)
+
+        feedbackQuotaLabel.textColor = .secondaryLabelColor
+        feedbackQuotaLabel.maximumNumberOfLines = 2
+        feedbackQuotaLabel.widthAnchor.constraint(equalToConstant: 560).isActive = true
+        feedbackReloadButton.target = self
+        feedbackReloadButton.action = #selector(reloadFeedback)
+        stack.addArrangedSubview(buttonRow([feedbackQuotaLabel, feedbackReloadButton]))
+
+        feedbackHistoryPopup.target = self
+        feedbackHistoryPopup.action = #selector(feedbackSelectionChanged(_:))
+        feedbackHistoryPopup.widthAnchor.constraint(equalToConstant: 500).isActive = true
+        stack.addArrangedSubview(labeledRow("反馈记录", controls: [feedbackHistoryPopup]))
+        feedbackDetail.textColor = .secondaryLabelColor
+        feedbackDetail.maximumNumberOfLines = 7
+        feedbackDetail.widthAnchor.constraint(equalToConstant: 650).isActive = true
+        stack.addArrangedSubview(feedbackDetail)
+
+        stack.addArrangedSubview(separator())
+        addSection("提交新反馈", to: stack)
+        feedbackTypePopup.addItems(withTitles: ["问题反馈", "功能建议"])
+        stack.addArrangedSubview(labeledRow("类型", controls: [feedbackTypePopup]))
+        feedbackTitle.placeholderString = "简要描述问题或建议"
+        feedbackTitle.widthAnchor.constraint(equalToConstant: 500).isActive = true
+        stack.addArrangedSubview(labeledRow("标题", controls: [feedbackTitle]))
+
+        feedbackContent.isRichText = false
+        feedbackContent.font = .systemFont(ofSize: 13)
+        feedbackContent.frame = NSRect(x: 0, y: 0, width: 500, height: 110)
+        feedbackContent.autoresizingMask = [.width, .height]
+        let contentScroll = NSScrollView()
+        contentScroll.borderType = .bezelBorder
+        contentScroll.hasVerticalScroller = true
+        contentScroll.documentView = feedbackContent
+        contentScroll.widthAnchor.constraint(equalToConstant: 500).isActive = true
+        contentScroll.heightAnchor.constraint(equalToConstant: 110).isActive = true
+        let contentRow = labeledRow("详细说明", controls: [contentScroll])
+        contentRow.alignment = .top
+        stack.addArrangedSubview(contentRow)
+        stack.addArrangedSubview(hint("待处理和进行中的反馈最多同时保留 3 条。"))
+        feedbackSubmitButton.target = self
+        feedbackSubmitButton.action = #selector(submitFeedback)
+        stack.addArrangedSubview(feedbackSubmitButton)
         return page
     }
 
@@ -456,6 +521,90 @@ final class SettingsWindowController: NSWindowController {
         if ignored, let manifest = updates.availableManifest {
             updateLabel.stringValue = "当前版本 v\(AppVersion.current) - 已忽略 v\(manifest.version)"
         }
+    }
+
+    @MainActor
+    private func loadFeedback(showAlert: Bool) async {
+        guard !feedbackLoading else { return }
+        feedbackLoading = true
+        feedbackReloadButton.isEnabled = false
+        feedbackSubmitButton.isEnabled = false
+        defer {
+            feedbackLoading = false
+            feedbackReloadButton.isEnabled = true
+        }
+        do {
+            applyFeedback(try await feedbackService.list())
+        } catch {
+            feedbackQuotaLabel.stringValue = "暂时无法获取反馈记录：\(error.localizedDescription)"
+            setFeedbackFormEnabled(true)
+            if showAlert { show(error) }
+        }
+    }
+
+    @MainActor
+    private func applyFeedback(_ response: FeedbackListResponse) {
+        feedbackItems = response.items
+        feedbackHistoryPopup.removeAllItems()
+        if feedbackItems.isEmpty {
+            feedbackHistoryPopup.addItem(withTitle: "暂无反馈记录")
+            feedbackHistoryPopup.isEnabled = false
+        } else {
+            feedbackHistoryPopup.isEnabled = true
+            for item in feedbackItems {
+                feedbackHistoryPopup.addItem(withTitle: "\(feedbackStatus(item.status)) · \(feedbackType(item.type)) · \(item.title)")
+                feedbackHistoryPopup.lastItem?.representedObject = item.id
+            }
+        }
+        feedbackQuotaLabel.stringValue = response.quota.remaining > 0
+            ? "当前设备有 \(response.quota.active)/\(response.quota.maximum) 条处理中反馈，还可提交 \(response.quota.remaining) 条"
+            : "当前设备已有 \(response.quota.active) 条处理中反馈，请等待后台处理后再提交"
+        setFeedbackFormEnabled(response.quota.remaining > 0)
+        refreshFeedbackDetail()
+    }
+
+    private func refreshFeedbackDetail() {
+        guard let id = feedbackHistoryPopup.selectedItem?.representedObject as? String,
+              let item = feedbackItems.first(where: { $0.id == id }) else {
+            feedbackDetail.stringValue = feedbackItems.isEmpty ? "提交后可在这里查看处理状态和后台回复。" : ""
+            return
+        }
+        let timestamp = feedbackDate(item.updatedAt)
+        var detail = "\(feedbackType(item.type)) · \(feedbackStatus(item.status)) · 更新于 \(timestamp)\n\(item.content)"
+        if !item.adminNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            detail += "\n后台回复：\(item.adminNote)"
+        }
+        feedbackDetail.stringValue = detail
+    }
+
+    private func setFeedbackFormEnabled(_ enabled: Bool) {
+        feedbackTypePopup.isEnabled = enabled
+        feedbackTitle.isEnabled = enabled
+        feedbackContent.isEditable = enabled
+        feedbackSubmitButton.isEnabled = enabled
+    }
+
+    private func feedbackType(_ value: String) -> String {
+        value == "suggestion" ? "功能建议" : "问题反馈"
+    }
+
+    private func feedbackStatus(_ value: String) -> String {
+        switch value {
+        case "in_progress": return "进行中"
+        case "resolved": return "已处理"
+        case "closed": return "已关闭"
+        default: return "待处理"
+        }
+    }
+
+    private func feedbackDate(_ value: String) -> String {
+        let parser = ISO8601DateFormatter()
+        parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = parser.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        guard let date else { return "时间未知" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM/dd HH:mm"
+        return formatter.string(from: date)
     }
 
     private func select(popup: NSPopUpButton, id: String?) {
@@ -675,6 +824,53 @@ final class SettingsWindowController: NSWindowController {
         petController.update { $0.reminders.removeAll { $0.id == id } }
         newReminder()
         refresh()
+    }
+
+    @objc private func feedbackSelectionChanged(_ sender: NSPopUpButton) {
+        refreshFeedbackDetail()
+    }
+
+    @objc private func reloadFeedback() {
+        Task { @MainActor [weak self] in
+            await self?.loadFeedback(showAlert: true)
+        }
+    }
+
+    @objc private func submitFeedback() {
+        let title = feedbackTitle.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let content = feedbackContent.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard title.count >= 2 else {
+            show(FeedbackError.server("反馈标题至少需要 2 个字符"))
+            return
+        }
+        guard content.count >= 5 else {
+            show(FeedbackError.server("请补充至少 5 个字符的详细说明"))
+            return
+        }
+        let type = feedbackTypePopup.indexOfSelectedItem == 1 ? "suggestion" : "problem"
+        Task { @MainActor [weak self] in
+            guard let self, !feedbackLoading else { return }
+            feedbackLoading = true
+            feedbackReloadButton.isEnabled = false
+            setFeedbackFormEnabled(false)
+            defer {
+                feedbackLoading = false
+                feedbackReloadButton.isEnabled = true
+            }
+            do {
+                try await feedbackService.submit(
+                    type: type,
+                    title: String(title.prefix(80)),
+                    content: String(content.prefix(2_000))
+                )
+                feedbackTitle.stringValue = ""
+                feedbackContent.string = ""
+                applyFeedback(try await feedbackService.list())
+            } catch {
+                setFeedbackFormEnabled(true)
+                show(error)
+            }
+        }
     }
 
     @objc private func autoUpdateChanged(_ sender: NSButton) {
