@@ -15,6 +15,7 @@ internal static class Program
         CheckGifLibraryRandomization();
         CheckPartialGifComposition();
         CheckNetworkErrorsDoNotExposeServiceAddress();
+        CheckManagedEd25519Verification();
         var reproductionPath = Environment.GetEnvironmentVariable("ZHUODAZI_GIF_REPRO_PATH");
         if (!string.IsNullOrWhiteSpace(reproductionPath))
         {
@@ -24,6 +25,21 @@ internal static class Program
             CheckPartialGifComposition(reproductionPath, requireRetainedPixels: false, maximumDimension);
         }
         Console.WriteLine("Windows checks passed.");
+    }
+
+    private static void CheckManagedEd25519Verification()
+    {
+        var publicKey = Convert.FromHexString(
+            "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+        var signature = Convert.FromHexString(
+            "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155" +
+            "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+
+        Require(Ed25519SignatureVerifier.Verify(publicKey, [], signature),
+            "The managed Ed25519 verifier rejected a valid signature.");
+        signature[0] ^= 0x01;
+        Require(!Ed25519SignatureVerifier.Verify(publicKey, [], signature),
+            "The managed Ed25519 verifier accepted a tampered signature.");
     }
 
     private static void CheckNetworkErrorsDoNotExposeServiceAddress()

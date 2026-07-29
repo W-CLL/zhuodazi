@@ -9,11 +9,13 @@ public partial class ActivationWindow : Window
 {
     private const string AllowedCharacters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private readonly LicenseService _licenses;
+    private readonly bool _replacingExisting;
     private bool _normalizing;
 
-    public ActivationWindow(LicenseService licenses)
+    public ActivationWindow(LicenseService licenses, bool replacingExisting = false)
     {
         _licenses = licenses;
+        _replacingExisting = replacingExisting;
         InitializeComponent();
         ContentRendered += (_, _) => CodeTextBox.Focus();
     }
@@ -42,7 +44,7 @@ public partial class ActivationWindow : Window
         StatusText.Text = string.Empty;
         try
         {
-            await _licenses.ActivateAsync(CodeTextBox.Text);
+            await _licenses.ActivateAsync(CodeTextBox.Text, _replacingExisting);
             DialogResult = true;
         }
         catch (TaskCanceledException)
