@@ -1,17 +1,20 @@
 import AppKit
 import UserNotifications
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
     private var settings = AppSettings()
     private var petController: PetWindowController!
     private var licenses: LicenseService!
+    private var interactions: InteractionService!
     private var updates: UpdateService!
     private var settingsWindow: SettingsWindowController?
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
     private var mouseItem: NSMenuItem!
     private var movementItem: NSMenuItem!
+    private var interactionItem: NSMenuItem!
     private var randomPetItem: NSMenuItem!
     private var randomizeNowItem: NSMenuItem!
     private var theaterItem: NSMenuItem!
@@ -23,8 +26,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             settings = settingsStore.load()
             licenses = try LicenseService()
+            interactions = InteractionService(licenses: licenses)
             updates = UpdateService(licenses: licenses)
-            petController = PetWindowController(settings: settings) { [weak self] settings in
+            petController = PetWindowController(settings: settings, interactions: interactions) { [weak self] settings in
                 self?.settings = settings
                 self?.settingsStore.save(settings)
                 self?.refreshMenuState()
@@ -61,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPet() {
         petController.show()
+        petController.startInteractionServices()
         startReminderChecks()
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -86,6 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mouseItem = menu.addItem(withTitle: "跟随鼠标", action: #selector(toggleMouseInteraction(_:)), keyEquivalent: "")
         movementItem = menu.addItem(withTitle: "随机移动", action: #selector(toggleRandomMovement(_:)), keyEquivalent: "")
         menu.addItem(.separator())
+        interactionItem = menu.addItem(withTitle: "随机互动", action: #selector(toggleRandomInteractions(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "立即互动", action: #selector(startRandomInteraction(_:)), keyEquivalent: "")
+        menu.addItem(.separator())
         randomPetItem = menu.addItem(withTitle: "自动随机换宠", action: #selector(toggleRandomPet(_:)), keyEquivalent: "")
         randomizeNowItem = menu.addItem(withTitle: "立即换一只", action: #selector(randomizePet(_:)), keyEquivalent: "")
         menu.addItem(.separator())
@@ -109,6 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         visibilityItem.title = petController.isVisible ? "隐藏桌搭子" : "显示桌搭子"
         mouseItem.state = petController.mouseInteractionEnabled ? .on : .off
         movementItem.state = petController.randomMovementEnabled ? .on : .off
+        interactionItem.state = petController.currentSettings.randomInteractionsEnabled ? .on : .off
         randomPetItem.state = petController.randomPetEnabled ? .on : .off
         randomPetItem.isEnabled = petController.canRandomizePet
         randomizeNowItem.isEnabled = petController.canRandomizePet
@@ -157,6 +166,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func toggleRandomMovement(_ sender: NSMenuItem) {
         petController.randomMovementEnabled.toggle()
         refreshMenuState()
+    }
+
+    @objc private func toggleRandomInteractions(_ sender: NSMenuItem) {
+        petController.update { $0.randomInteractionsEnabled.toggle() }
+        refreshMenuState()
+    }
+
+    @objc private func startRandomInteraction(_ sender: NSMenuItem) {
+        petController.startRandomInteraction()
     }
 
     @objc private func toggleRandomPet(_ sender: NSMenuItem) {

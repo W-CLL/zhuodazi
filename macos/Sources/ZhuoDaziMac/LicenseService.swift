@@ -54,6 +54,10 @@ final class LicenseService {
         return "已完成绑定 - \(identifier.suffix(8))"
     }
 
+    var interactionCacheKey: String {
+        record.licenseId?.lowercased() ?? "pending-\(record.installationId.lowercased())"
+    }
+
     init() throws {
         if let stored = try Self.readKeychain(service: service, account: account),
            let decoded = try? JSONDecoder().decode(LicenseRecord.self, from: stored),

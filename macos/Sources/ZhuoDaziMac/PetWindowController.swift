@@ -1,6 +1,8 @@
 import AppKit
+import QuartzCore
 import ZhuoDaziCore
 
+@MainActor
 final class PetWindowController {
     var mouseInteractionEnabled: Bool {
         get { settings.mouseInteractionEnabled }
@@ -25,15 +27,19 @@ final class PetWindowController {
     var isVisible: Bool { window.isVisible }
     var canRandomizePet: Bool { petURLs.count > 1 }
     var currentSettings: AppSettings { settings }
+    var interactionStatus: String { interactions.statusSummary }
 
     private let window: NSPanel
     private let petView: PetCanvasView
+    private let interactions: InteractionService
     private let petBag = RandomBag<URL>()
     private var petURLs: [URL] = []
     private var currentPetURL: URL?
     private var movementTimer: Timer?
     private var randomPetTimer: Timer?
     private var theaterTimer: Timer?
+    private var interactionTimer: Timer?
+    private var interactionSyncTimer: Timer?
     private var velocity = CGVector.zero
     private var dragging = false
     private var dragOffset = NSPoint.zero
@@ -45,14 +51,24 @@ final class PetWindowController {
     private let settingsChanged: (AppSettings) -> Void
     private var companionWindow: NSPanel?
     private var theaterTask: Task<Void, Never>?
+    private let interactionPanel: PetInteractionPanelController
+    private var interactionActive = false
+    private var interactionSyncTask: Task<Void, Never>?
+    private var interactionSyncRequested = false
     private var localKeyMonitor: Any?
     private var globalKeyMonitor: Any?
 
-    init(settings: AppSettings, settingsChanged: @escaping (AppSettings) -> Void) {
+    init(
+        settings: AppSettings,
+        interactions: InteractionService,
+        settingsChanged: @escaping (AppSettings) -> Void
+    ) {
         var normalized = settings
         normalized.normalize()
         self.settings = normalized
+        self.interactions = interactions
         self.settingsChanged = settingsChanged
+        self.interactionPanel = PetInteractionPanelController()
 
         let initialSize = Self.windowSize(for: normalized.size)
         let visibleFrame = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
@@ -92,14 +108,26 @@ final class PetWindowController {
         movementTimer?.invalidate()
         randomPetTimer?.invalidate()
         theaterTimer?.invalidate()
+        interactionTimer?.invalidate()
+        interactionSyncTimer?.invalidate()
         theaterTask?.cancel()
+        interactionSyncTask?.cancel()
+        interactionPanel.dismiss(notifying: false)
         if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
         if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
     }
 
     func show() { window.orderFrontRegardless() }
-    func hide() { window.orderOut(nil) }
+    func hide() {
+        interactionPanel.dismiss()
+        window.orderOut(nil)
+    }
     func showBubble(_ text: String) { petView.showBubble(text) }
+
+    func startInteractionServices() {
+        restartInteractionTimer()
+        scheduleInteractionSync(after: 1)
+    }
 
     func apply(_ newSettings: AppSettings) {
         var normalized = newSettings
@@ -108,10 +136,20 @@ final class PetWindowController {
             || settings.activeLibraryId != normalized.activeLibraryId
             || settings.pets != normalized.pets
             || settings.libraries != normalized.libraries
+        let interactionChanged = settings.randomInteractionsEnabled != normalized.randomInteractionsEnabled
+            || settings.interactionMode != normalized.interactionMode
         settings = normalized
         applyWindowAppearance()
         if sourcesChanged { reloadPetSources(forceSelection: true) }
         restartTimers()
+        if interactionChanged {
+            restartInteractionTimer()
+            interactions.markProfileDirty(
+                mode: settings.interactionMode,
+                promptsEnabled: settings.randomInteractionsEnabled
+            )
+            scheduleInteractionSync(after: 2)
+        }
         saveSettings()
     }
 
@@ -119,6 +157,207 @@ final class PetWindowController {
         var next = settings
         mutation(&next)
         apply(next)
+    }
+
+    func startRandomInteraction() {
+        Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: true) }
+    }
+
+    func syncInteractionContent() async throws -> Int {
+        let profile = try await interactions.syncProfile(
+            localMode: settings.interactionMode,
+            localPromptsEnabled: settings.randomInteractionsEnabled
+        )
+        applyInteractionProfile(profile)
+        try await interactions.flushEvents()
+        return try await interactions.refill()
+    }
+
+    func downloadInteractionPack() async throws -> Int {
+        try await interactions.downloadOfflinePack()
+    }
+
+    private func presentRandomInteraction(manual: Bool) async {
+        interactionTimer?.invalidate()
+        interactionTimer = nil
+        guard !interactionActive, theaterTask == nil, window.isVisible else {
+            restartInteractionTimer()
+            return
+        }
+        guard manual || (settings.randomInteractionsEnabled && !settings.clickThrough) else {
+            restartInteractionTimer()
+            return
+        }
+        if manual, settings.clickThrough { update { $0.clickThrough = false } }
+
+        interactionActive = true
+        do {
+            let moodDue = interactions.isMoodPromptDue()
+            if moodDue, interactions.cachedContentCount == 0 || Int.random(in: 0..<4) == 0 {
+                showMoodInteraction()
+                return
+            }
+            if interactions.cachedContentCount == 0 { _ = try await interactions.refill() }
+            guard window.isVisible, theaterTask == nil else {
+                finishInteraction()
+                return
+            }
+            guard let item = interactions.takeNextContent() else {
+                if moodDue {
+                    showMoodInteraction()
+                } else {
+                    if manual { showBubble("趣味内容正在补货，稍后再来找我吧。") }
+                    finishInteraction()
+                }
+                return
+            }
+            showContentInteraction(item)
+        } catch {
+            if manual { showBubble(error.localizedDescription) }
+            finishInteraction()
+        }
+    }
+
+    private func showMoodInteraction() {
+        interactions.markMoodPrompted()
+        showInteraction(
+            title: "随手问候",
+            message: "今天心情怎么样？",
+            choices: [
+                PetInteractionChoice("开心", "happy"),
+                PetInteractionChoice("还可以", "okay"),
+                PetInteractionChoice("不咋地", "low")
+            ]
+        ) { [weak self] choice in
+            guard let self else { return }
+            if let mood = choice?.value {
+                interactions.recordMood(mood)
+                let response: String
+                switch mood {
+                case "happy": response = "那就把这份开心多留一会儿。"
+                case "low": response = "先不用硬撑，我在这儿陪你一会儿。"
+                default: response = "平平稳稳也很好，慢慢来。"
+                }
+                showBubble(response)
+            }
+            finishInteraction()
+        }
+    }
+
+    private func showContentInteraction(_ item: InteractionContentItem) {
+        if item.type == "joke" {
+            showInteraction(
+                title: "冷笑话时间",
+                message: item.prompt,
+                choices: [PetInteractionChoice("看答案", "reveal", isPrimary: true)]
+            ) { [weak self] choice in
+                guard let self else { return }
+                guard choice != nil else { finishInteraction(); return }
+                interactions.recordJoke(contentId: item.id)
+                showAnswer(title: "答案", message: formatAnswer(item), correct: nil)
+            }
+            return
+        }
+
+        if ["tip", "care"].contains(item.type) {
+            let title = item.type == "tip" ? "生活小贴士" : "关心你一下"
+            let button = item.type == "tip" ? "记下了" : "我知道了"
+            showInteraction(
+                title: title,
+                message: "\(item.prompt)\n\n\(formatAnswer(item))",
+                choices: [PetInteractionChoice(button, "acknowledge", isPrimary: true)]
+            ) { [weak self] _ in self?.finishInteraction() }
+            return
+        }
+
+        let title = switch item.type {
+        case "math": "来道数学题"
+        case "riddle": "脑筋急转弯"
+        default: "趣味知识"
+        }
+        if !item.choices.isEmpty {
+            let choices = item.choices.enumerated().map { index, value in
+                PetInteractionChoice(value, String(index))
+            }
+            showInteraction(title: title, message: item.prompt, choices: choices) { [weak self] choice in
+                guard let self else { return }
+                guard let value = choice?.value, let index = Int(value), item.choices.indices.contains(index) else {
+                    finishInteraction()
+                    return
+                }
+                let correct = answersMatch(item.choices[index], item.answer)
+                interactions.recordQuiz(contentId: item.id, correct: correct)
+                showAnswer(
+                    title: correct ? "答对了" : "答案揭晓",
+                    message: formatAnswer(item),
+                    correct: correct
+                )
+            }
+            return
+        }
+
+        showInteraction(
+            title: title,
+            message: item.prompt,
+            choices: [PetInteractionChoice("查看答案", "reveal", isPrimary: true)]
+        ) { [weak self] choice in
+            guard let self else { return }
+            guard choice != nil else { finishInteraction(); return }
+            showInteraction(
+                title: "答案",
+                message: formatAnswer(item),
+                choices: [
+                    PetInteractionChoice("答对了", "correct", isPrimary: true),
+                    PetInteractionChoice("没答对", "wrong")
+                ]
+            ) { [weak self] result in
+                guard let self else { return }
+                if let result { interactions.recordQuiz(contentId: item.id, correct: result.value == "correct") }
+                finishInteraction()
+            }
+        }
+    }
+
+    private func showAnswer(title: String, message: String, correct: Bool?) {
+        showInteraction(
+            title: title,
+            message: message,
+            choices: [PetInteractionChoice(correct == true ? "收下这分" : "知道了", "done", isPrimary: true)]
+        ) { [weak self] _ in self?.finishInteraction() }
+    }
+
+    private func showInteraction(
+        title: String,
+        message: String,
+        choices: [PetInteractionChoice],
+        completion: @escaping (PetInteractionChoice?) -> Void
+    ) {
+        interactionPanel.present(
+            title: title,
+            message: message,
+            choices: choices,
+            relativeTo: window,
+            completion: completion
+        )
+    }
+
+    private func formatAnswer(_ item: InteractionContentItem) -> String {
+        let answer = item.answer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let explanation = item.explanation.trimmingCharacters(in: .whitespacesAndNewlines)
+        return explanation.isEmpty || explanation == answer ? answer : "\(answer)\n\(explanation)"
+    }
+
+    private func answersMatch(_ selected: String, _ answer: String) -> Bool {
+        selected.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(answer.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+    }
+
+    private func finishInteraction() {
+        interactionActive = false
+        restartInteractionTimer()
+        if interactions.shouldFlush {
+            Task { @MainActor [weak self] in try? await self?.interactions.flushEvents() }
+        }
     }
 
     @discardableResult
@@ -132,26 +371,42 @@ final class PetWindowController {
 
     @discardableResult
     func startTheater() -> Bool {
-        guard theaterTask == nil else { return false }
+        guard theaterTask == nil, !interactionActive else { return false }
         let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
+        let originalOrigin = window.frame.origin
         let companion = makeCompanionWindow()
         companionWindow = companion.window
         let companionView = companion.view
-        companion.window.orderFrontRegardless()
         positionCompanion(companion.window)
+        let companionTarget = companion.window.frame.origin
+        companion.window.setFrameOrigin(NSPoint(x: companionTarget.x, y: companionTarget.y - 28))
+        companion.window.orderFrontRegardless()
 
         theaterTask = Task { @MainActor [weak self, weak companionView] in
             guard let self, let companionView else { return }
+            await animatePair(
+                window, to: originalOrigin,
+                companion.window, to: companionTarget,
+                duration: 0.45
+            )
             for (index, scene) in script.scenes.enumerated() {
                 guard !Task.isCancelled else { break }
                 petView.showBubble(scene.main, duration: 4.4)
                 try? await Task.sleep(for: .seconds(2.1))
                 guard !Task.isCancelled else { break }
                 companionView.showBubble(scene.companion, duration: 4.4)
-                if index < script.scenes.count - 1 { try? await Task.sleep(for: .seconds(2.5)) }
+                try? await Task.sleep(for: .seconds(1.1))
+                guard !Task.isCancelled else { break }
+                await performTheaterMotion(step: index, companion: companion.window)
+                if index < script.scenes.count - 1 { try? await Task.sleep(for: .seconds(1.2)) }
             }
-            try? await Task.sleep(for: .seconds(3))
+            try? await Task.sleep(for: .seconds(1.8))
+            await animatePair(
+                window, to: originalOrigin,
+                companion.window, to: companionTarget,
+                duration: 0.5
+            )
             finishTheater()
         }
         return true
@@ -231,7 +486,69 @@ final class PetWindowController {
         }
     }
 
+    private func restartInteractionTimer() {
+        interactionTimer?.invalidate()
+        interactionTimer = nil
+        guard settings.randomInteractionsEnabled else { return }
+        let timer = Timer(
+            timeInterval: InteractionRules.nextDelay(for: settings.interactionMode),
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: false) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        interactionTimer = timer
+    }
+
+    private func scheduleInteractionSync(after delay: TimeInterval) {
+        if interactionSyncTask != nil {
+            interactionSyncRequested = true
+            return
+        }
+        interactionSyncTimer?.invalidate()
+        let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.runInteractionSync() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        interactionSyncTimer = timer
+    }
+
+    private func runInteractionSync() {
+        guard interactionSyncTask == nil else {
+            interactionSyncRequested = true
+            return
+        }
+        interactionSyncRequested = false
+        interactionSyncTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let profile = try await interactions.syncProfile(
+                    localMode: settings.interactionMode,
+                    localPromptsEnabled: settings.randomInteractionsEnabled
+                )
+                applyInteractionProfile(profile)
+                try await interactions.flushEvents()
+                _ = try await interactions.refill()
+            } catch {
+                // Periodic synchronization retries without interrupting the desktop pet.
+            }
+            interactionSyncTask = nil
+            scheduleInteractionSync(after: interactionSyncRequested ? 2 : 15 * 60)
+        }
+    }
+
+    private func applyInteractionProfile(_ profile: InteractionProfile) {
+        let mode = InteractionRules.normalizeMode(profile.mode)
+        let changed = settings.interactionMode != mode
+            || settings.randomInteractionsEnabled != profile.promptsEnabled
+        settings.interactionMode = mode
+        settings.randomInteractionsEnabled = profile.promptsEnabled
+        restartInteractionTimer()
+        if changed { saveSettings() }
+    }
+
     private func beginDrag(at point: NSPoint) {
+        guard !interactionActive else { return }
         dragging = true
         velocity = .zero
         dragOffset = NSPoint(x: point.x - window.frame.origin.x, y: point.y - window.frame.origin.y)
@@ -260,7 +577,7 @@ final class PetWindowController {
     }
 
     private func tick() {
-        guard window.isVisible, !dragging, theaterTask == nil else { return }
+        guard window.isVisible, !dragging, theaterTask == nil, !interactionActive else { return }
         var origin = window.frame.origin
         let frameSize = window.frame.size
         let center = NSPoint(x: origin.x + frameSize.width / 2, y: origin.y + frameSize.height / 2)
@@ -325,6 +642,7 @@ final class PetWindowController {
         window.alphaValue = CGFloat(settings.opacity) / 100
         window.ignoresMouseEvents = settings.clickThrough
         petView.setMirrored(settings.mirrored)
+        interactionPanel.updateLevel(window.level)
     }
 
     private func makeCompanionWindow() -> (window: NSPanel, view: PetCanvasView) {
@@ -351,6 +669,56 @@ final class PetWindowController {
         origin.x = max(bounds.minX, min(origin.x, bounds.maxX - panel.frame.width))
         origin.y = max(bounds.minY, min(origin.y, bounds.maxY - panel.frame.height))
         panel.setFrameOrigin(origin)
+    }
+
+    private func performTheaterMotion(step: Int, companion: NSPanel) async {
+        let mainOrigin = window.frame.origin
+        let companionOrigin = companion.frame.origin
+        switch step % 4 {
+        case 0:
+            await animatePair(
+                window, to: NSPoint(x: mainOrigin.x, y: mainOrigin.y + 22),
+                companion, to: NSPoint(x: companionOrigin.x, y: companionOrigin.y + 22),
+                duration: 0.22
+            )
+            await animatePair(window, to: mainOrigin, companion, to: companionOrigin, duration: 0.24)
+        case 1:
+            await animatePair(window, to: companionOrigin, companion, to: mainOrigin, duration: 0.65)
+        case 2:
+            let direction: CGFloat = mainOrigin.x <= companionOrigin.x ? 1 : -1
+            await animatePair(
+                window, to: NSPoint(x: mainOrigin.x + 18 * direction, y: mainOrigin.y + 12),
+                companion, to: NSPoint(x: companionOrigin.x - 18 * direction, y: companionOrigin.y - 8),
+                duration: 0.25
+            )
+            await animatePair(
+                window, to: NSPoint(x: mainOrigin.x - 12 * direction, y: mainOrigin.y - 6),
+                companion, to: NSPoint(x: companionOrigin.x + 12 * direction, y: companionOrigin.y + 14),
+                duration: 0.25
+            )
+            await animatePair(window, to: mainOrigin, companion, to: companionOrigin, duration: 0.25)
+        default:
+            await animatePair(window, to: companionOrigin, companion, to: mainOrigin, duration: 0.65)
+        }
+    }
+
+    private func animatePair(
+        _ first: NSWindow,
+        to firstOrigin: NSPoint,
+        _ second: NSWindow,
+        to secondOrigin: NSPoint,
+        duration: TimeInterval
+    ) async {
+        await withCheckedContinuation { continuation in
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = duration
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                first.animator().setFrameOrigin(firstOrigin)
+                second.animator().setFrameOrigin(secondOrigin)
+            } completionHandler: {
+                continuation.resume()
+            }
+        }
     }
 
     private func finishTheater() {

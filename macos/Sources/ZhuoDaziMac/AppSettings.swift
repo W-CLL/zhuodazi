@@ -52,6 +52,8 @@ struct AppSettings: Codable {
     var personality = "lively"
     var mouseInteractionEnabled = true
     var randomMovementEnabled = true
+    var randomInteractionsEnabled = true
+    var interactionMode = "standard"
     var theaterEnabled = false
     var theaterIntervalSeconds = 300
     var theaterScripts: [TheaterScriptDefinition] = []
@@ -83,6 +85,8 @@ struct AppSettings: Codable {
         personality = try values.decodeIfPresent(String.self, forKey: .personality) ?? "lively"
         mouseInteractionEnabled = try values.decodeIfPresent(Bool.self, forKey: .mouseInteractionEnabled) ?? true
         randomMovementEnabled = try values.decodeIfPresent(Bool.self, forKey: .randomMovementEnabled) ?? true
+        randomInteractionsEnabled = try values.decodeIfPresent(Bool.self, forKey: .randomInteractionsEnabled) ?? true
+        interactionMode = try values.decodeIfPresent(String.self, forKey: .interactionMode) ?? "standard"
         theaterEnabled = try values.decodeIfPresent(Bool.self, forKey: .theaterEnabled) ?? false
         theaterIntervalSeconds = try values.decodeIfPresent(Int.self, forKey: .theaterIntervalSeconds) ?? 300
         theaterScripts = try values.decodeIfPresent([TheaterScriptDefinition].self, forKey: .theaterScripts) ?? []
@@ -118,6 +122,7 @@ struct AppSettings: Codable {
         size = min(300, max(140, size))
         opacity = min(100, max(20, opacity))
         if !["lively", "shy", "clingy", "chaotic"].contains(personality) { personality = "lively" }
+        if !["quiet", "standard", "lively"].contains(interactionMode) { interactionMode = "standard" }
         if ![60, 180, 300, 600, 1800].contains(theaterIntervalSeconds) { theaterIntervalSeconds = 300 }
         if ![30, 60, 300, 600, 1800].contains(randomPetIntervalSeconds) { randomPetIntervalSeconds = 300 }
         if !pets.contains(where: { $0.id == activePetId }) { activePetId = nil }

@@ -33,7 +33,7 @@ jobs:
           swift --version
           xcodebuild -version
 
-      - name: Test GIF randomization
+      - name: Test macOS core logic
         run: swift test --package-path macos
 
       - name: Read application version

@@ -21,6 +21,7 @@ enum ActivationPrompts {
     }
 }
 
+@MainActor
 final class SettingsWindowController: NSWindowController {
     private let petController: PetWindowController
     private let licenses: LicenseService
@@ -30,6 +31,7 @@ final class SettingsWindowController: NSWindowController {
     private var refreshing = false
     private var editingReminderId: String?
     private var feedbackLoading = false
+    private var interactionLoading = false
     private var feedbackItems: [FeedbackItem] = []
 
     private let sizeSlider = NSSlider(value: 220, minValue: 140, maxValue: 300, target: nil, action: nil)
@@ -39,6 +41,8 @@ final class SettingsWindowController: NSWindowController {
     private let personalityPopup = NSPopUpButton()
     private let mouseCheckbox = NSButton(checkboxWithTitle: "跟随与躲避鼠标", target: nil, action: nil)
     private let movementCheckbox = NSButton(checkboxWithTitle: "自动随机走动", target: nil, action: nil)
+    private let randomInteractionCheckbox = NSButton(checkboxWithTitle: "允许桌搭子随机发起互动", target: nil, action: nil)
+    private let interactionModePopup = NSPopUpButton()
     private let theaterCheckbox = NSButton(checkboxWithTitle: "自动随机上演小剧场", target: nil, action: nil)
     private let theaterIntervalPopup = NSPopUpButton()
     private let alwaysOnTopCheckbox = NSButton(checkboxWithTitle: "始终置顶", target: nil, action: nil)
@@ -58,6 +62,9 @@ final class SettingsWindowController: NSWindowController {
     private let wordPackDetail = NSTextField(labelWithString: "")
     private let scriptsPopup = NSPopUpButton()
     private let scriptDetail = NSTextField(labelWithString: "")
+    private let interactionStatusLabel = NSTextField(wrappingLabelWithString: "")
+    private let syncInteractionButton = NSButton(title: "在线补充", target: nil, action: nil)
+    private let downloadInteractionButton = NSButton(title: "下载离线包", target: nil, action: nil)
 
     private let remindersPopup = NSPopUpButton()
     private let reminderDatePicker = NSDatePicker()
@@ -85,6 +92,7 @@ final class SettingsWindowController: NSWindowController {
     private let ignoreUpdateButton = NSButton(title: "忽略该版本", target: nil, action: nil)
 
     private let personalityValues = ["lively", "shy", "clingy", "chaotic"]
+    private let interactionModes = ["quiet", "standard", "lively"]
     private let theaterIntervals = [60, 180, 300, 600, 1800]
     private let randomIntervals = [30, 60, 300, 600, 1800]
     private let emotionValues = ["happy", "cheer", "shy", "surprised", "angry", "confused", "sad", "sleepy", "calm"]
@@ -162,6 +170,16 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(labeledRow("行为性格", controls: [personalityPopup]))
         stack.addArrangedSubview(separator())
 
+        randomInteractionCheckbox.target = self
+        randomInteractionCheckbox.action = #selector(behaviorChanged(_:))
+        interactionModePopup.addItems(withTitles: ["安静（90–240 分钟）", "标准（45–120 分钟）", "活跃（20–60 分钟）"])
+        interactionModePopup.target = self
+        interactionModePopup.action = #selector(behaviorChanged(_:))
+        let interactNow = NSButton(title: "立即互动", target: self, action: #selector(startRandomInteraction))
+        stack.addArrangedSubview(randomInteractionCheckbox)
+        stack.addArrangedSubview(labeledRow("互动频率", controls: [interactionModePopup, interactNow]))
+        stack.addArrangedSubview(separator())
+
         for control in [mouseCheckbox, movementCheckbox, theaterCheckbox, alwaysOnTopCheckbox, startupCheckbox, mirrorCheckbox, clickThroughCheckbox, dockCheckbox] {
             control.target = self
             control.action = #selector(behaviorChanged(_:))
@@ -219,8 +237,18 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildContentPage() -> NSViewController {
-        let (page, stack) = makePage("互动词包")
-        addTitle("互动词包", to: stack)
+        let (page, stack) = makePage("互动内容")
+        addTitle("互动内容", to: stack)
+        interactionStatusLabel.textColor = .secondaryLabelColor
+        interactionStatusLabel.maximumNumberOfLines = 2
+        interactionStatusLabel.widthAnchor.constraint(equalToConstant: 430).isActive = true
+        syncInteractionButton.target = self
+        syncInteractionButton.action = #selector(syncInteractionContent)
+        downloadInteractionButton.target = self
+        downloadInteractionButton.action = #selector(downloadInteractionPack)
+        stack.addArrangedSubview(buttonRow([interactionStatusLabel, syncInteractionButton, downloadInteractionButton]))
+        stack.addArrangedSubview(separator())
+        addSection("互动词包", to: stack)
         wordPacksPopup.target = self
         wordPacksPopup.action = #selector(wordPackSelectionChanged(_:))
         stack.addArrangedSubview(labeledRow("可用词包", controls: [wordPacksPopup]))
@@ -423,6 +451,8 @@ final class SettingsWindowController: NSWindowController {
         personalityPopup.selectItem(at: personalityValues.firstIndex(of: settings.personality) ?? 0)
         mouseCheckbox.state = settings.mouseInteractionEnabled ? .on : .off
         movementCheckbox.state = settings.randomMovementEnabled ? .on : .off
+        randomInteractionCheckbox.state = settings.randomInteractionsEnabled ? .on : .off
+        interactionModePopup.selectItem(at: interactionModes.firstIndex(of: settings.interactionMode) ?? 1)
         theaterCheckbox.state = settings.theaterEnabled ? .on : .off
         theaterIntervalPopup.selectItem(at: theaterIntervals.firstIndex(of: settings.theaterIntervalSeconds) ?? 2)
         alwaysOnTopCheckbox.state = settings.alwaysOnTop ? .on : .off
@@ -467,6 +497,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func refreshContent(_ settings: AppSettings) {
+        interactionStatusLabel.stringValue = petController.interactionStatus
+        syncInteractionButton.isEnabled = !interactionLoading
+        downloadInteractionButton.isEnabled = !interactionLoading
         wordPacksPopup.removeAllItems()
         wordPacksPopup.addItem(withTitle: "内置互动词包")
         for pack in settings.interactionWordPacks {
@@ -633,6 +666,8 @@ final class SettingsWindowController: NSWindowController {
             $0.personality = personalityValues[personalityPopup.indexOfSelectedItem]
             $0.mouseInteractionEnabled = mouseCheckbox.state == .on
             $0.randomMovementEnabled = movementCheckbox.state == .on
+            $0.randomInteractionsEnabled = randomInteractionCheckbox.state == .on
+            $0.interactionMode = interactionModes[interactionModePopup.indexOfSelectedItem]
             $0.theaterEnabled = theaterCheckbox.state == .on
             $0.theaterIntervalSeconds = theaterIntervals[theaterIntervalPopup.indexOfSelectedItem]
             $0.alwaysOnTop = alwaysOnTopCheckbox.state == .on
@@ -645,6 +680,49 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func startTheater() { _ = petController.startTheater() }
+
+    @objc private func startRandomInteraction() { petController.startRandomInteraction() }
+
+    @objc private func syncInteractionContent() {
+        guard !interactionLoading else { return }
+        setInteractionLoading(true, status: "正在同步互动设置与内容…")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let added = try await petController.syncInteractionContent()
+                interactionLoading = false
+                refresh()
+                setInteractionLoading(false, status: "\(petController.interactionStatus) · 本次新增 \(added) 条")
+            } catch {
+                setInteractionLoading(false, status: petController.interactionStatus)
+                show(error)
+            }
+        }
+    }
+
+    @objc private func downloadInteractionPack() {
+        guard !interactionLoading else { return }
+        setInteractionLoading(true, status: "正在下载并验证离线内容包…")
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let count = try await petController.downloadInteractionPack()
+                interactionLoading = false
+                refresh()
+                setInteractionLoading(false, status: "\(petController.interactionStatus) · 离线包共 \(count) 条")
+            } catch {
+                setInteractionLoading(false, status: petController.interactionStatus)
+                show(error)
+            }
+        }
+    }
+
+    private func setInteractionLoading(_ loading: Bool, status: String) {
+        interactionLoading = loading
+        interactionStatusLabel.stringValue = status
+        syncInteractionButton.isEnabled = !loading
+        downloadInteractionButton.isEnabled = !loading
+    }
 
     @objc private func addPet() {
         guard petController.currentSettings.pets.count < 3 else { show(ContentImportError.limitReached("最多只能添加 3 个自定义桌宠")); return }
@@ -888,7 +966,9 @@ final class SettingsWindowController: NSWindowController {
                 confirm.addButton(withTitle: "取消")
                 guard confirm.runModal() == .alertFirstButtonReturn else { return }
             }
-            _ = await ActivationPrompts.activate(licenses: licenses, required: false, replacingExisting: licenses.isActivated)
+            if await ActivationPrompts.activate(licenses: licenses, required: false, replacingExisting: licenses.isActivated) {
+                petController.startInteractionServices()
+            }
             refresh()
         }
     }
