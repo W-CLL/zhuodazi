@@ -623,10 +623,10 @@ public sealed class AppController : IDisposable
 
         if (item.Type is "tip" or "care")
         {
-            var title = item.Type == "tip" ? "生活小贴士" : "关心你一下";
+            var noticeTitle = item.Type == "tip" ? "生活小贴士" : "关心你一下";
             var button = item.Type == "tip" ? "记下了" : "我知道了";
             pet.ShowInteraction(
-                title,
+                noticeTitle,
                 $"{item.Prompt}\n\n{FormatContentAnswer(item)}",
                 [new(button, "acknowledge", true)],
                 _ => FinishInteraction());
