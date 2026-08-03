@@ -40,6 +40,48 @@ jobs:
         shell: pwsh
         run: ./windows/scripts/build-native.ps1 -Version $env:APP_VERSION
 
+      - name: Smoke test installed application
+        shell: pwsh
+        run: |
+          $installDirectory = Join-Path $env:RUNNER_TEMP "ZhuoDazi-install-smoke"
+          $installer = Resolve-Path "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION.exe"
+          $installProcess = Start-Process `
+            -FilePath $installer `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDirectory", "/MERGETASKS=!desktopicon" `
+            -PassThru `
+            -Wait
+
+          if ($installProcess.ExitCode -ne 0) {
+            throw "Installer failed with exit code $($installProcess.ExitCode)"
+          }
+
+          Get-Process -Name "ZhuoDazi" -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          $application = Join-Path $installDirectory "app/ZhuoDazi.exe"
+          if (-not (Test-Path -LiteralPath $application)) {
+            throw "Installed application was not found at $application"
+          }
+
+          $unexpectedEntries = Get-ChildItem -LiteralPath $installDirectory -Force |
+            Where-Object { $_.Name -notin @("app", "uninstall") }
+          if ($unexpectedEntries) {
+            $names = ($unexpectedEntries.Name | Sort-Object) -join ", "
+            throw "Unexpected entries in the installation root: $names"
+          }
+
+          $process = Start-Process -FilePath $application -PassThru -WindowStyle Hidden
+          Start-Sleep -Seconds 5
+          $process.Refresh()
+
+          if ($process.HasExited -and $process.ExitCode -ne 0) {
+            $hexExitCode = "{0:X8}" -f ($process.ExitCode -band 0xffffffff)
+            throw "Installed application exited during startup: $($process.ExitCode) / 0x$hexExitCode"
+          }
+
+          if (-not $process.HasExited) {
+            Stop-Process -Id $process.Id -Force
+          }
+
       - name: Smoke test published application
         shell: pwsh
         run: |

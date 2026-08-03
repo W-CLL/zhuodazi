@@ -36,9 +36,10 @@ Windows 安装包面向 Windows 10 22H2 和 Windows 11 x64，采用 .NET 8 LTS �
 
 ```text
 ZhuoDazi/
-├─ ZhuoDazi.exe          # 主程序
-├─ *.dll / *.json        # 随程序附带的 .NET 8 运行时和应用依赖
-├─ resources/            # 内置 GIF 资源库
+├─ app/                  # 主程序及其运行文件
+│  ├─ ZhuoDazi.exe       # 主程序
+│  ├─ *.dll / *.json     # 随程序附带的 .NET 8 运行时和应用依赖
+│  └─ resources/         # 内置 GIF 资源库
 └─ uninstall/            # 卸载程序
 ```
 

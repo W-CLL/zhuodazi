@@ -25,7 +25,7 @@ ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename=ZhuoDazi-Desktop-Pet-{#AppVersion}
 SetupIconFile=..\build\app-icon.ico
-UninstallDisplayIcon={app}\ZhuoDazi.exe
+UninstallDisplayIcon={app}\app\ZhuoDazi.exe
 UninstallFilesDir={app}\uninstall
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -44,6 +44,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: "快捷方式："
 
 [InstallDelete]
+Type: filesandordirs; Name: "{app}\app"
+Type: files; Name: "{app}\ZhuoDazi.exe"
 Type: files; Name: "{app}\*.dll"
 Type: files; Name: "{app}\createdump.exe"
 Type: files; Name: "{app}\ZhuoDazi.deps.json"
@@ -65,18 +67,37 @@ Type: filesandordirs; Name: "{app}\zh-Hans"
 Type: filesandordirs; Name: "{app}\zh-Hant"
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}\app"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\桌搭子"; Filename: "{app}\ZhuoDazi.exe"; WorkingDir: "{app}"
-Name: "{autodesktop}\桌搭子"; Filename: "{app}\ZhuoDazi.exe"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autoprograms}\桌搭子"; Filename: "{app}\app\ZhuoDazi.exe"; WorkingDir: "{app}\app"
+Name: "{autodesktop}\桌搭子"; Filename: "{app}\app\ZhuoDazi.exe"; WorkingDir: "{app}\app"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\ZhuoDazi.exe"; Description: "启动桌搭子"; WorkingDir: "{app}"; Flags: nowait
+Filename: "{app}\app\ZhuoDazi.exe"; Description: "启动桌搭子"; WorkingDir: "{app}\app"; Flags: nowait
 
 [Code]
+const
+  AutoStartKey = 'Software\Microsoft\Windows\CurrentVersion\Run';
+  AutoStartValueName = 'ZhuoDazi';
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ExistingCommand: string;
+begin
+  if (CurStep = ssPostInstall) and
+     RegQueryStringValue(HKCU, AutoStartKey, AutoStartValueName, ExistingCommand) then
+  begin
+    RegWriteStringValue(
+      HKCU,
+      AutoStartKey,
+      AutoStartValueName,
+      '"' + ExpandConstant('{app}\app\ZhuoDazi.exe') + '"');
+  end;
+end;
+
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
-    RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'ZhuoDazi');
+    RegDeleteValue(HKCU, AutoStartKey, AutoStartValueName);
 end;
