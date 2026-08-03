@@ -45,11 +45,11 @@ public sealed class UpdateManifest
 
 public sealed class UpdateService : IDisposable
 {
-    private const string ManifestUrl = "https://8.134.130.155/api/update/latest?platform=windows&architecture=x64";
+    private const string ManifestUrl = LicenseService.ServiceBaseUrl
+        + "/api/update/latest?platform=windows&architecture=x64";
     private const int MaxManifestBytes = 512 * 1024;
     private const long MaxDownloadBytes = 300L * 1024 * 1024;
     private const int DownloadBufferSize = 1024 * 1024;
-    private const string PublicKeySpki = "MCowBQYDK2VwAyEANjBEMMQ5TY+0ECNoRqQy9780eoVOzkKpzFDq2TwLytU=";
     private static readonly JsonSerializerOptions SignedJsonOptions = new()
     {
         Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
@@ -203,7 +203,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.4.9";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "2.5.1";
 
     internal static int CompareVersions(string left, string right)
     {
@@ -242,9 +242,7 @@ public sealed class UpdateService : IDisposable
             sha256 = manifest.Sha256.ToLowerInvariant(),
             notes = manifest.Notes ?? string.Empty
         }, SignedJsonOptions);
-        var spki = Convert.FromBase64String(PublicKeySpki);
-        var publicKey = spki[^32..];
-        if (!Ed25519SignatureVerifier.Verify(publicKey, payload, signature))
+        if (!ServerSignatureTrust.Verify(payload, signature))
             throw new InvalidOperationException("更新清单签名验证失败。");
     }
 

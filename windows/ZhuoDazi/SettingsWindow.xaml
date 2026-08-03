@@ -347,6 +347,28 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <StackPanel Margin="0,5,0,0">
+                                        <TextBlock Text="随机互动" Style="{StaticResource SettingName}" />
+                                        <TextBlock Text="心情问候与线上趣味内容" Style="{StaticResource SettingDescription}" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <CheckBox x:Name="RandomInteractionCheck" Content="允许桌搭子随机发起互动"
+                                                  Checked="RandomInteractionCheck_Changed" Unchecked="RandomInteractionCheck_Changed" />
+                                        <Grid Margin="0,7,0,0">
+                                            <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                            <ComboBox x:Name="InteractionModeCombo" SelectionChanged="InteractionModeCombo_SelectionChanged">
+                                                <ComboBoxItem Content="安静（90–240 分钟）" Tag="quiet" />
+                                                <ComboBoxItem Content="标准（45–120 分钟）" Tag="standard" />
+                                                <ComboBoxItem Content="活跃（20–60 分钟）" Tag="lively" />
+                                            </ComboBox>
+                                            <Button Grid.Column="1" Content="立即互动" Margin="10,0,0,0" Click="TryInteraction_Click" />
+                                        </Grid>
+                                    </StackPanel>
+                                </Grid>
+
+                                <Separator Margin="0,13" Background="{StaticResource LineBrush}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,5,0,0">
                                         <TextBlock Text="行为性格" Style="{StaticResource SettingName}" />
                                         <TextBlock Text="决定移动节奏和鼠标反应" Style="{StaticResource SettingDescription}" />
                                     </StackPanel>
@@ -553,7 +575,23 @@
                               HorizontalContentAlignment="Stretch">
                     <StackPanel Margin="34,28,34,32" MaxWidth="780" HorizontalAlignment="Stretch">
                         <TextBlock Text="互动内容" Style="{StaticResource PageTitle}" />
-                        <TextBlock Text="管理桌搭子的互动台词和小剧场演出内容" Style="{StaticResource Hint}" Margin="0,0,0,20" />
+                        <TextBlock Text="管理线上趣味内容、互动台词和小剧场剧本" Style="{StaticResource Hint}" Margin="0,0,0,20" />
+
+                        <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,20">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Margin="0,0,20,0">
+                                    <TextBlock Text="在线趣味内容" Style="{StaticResource SettingName}" />
+                                    <TextBlock x:Name="InteractionContentStatusText" Style="{StaticResource Hint}" Margin="0,4,0,0" />
+                                </StackPanel>
+                                <WrapPanel Grid.Column="1" VerticalAlignment="Center">
+                                    <Button x:Name="SyncInteractionContentButton" Content="在线补充" Margin="0,0,8,0"
+                                            Click="SyncInteractionContent_Click" />
+                                    <Button x:Name="DownloadInteractionPackButton" Content="下载离线包"
+                                            Style="{StaticResource PrimaryButton}" Click="DownloadInteractionPack_Click" />
+                                </WrapPanel>
+                            </Grid>
+                        </Border>
 
                         <Grid>
                             <Grid.ColumnDefinitions>

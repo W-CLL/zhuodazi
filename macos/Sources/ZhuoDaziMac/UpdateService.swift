@@ -47,7 +47,8 @@ enum UpdateError: LocalizedError {
 }
 
 final class UpdateService {
-    private static let manifestURL = URL(string: "https://8.134.130.155/api/update/latest")!
+    private static let manifestURL = LicenseService.serviceBaseURL
+        .appendingPathComponent("api/update/latest")
     private static let publicKeySPKI = "MCowBQYDK2VwAyEANjBEMMQ5TY+0ECNoRqQy9780eoVOzkKpzFDq2TwLytU="
     private let licenses: LicenseService
     private(set) var status = UpdateStatus.idle {

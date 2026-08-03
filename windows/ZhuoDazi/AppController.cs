@@ -21,6 +21,8 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _reminderTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _idleTimer = new() { Interval = TimeSpan.FromSeconds(32) };
     private readonly DispatcherTimer _theaterTimer = new();
+    private readonly DispatcherTimer _interactionTimer = new();
+    private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
     private PetWindow? _petWindow;
@@ -31,11 +33,15 @@ public sealed class AppController : IDisposable
     private CancellationTokenSource? _theaterCancellation;
     private DateOnly? _lastMidnightSecret;
     private bool _theaterActive;
+    private bool _interactionActive;
+    private bool _interactionSyncing;
+    private bool _interactionSyncRequested;
     private bool _disposed;
 
     public AppSettings Settings { get; }
     public UpdateService Updates { get; }
     public FeedbackService Feedback { get; }
+    public InteractionService Interactions { get; }
     public event Action? StateChanged;
     public bool IsExiting { get; private set; }
     public LibraryDefinition? ActiveLibrary => Settings.Libraries.FirstOrDefault(item => item.Id == Settings.ActiveLibraryId);
@@ -46,6 +52,7 @@ public sealed class AppController : IDisposable
     public int LibraryCount => _libraryFiles.Count;
     public int InteractionWordCount => ActiveInteractionWordPack?.WordCount ?? 0;
     public string LicenseSummary => _licenses.Summary;
+    public string InteractionStatus => Interactions.StatusSummary;
 
     public AppController(LicenseService licenses)
     {
@@ -53,14 +60,28 @@ public sealed class AppController : IDisposable
         Settings = _store.Load();
         Updates = new UpdateService(_store, _licenses);
         Feedback = new FeedbackService(_licenses);
+        Interactions = new InteractionService(_store, _licenses);
         Updates.StateChanged += OnUpdateStateChanged;
         _randomTimer.Tick += (_, _) => RandomizePet();
         _reminderTimer.Tick += (_, _) => CheckReminders();
-        _idleTimer.Tick += (_, _) => _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责陪你。"));
+        _idleTimer.Tick += (_, _) =>
+        {
+            if (!_interactionActive) _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责陪你。"));
+        };
         _theaterTimer.Tick += async (_, _) =>
         {
             _theaterTimer.Stop();
             await RunTheaterAsync(false);
+        };
+        _interactionTimer.Tick += async (_, _) =>
+        {
+            _interactionTimer.Stop();
+            await PresentRandomInteractionAsync(false);
+        };
+        _interactionSyncTimer.Tick += async (_, _) =>
+        {
+            _interactionSyncTimer.Stop();
+            await RunInteractionSyncAsync();
         };
     }
 
@@ -78,6 +99,9 @@ public sealed class AppController : IDisposable
         _reminderTimer.Start();
         _idleTimer.Start();
         RestartTheaterTimer();
+        RestartInteractionTimer();
+        _interactionSyncTimer.Interval = TimeSpan.FromSeconds(5);
+        _interactionSyncTimer.Start();
         Save();
         if (Settings.AutoCheckUpdates)
         {
@@ -112,6 +136,7 @@ public sealed class AppController : IDisposable
         {
             StateChanged?.Invoke();
             _petWindow?.ShowReaction("新的邀请码已经绑定完成。");
+            ScheduleInteractionSync();
         }
         return activated;
     }
@@ -183,6 +208,38 @@ public sealed class AppController : IDisposable
         Settings.RandomMovementEnabled = enabled;
         _petWindow?.RefreshBehavior();
         SaveAndRefresh();
+    }
+
+    public void SetInteractionConfig(bool enabled, string mode)
+    {
+        Settings.RandomInteractionsEnabled = enabled;
+        Settings.InteractionMode = mode is "quiet" or "standard" or "lively" ? mode : "standard";
+        Interactions.MarkProfileDirty(Settings.InteractionMode, enabled);
+        RestartInteractionTimer();
+        SaveAndRefresh();
+        ScheduleInteractionSync();
+    }
+
+    public void StartRandomInteraction() => _ = PresentRandomInteractionAsync(true);
+
+    public async Task<int> SyncInteractionContentAsync(CancellationToken cancellationToken = default)
+    {
+        var profile = await Interactions.SyncProfileAsync(
+            Settings.InteractionMode,
+            Settings.RandomInteractionsEnabled,
+            cancellationToken);
+        ApplyInteractionProfile(profile);
+        await Interactions.FlushEventsAsync(cancellationToken);
+        var added = await Interactions.RefillAsync(cancellationToken);
+        StateChanged?.Invoke();
+        return added;
+    }
+
+    public async Task<int> DownloadInteractionPackAsync(CancellationToken cancellationToken = default)
+    {
+        var count = await Interactions.DownloadOfflinePackAsync(cancellationToken);
+        StateChanged?.Invoke();
+        return count;
     }
 
     public void SetTheaterConfig(bool enabled, int intervalSeconds)
@@ -312,7 +369,11 @@ public sealed class AppController : IDisposable
 
     public void RandomizePet()
     {
-        if (_theaterActive) return;
+        if (_theaterActive || _interactionActive)
+        {
+            RestartRandomTimer();
+            return;
+        }
         if (_libraryFiles.Count == 0) return;
         Settings.RandomPetEnabled = true;
         _activeLibraryPetPath = _library.Pick(_libraryFiles, _activeLibraryPetPath);
@@ -453,9 +514,254 @@ public sealed class AppController : IDisposable
         _theaterTimer.Start();
     }
 
+    private void RestartInteractionTimer()
+    {
+        _interactionTimer.Stop();
+        if (_disposed || IsExiting || !Settings.RandomInteractionsEnabled) return;
+        _interactionTimer.Interval = InteractionScheduler.NextDelay(Settings.InteractionMode);
+        _interactionTimer.Start();
+    }
+
+    private async Task PresentRandomInteractionAsync(bool manual)
+    {
+        _interactionTimer.Stop();
+        if (_interactionActive || _theaterActive || _petWindow is not { IsVisible: true } pet)
+        {
+            RestartInteractionTimer();
+            return;
+        }
+        if (!manual && (Settings.ClickThrough || !Settings.RandomInteractionsEnabled))
+        {
+            RestartInteractionTimer();
+            return;
+        }
+        if (manual && Settings.ClickThrough) SetClickThrough(false);
+
+        _interactionActive = true;
+        try
+        {
+            var moodDue = Interactions.IsMoodPromptDue(DateTimeOffset.UtcNow);
+            if (moodDue && (Interactions.CachedContentCount == 0 || _random.Next(4) == 0))
+            {
+                ShowMoodInteraction(pet);
+                return;
+            }
+            if (Interactions.CachedContentCount == 0) await Interactions.RefillAsync();
+            if (IsExiting || _theaterActive || _petWindow is not { IsVisible: true })
+            {
+                FinishInteraction();
+                return;
+            }
+
+            var item = Interactions.TakeNextContent();
+            if (item is null)
+            {
+                if (moodDue) ShowMoodInteraction(pet);
+                else
+                {
+                    if (manual) pet.ShowReaction("趣味内容正在补货，稍后再来找我吧。");
+                    FinishInteraction();
+                }
+                return;
+            }
+            ShowContentInteraction(pet, item);
+        }
+        catch (Exception error)
+        {
+            if (manual) pet.ShowReaction(error.Message);
+            FinishInteraction();
+        }
+    }
+
+    private void ShowMoodInteraction(PetWindow pet)
+    {
+        Interactions.MarkMoodPrompted(DateTimeOffset.UtcNow);
+        pet.ShowInteraction(
+            "随手问候",
+            "今天心情怎么样？",
+            [
+                new("开心", "happy"),
+                new("还可以", "okay"),
+                new("不咋地", "low")
+            ],
+            choice =>
+            {
+                if (choice is not null)
+                {
+                    Interactions.RecordMood(choice.Value);
+                    pet.ShowReaction(choice.Value switch
+                    {
+                        "happy" => "那就把这份开心多留一会儿。",
+                        "low" => "先不用硬撑，我在这儿陪你一会儿。",
+                        _ => "平平稳稳也很好，慢慢来。"
+                    });
+                }
+                FinishInteraction();
+            });
+    }
+
+    private void ShowContentInteraction(PetWindow pet, InteractionContentItem item)
+    {
+        if (item.Type == "joke")
+        {
+            pet.ShowInteraction(
+                "冷笑话时间",
+                item.Prompt,
+                [new("看答案", "reveal", true)],
+                choice =>
+                {
+                    if (choice is null)
+                    {
+                        FinishInteraction();
+                        return;
+                    }
+                    Interactions.RecordJoke(item.Id);
+                    ShowAnswerInteraction(pet, "答案", FormatContentAnswer(item), null);
+                });
+            return;
+        }
+
+        var title = item.Type == "math" ? "来道数学题" : "趣味小题";
+        if (item.Choices.Count > 0)
+        {
+            var choices = item.Choices.Select((value, index) =>
+                new PetInteractionChoice(value, index.ToString())).ToList();
+            pet.ShowInteraction(title, item.Prompt, choices, choice =>
+            {
+                if (choice is null)
+                {
+                    FinishInteraction();
+                    return;
+                }
+                var selected = item.Choices[int.Parse(choice.Value)];
+                var correct = AnswersMatch(selected, item.Answer);
+                Interactions.RecordQuiz(item.Id, correct);
+                ShowAnswerInteraction(
+                    pet,
+                    correct ? "答对了" : "答案揭晓",
+                    FormatContentAnswer(item),
+                    correct);
+            });
+            return;
+        }
+
+        pet.ShowInteraction(
+            title,
+            item.Prompt,
+            [new("查看答案", "reveal", true)],
+            choice =>
+            {
+                if (choice is null)
+                {
+                    FinishInteraction();
+                    return;
+                }
+                pet.ShowInteraction(
+                    "答案",
+                    FormatContentAnswer(item),
+                    [new("答对了", "correct", true), new("没答对", "wrong")],
+                    result =>
+                    {
+                        if (result is not null)
+                            Interactions.RecordQuiz(item.Id, result.Value == "correct");
+                        FinishInteraction();
+                    });
+            });
+    }
+
+    private void ShowAnswerInteraction(PetWindow pet, string title, string message, bool? correct)
+    {
+        pet.ShowInteraction(
+            title,
+            message,
+            [new(correct == true ? "收下这分" : "知道了", "done", true)],
+            _ => FinishInteraction());
+    }
+
+    private static string FormatContentAnswer(InteractionContentItem item)
+    {
+        var answer = string.IsNullOrWhiteSpace(item.Answer) ? "答案暂缺" : item.Answer.Trim();
+        var explanation = item.Explanation.Trim();
+        return explanation.Length == 0 || explanation.Equals(answer, StringComparison.Ordinal)
+            ? answer
+            : $"{answer}\n{explanation}";
+    }
+
+    private static bool AnswersMatch(string selected, string answer)
+        => selected.Trim().Equals(answer.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    private void FinishInteraction()
+    {
+        _interactionActive = false;
+        RestartInteractionTimer();
+        StateChanged?.Invoke();
+        if (Interactions.ShouldFlush) _ = FlushInteractionEventsAsync();
+    }
+
+    private async Task FlushInteractionEventsAsync()
+    {
+        try { await Interactions.FlushEventsAsync(); }
+        catch { }
+        StateChanged?.Invoke();
+    }
+
+    private void ScheduleInteractionSync()
+    {
+        _interactionSyncRequested = true;
+        if (_interactionSyncing) return;
+        _interactionSyncTimer.Stop();
+        if (_disposed || IsExiting) return;
+        _interactionSyncTimer.Interval = TimeSpan.FromSeconds(2);
+        _interactionSyncTimer.Start();
+    }
+
+    private async Task RunInteractionSyncAsync()
+    {
+        if (_disposed || IsExiting) return;
+        if (_interactionSyncing)
+        {
+            _interactionSyncRequested = true;
+            return;
+        }
+        _interactionSyncing = true;
+        _interactionSyncRequested = false;
+        try
+        {
+            var profile = await Interactions.SyncProfileAsync(
+                Settings.InteractionMode,
+                Settings.RandomInteractionsEnabled);
+            ApplyInteractionProfile(profile);
+            await Interactions.FlushEventsAsync();
+            await Interactions.RefillAsync();
+        }
+        catch { }
+        finally
+        {
+            _interactionSyncing = false;
+            StateChanged?.Invoke();
+            if (!_disposed && !IsExiting)
+            {
+                _interactionSyncTimer.Interval = _interactionSyncRequested
+                    ? TimeSpan.FromSeconds(2)
+                    : TimeSpan.FromMinutes(15);
+                _interactionSyncTimer.Start();
+            }
+        }
+    }
+
+    private void ApplyInteractionProfile(InteractionProfile profile)
+    {
+        var changed = Settings.InteractionMode != profile.Mode
+            || Settings.RandomInteractionsEnabled != profile.PromptsEnabled;
+        Settings.InteractionMode = profile.Mode;
+        Settings.RandomInteractionsEnabled = profile.PromptsEnabled;
+        RestartInteractionTimer();
+        if (changed) Save();
+    }
+
     private async Task RunTheaterAsync(bool manual)
     {
-        if (_theaterActive || _petWindow is not { IsVisible: true } main)
+        if (_theaterActive || _interactionActive || _petWindow is not { IsVisible: true } main)
         {
             if (!_theaterActive) RestartTheaterTimer();
             return;
@@ -725,6 +1031,7 @@ public sealed class AppController : IDisposable
         _trayMenu.Items.Add("打开设置", null, (_, _) => ShowSettings());
         _trayMenu.Items.Add(_petWindow?.IsVisible == true ? "隐藏桌宠" : "显示桌宠", null, (_, _) => TogglePetVisibility());
         _trayMenu.Items.Add("随机换一只", null, (_, _) => RandomizePet()).Enabled = _libraryFiles.Count > 0;
+        _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
         _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("始终置顶", null, (_, _) => SetAlwaysOnTop(!Settings.AlwaysOnTop)) { Checked = Settings.AlwaysOnTop });
@@ -757,10 +1064,13 @@ public sealed class AppController : IDisposable
         _reminderTimer.Stop();
         _idleTimer.Stop();
         _theaterTimer.Stop();
+        _interactionTimer.Stop();
+        _interactionSyncTimer.Stop();
         _theaterCancellation?.Cancel();
         Updates.StateChanged -= OnUpdateStateChanged;
         Updates.Dispose();
         Feedback.Dispose();
+        Interactions.Dispose();
         if (_tray is not null) _tray.Visible = false;
         _tray?.Dispose();
         _trayMenu?.Dispose();

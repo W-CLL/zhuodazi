@@ -37,6 +37,12 @@ public sealed class AppSettings
     [JsonPropertyName("randomMovementEnabled")]
     public bool RandomMovementEnabled { get; set; } = true;
 
+    [JsonPropertyName("randomInteractionsEnabled")]
+    public bool RandomInteractionsEnabled { get; set; } = true;
+
+    [JsonPropertyName("interactionMode")]
+    public string InteractionMode { get; set; } = "standard";
+
     [JsonPropertyName("theaterEnabled")]
     public bool TheaterEnabled { get; set; }
 
@@ -97,6 +103,8 @@ public sealed class AppSettings
         ClickThrough = false;
         Personality = Personality is "lively" or "shy" or "clingy" or "chaotic"
             ? Personality : "lively";
+        InteractionMode = InteractionMode is "quiet" or "standard" or "lively"
+            ? InteractionMode : "standard";
         TheaterIntervalSeconds = TheaterIntervalSeconds is 60 or 180 or 300 or 600 or 1800
             ? TheaterIntervalSeconds : 300;
         NormalizeTheaterScripts();

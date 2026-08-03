@@ -6,11 +6,74 @@
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" Topmost="True"
         UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Window.Resources>
+        <Style x:Key="InteractionChoiceButton" TargetType="Button">
+            <Setter Property="MinWidth" Value="74" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Margin" Value="0,0,7,7" />
+            <Setter Property="Padding" Value="10,5" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#26302D" />
+            <Setter Property="BorderBrush" Value="#C9D2CF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Chrome" CornerRadius="4"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.84" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Chrome" Property="Opacity" Value="0.7" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
     <Grid x:Name="Root" Background="Transparent">
         <Grid.RowDefinitions>
-            <RowDefinition Height="90" />
+            <RowDefinition x:Name="BubbleRow" Height="90" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
+
+        <Border x:Name="InteractionCard" Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                MaxWidth="350" Margin="10,0,10,4" Padding="14,11" CornerRadius="6"
+                Background="#F9FBFA" BorderBrush="#AFC1BB" BorderThickness="1"
+                Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.2" />
+            </Border.Effect>
+            <StackPanel>
+                <Grid Margin="0,0,0,6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="InteractionTitle" FontSize="11" FontWeight="SemiBold"
+                               Foreground="#167D6C" VerticalAlignment="Center" />
+                    <Button Grid.Column="1" Content="×" Width="26" Height="26" MinWidth="26" MinHeight="26"
+                            Margin="8,-3,-4,0" Padding="0" FontSize="17" Background="Transparent"
+                            BorderBrush="Transparent" Cursor="Hand" ToolTip="稍后再说"
+                            Click="DismissInteraction_Click" />
+                </Grid>
+                <TextBlock x:Name="InteractionMessage" MaxHeight="76" Margin="0,0,0,10"
+                           Foreground="#202323" FontSize="13" LineHeight="20"
+                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                <WrapPanel x:Name="InteractionChoicePanel" />
+            </StackPanel>
+        </Border>
 
         <Border x:Name="SpeechBubble" Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Bottom"
                 MaxWidth="280" Margin="12,0,12,4" Padding="13,9" CornerRadius="6"

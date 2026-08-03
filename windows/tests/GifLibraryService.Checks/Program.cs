@@ -2,9 +2,15 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text.Json;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Crypto.Signers;
+using Org.BouncyCastle.Security;
 using ZhuoDazi.Controls;
+using ZhuoDazi.Models;
 using ZhuoDazi.Services;
 
 internal static class Program
@@ -16,6 +22,9 @@ internal static class Program
         CheckPartialGifComposition();
         CheckNetworkErrorsDoNotExposeServiceAddress();
         CheckManagedEd25519Verification();
+        CheckSignedInteractionContent();
+        CheckInteractionCacheNormalization();
+        CheckInteractionSchedulerBounds();
         var reproductionPath = Environment.GetEnvironmentVariable("ZHUODAZI_GIF_REPRO_PATH");
         if (!string.IsNullOrWhiteSpace(reproductionPath))
         {
@@ -40,6 +49,132 @@ internal static class Program
         signature[0] ^= 0x01;
         Require(!Ed25519SignatureVerifier.Verify(publicKey, [], signature),
             "The managed Ed25519 verifier accepted a tampered signature.");
+    }
+
+    private static void CheckSignedInteractionContent()
+    {
+        var payload = new SignedContentPayload
+        {
+            SchemaVersion = 1,
+            Kind = "batch",
+            CatalogVersion = 7,
+            CatalogUpdatedAt = DateTimeOffset.UtcNow.ToString("O"),
+            Items =
+            [
+                new InteractionContentItem
+                {
+                    Id = "math.check-1",
+                    Type = "math",
+                    Revision = 1,
+                    Prompt = "2 + 2 等于多少？",
+                    Answer = "4",
+                    Choices = ["3", "4", "5"],
+                    Difficulty = 1,
+                    Locale = "zh-CN"
+                }
+            ]
+        };
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(payload);
+        var privateKey = new Ed25519PrivateKeyParameters(new SecureRandom());
+        var signer = new Ed25519Signer();
+        signer.Init(true, privateKey);
+        signer.BlockUpdate(bytes, 0, bytes.Length);
+        var envelope = new SignedContentEnvelope
+        {
+            SignedPayload = Convert.ToBase64String(bytes),
+            Sha256 = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant(),
+            SignatureAlgorithm = "ed25519",
+            Signature = Convert.ToBase64String(signer.GenerateSignature())
+        };
+
+        var verified = ContentEnvelopeVerifier.Validate(
+            envelope,
+            "batch",
+            privateKey.GeneratePublicKey().GetEncoded());
+        Require(verified.CatalogVersion == payload.CatalogVersion && verified.Items.Count == 1,
+            "A valid signed interaction content envelope was rejected.");
+
+        var originalHash = envelope.Sha256;
+        envelope.Sha256 = new string('0', 64);
+        RequireThrows(() => ContentEnvelopeVerifier.Validate(
+                envelope, "batch", privateKey.GeneratePublicKey().GetEncoded()),
+            "A content envelope with a tampered hash was accepted.");
+        envelope.Sha256 = originalHash;
+
+        var signature = Convert.FromBase64String(envelope.Signature);
+        signature[0] ^= 0x01;
+        envelope.Signature = Convert.ToBase64String(signature);
+        RequireThrows(() => ContentEnvelopeVerifier.Validate(
+                envelope, "batch", privateKey.GeneratePublicKey().GetEncoded()),
+            "A content envelope with a tampered signature was accepted.");
+    }
+
+    private static void CheckInteractionCacheNormalization()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var duplicateEventId = Guid.NewGuid().ToString();
+        var document = new InteractionCacheDocument
+        {
+            InteractionMode = "invalid",
+            Items =
+            [
+                CreateContent("joke.cache-1", "joke", 1),
+                CreateContent("joke.cache-1", "joke", 3),
+                CreateContent("trivia.cache-2", "trivia", 1)
+            ],
+            Shown =
+            [
+                new() { Id = "joke.cache-1", ShownAt = now.AddDays(-31).ToString("O") },
+                new() { Id = "trivia.cache-2", ShownAt = now.AddMinutes(-5).ToString("O") }
+            ],
+            PendingEvents =
+            [
+                new() { EventId = duplicateEventId, Type = "mood_response", Mood = "happy" },
+                new() { EventId = duplicateEventId, Type = "mood_response", Mood = "happy" },
+                new() { Type = "mood_response", Mood = "invalid" }
+            ]
+        };
+
+        var normalized = InteractionCacheStore.Normalize(document, now);
+        Require(normalized.Items.Count == 2
+            && normalized.Items.Single(item => item.Id == "joke.cache-1").Revision == 3,
+            "Interaction cache normalization did not keep the latest item revision.");
+        Require(normalized.Shown.Count == 1 && normalized.Shown[0].Id == "trivia.cache-2",
+            "Interaction cache normalization did not expire old shown-content records.");
+        Require(normalized.PendingEvents.Count == 1 && normalized.InteractionMode == "standard",
+            "Interaction cache normalization did not sanitize pending events or settings.");
+    }
+
+    private static InteractionContentItem CreateContent(string id, string type, int revision)
+        => new()
+        {
+            Id = id,
+            Type = type,
+            Revision = revision,
+            Prompt = "这是一条测试内容",
+            Answer = "测试答案",
+            Difficulty = 1,
+            Locale = "zh-CN"
+        };
+
+    private static void CheckInteractionSchedulerBounds()
+    {
+        foreach (var mode in new[] { "quiet", "standard", "lively" })
+        {
+            var bounds = InteractionScheduler.Bounds(mode);
+            for (var index = 0; index < 100; index++)
+            {
+                var delay = InteractionScheduler.NextDelay(mode).TotalMinutes;
+                Require(delay >= bounds.MinimumMinutes && delay <= bounds.MaximumMinutes,
+                    $"The {mode} interaction delay exceeded its configured bounds.");
+            }
+        }
+        for (var index = 0; index < 100; index++)
+        {
+            var cooldown = InteractionScheduler.NextMoodCooldown().TotalMinutes;
+            Require(cooldown is >= 180 and <= 360,
+                "The mood prompt cooldown exceeded its configured bounds.");
+        }
     }
 
     private static void CheckNetworkErrorsDoNotExposeServiceAddress()
@@ -159,5 +294,12 @@ internal static class Program
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+    }
+
+    private static void RequireThrows(Action action, string message)
+    {
+        try { action(); }
+        catch (InvalidOperationException) { return; }
+        throw new InvalidOperationException(message);
     }
 }
