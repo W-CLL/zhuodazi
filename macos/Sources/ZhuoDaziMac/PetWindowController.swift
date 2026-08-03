@@ -97,7 +97,9 @@ final class PetWindowController {
 
         applyWindowAppearance()
         reloadPetSources(forceSelection: true)
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in self?.tick() }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.tick() }
+        }
         RunLoop.main.add(timer, forMode: .common)
         movementTimer = timer
         installClickThroughShortcut()
@@ -112,7 +114,6 @@ final class PetWindowController {
         interactionSyncTimer?.invalidate()
         theaterTask?.cancel()
         interactionSyncTask?.cancel()
-        interactionPanel.dismiss(notifying: false)
         if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
         if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
     }
@@ -472,14 +473,14 @@ final class PetWindowController {
         theaterTimer = nil
         if settings.randomPetEnabled, canRandomizePet {
             let timer = Timer(timeInterval: TimeInterval(settings.randomPetIntervalSeconds), repeats: true) { [weak self] _ in
-                _ = self?.randomizePet()
+                Task { @MainActor [weak self] in _ = self?.randomizePet() }
             }
             RunLoop.main.add(timer, forMode: .common)
             randomPetTimer = timer
         }
         if settings.theaterEnabled {
             let timer = Timer(timeInterval: TimeInterval(settings.theaterIntervalSeconds), repeats: true) { [weak self] _ in
-                _ = self?.startTheater()
+                Task { @MainActor [weak self] in _ = self?.startTheater() }
             }
             RunLoop.main.add(timer, forMode: .common)
             theaterTimer = timer

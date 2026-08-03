@@ -209,7 +209,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
         reminderTimer?.invalidate()
         checkReminders()
-        let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in self?.checkReminders() }
+        let timer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.checkReminders() }
+        }
         RunLoop.main.add(timer, forMode: .common)
         reminderTimer = timer
     }

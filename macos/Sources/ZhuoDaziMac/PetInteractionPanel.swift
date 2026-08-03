@@ -47,7 +47,7 @@ final class PetInteractionPanelController: NSWindowController {
     ) {
         dismiss()
         self.completion = completion
-        guard let panel = window else { return }
+        guard let panel = window as? NSPanel else { return }
 
         let content = NSView()
         let stack = NSStackView()
