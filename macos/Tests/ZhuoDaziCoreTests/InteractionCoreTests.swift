@@ -51,7 +51,7 @@ final class InteractionCoreTests: XCTestCase {
         old.revision = 1
         var current = old
         current.revision = 2
-        current.answer = "新版答案"
+        current.explanation = "新版说明"
         var invalid = validItem()
         invalid.id = "bad id"
 
