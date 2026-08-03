@@ -182,7 +182,7 @@ internal static class Program
 
     private static void CheckNetworkErrorsDoNotExposeServiceAddress()
     {
-        const string serviceAddress = "8.134.130.155";
+        const string serviceAddress = "in.desktoppet.online";
         var error = new HttpRequestException($"The SSL connection to {serviceAddress} could not be established.");
         var message = NetworkConnectionErrors.Format(error, "连接超时");
 
