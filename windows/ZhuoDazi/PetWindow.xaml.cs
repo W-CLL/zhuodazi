@@ -9,6 +9,9 @@ using System.Windows.Threading;
 using ZhuoDazi.Controls;
 using ZhuoDazi.Interop;
 using Forms = System.Windows.Forms;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfButton = System.Windows.Controls.Button;
+using WpfColor = System.Windows.Media.Color;
 using Cursors = System.Windows.Input.Cursors;
 using MouseEventArgs = System.Windows.Input.MouseEventArgs;
 using Point = System.Windows.Point;
@@ -148,7 +151,7 @@ public partial class PetWindow : Window
 
         foreach (var choice in choices)
         {
-            var button = new Button
+            var button = new WpfButton
             {
                 Content = choice.Label,
                 Tag = choice,
@@ -156,9 +159,9 @@ public partial class PetWindow : Window
             };
             if (choice.IsPrimary)
             {
-                button.Background = new SolidColorBrush(Color.FromRgb(22, 125, 108));
+                button.Background = new SolidColorBrush(WpfColor.FromRgb(22, 125, 108));
                 button.BorderBrush = button.Background;
-                button.Foreground = Brushes.White;
+                button.Foreground = WpfBrushes.White;
             }
             button.Click += (_, _) => CompleteInteraction(choice);
             InteractionChoicePanel.Children.Add(button);
