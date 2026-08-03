@@ -8,7 +8,7 @@ namespace ZhuoDazi.Services;
 
 public sealed class LicenseService : IDisposable
 {
-    internal const string ServiceBaseUrl = "https://8.134.130.155";
+    internal const string ServiceBaseUrl = "https://in.desktoppet.online";
     private const string ActivationUrl = ServiceBaseUrl + "/api/activate";
     private static readonly byte[] OptionalEntropy = Encoding.UTF8.GetBytes("ZhuoDazi.Native.License.v1");
     private static readonly JsonSerializerOptions JsonOptions = new()
