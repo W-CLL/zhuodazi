@@ -120,7 +120,10 @@ internal static class Program
             [
                 CreateContent("joke.cache-1", "joke", 1),
                 CreateContent("joke.cache-1", "joke", 3),
-                CreateContent("trivia.cache-2", "trivia", 1)
+                CreateContent("trivia.cache-2", "trivia", 1),
+                CreateContent("riddle.cache-3", "riddle", 1),
+                CreateContent("tip.cache-4", "tip", 1),
+                CreateContent("care.cache-5", "care", 1)
             ],
             Shown =
             [
@@ -136,9 +139,9 @@ internal static class Program
         };
 
         var normalized = InteractionCacheStore.Normalize(document, now);
-        Require(normalized.Items.Count == 2
+        Require(normalized.Items.Count == 5
             && normalized.Items.Single(item => item.Id == "joke.cache-1").Revision == 3,
-            "Interaction cache normalization did not keep the latest item revision.");
+            "Interaction cache normalization did not keep six-type content and the latest item revision.");
         Require(normalized.Shown.Count == 1 && normalized.Shown[0].Id == "trivia.cache-2",
             "Interaction cache normalization did not expire old shown-content records.");
         Require(normalized.PendingEvents.Count == 1 && normalized.InteractionMode == "standard",

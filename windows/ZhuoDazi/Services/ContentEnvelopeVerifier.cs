@@ -66,7 +66,7 @@ internal static partial class ContentEnvelopeVerifier
     internal static bool IsValidItem(InteractionContentItem? item)
     {
         if (item is null || !IsValidItemId(item.Id)
-            || item.Type is not ("joke" or "math" or "trivia")
+            || item.Type is not ("joke" or "math" or "trivia" or "riddle" or "tip" or "care")
             || item.Revision < 1 || item.Prompt is null || item.Prompt.Length is < 2 or > 500
             || item.Answer is null || item.Answer.Length is < 1 or > 500
             || item.Explanation is null || item.Explanation.Length > 1000

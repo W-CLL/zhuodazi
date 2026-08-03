@@ -76,6 +76,7 @@ internal sealed class InteractionCacheStore
         document.InteractionMode = document.InteractionMode is "quiet" or "standard" or "lively"
             ? document.InteractionMode : "standard";
         document.LastPromptType = document.LastPromptType is "mood" or "joke" or "math" or "trivia"
+            or "riddle" or "tip" or "care"
             ? document.LastPromptType : null;
         if (!DateTimeOffset.TryParse(document.NextMoodPromptAt, out _)) document.NextMoodPromptAt = null;
         return document;

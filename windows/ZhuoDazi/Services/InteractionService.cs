@@ -236,7 +236,7 @@ public sealed class InteractionService : IDisposable
                 if (cachedCount >= TargetCacheSize) break;
                 using var request = JsonRequest(HttpMethod.Post, BatchUrl, new
                 {
-                    types = new[] { "joke", "math", "trivia" },
+                    types = new[] { "joke", "math", "trivia", "riddle", "tip", "care" },
                     limit = 30,
                     excludeIds = exclusions
                 });

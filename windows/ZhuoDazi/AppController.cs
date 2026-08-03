@@ -621,7 +621,24 @@ public sealed class AppController : IDisposable
             return;
         }
 
-        var title = item.Type == "math" ? "来道数学题" : "趣味小题";
+        if (item.Type is "tip" or "care")
+        {
+            var title = item.Type == "tip" ? "生活小贴士" : "关心你一下";
+            var button = item.Type == "tip" ? "记下了" : "我知道了";
+            pet.ShowInteraction(
+                title,
+                $"{item.Prompt}\n\n{FormatContentAnswer(item)}",
+                [new(button, "acknowledge", true)],
+                _ => FinishInteraction());
+            return;
+        }
+
+        var title = item.Type switch
+        {
+            "math" => "来道数学题",
+            "riddle" => "脑筋急转弯",
+            _ => "趣味知识"
+        };
         if (item.Choices.Count > 0)
         {
             var choices = item.Choices.Select((value, index) =>
