@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using ZhuoDazi.Controls;
@@ -17,6 +19,7 @@ public partial class PetWindow : Window
 {
     private const int HotkeyId = 0xDA21;
     private const int WmHotkey = 0x0312;
+    private const double InteractionExtraHeight = 100;
     private readonly AppController _controller;
     private readonly AnimatedGifPlayer _gifPlayer;
     private readonly bool _isCompanion;
@@ -49,6 +52,8 @@ public partial class PetWindow : Window
     private CancellationTokenRegistration _scriptCancellation;
     private bool _cornerSecretFound;
     private bool _throwSecretFound;
+    private double _baseWindowHeight = 380;
+    private Action<PetInteractionChoice?>? _interactionCallback;
 
     private enum Activity
     {
@@ -83,8 +88,12 @@ public partial class PetWindow : Window
     public void RefreshAppearance(string? petPath)
     {
         var size = _controller.Settings.Size;
+        var bottom = IsLoaded && double.IsFinite(Top) ? Top + Height : double.NaN;
         Width = Math.Max(250, size + 70);
-        Height = Math.Max(320, size + 150);
+        _baseWindowHeight = Math.Max(320, size + 150);
+        Height = _baseWindowHeight + (IsInteractionVisible ? InteractionExtraHeight : 0);
+        BubbleRow.Height = new GridLength(IsInteractionVisible ? 190 : 90);
+        if (double.IsFinite(bottom)) AnchorBottomWithinWorkingArea(bottom);
         PetStage.Width = size + 20;
         PetStage.Height = size + 20;
         Opacity = _controller.Settings.Opacity / 100d;
@@ -111,11 +120,81 @@ public partial class PetWindow : Window
     public void ShowReaction(string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
+        if (IsInteractionVisible) CompleteInteraction(null);
         SpeechText.Text = message;
         SpeechBubble.Visibility = Visibility.Visible;
         _speechTimer.Stop();
         _speechTimer.Start();
         if (!IsVisible) Show();
+    }
+
+    public bool IsInteractionVisible => InteractionCard.Visibility == Visibility.Visible;
+
+    public void ShowInteraction(
+        string title,
+        string message,
+        IReadOnlyList<PetInteractionChoice> choices,
+        Action<PetInteractionChoice?> callback)
+    {
+        if (_isCompanion) return;
+        if (IsInteractionVisible) CompleteInteraction(null);
+
+        _speechTimer.Stop();
+        SpeechBubble.Visibility = Visibility.Collapsed;
+        InteractionTitle.Text = title;
+        InteractionMessage.Text = message;
+        InteractionChoicePanel.Children.Clear();
+        _interactionCallback = callback;
+
+        foreach (var choice in choices)
+        {
+            var button = new Button
+            {
+                Content = choice.Label,
+                Tag = choice,
+                Style = (Style)FindResource("InteractionChoiceButton")
+            };
+            if (choice.IsPrimary)
+            {
+                button.Background = new SolidColorBrush(Color.FromRgb(22, 125, 108));
+                button.BorderBrush = button.Background;
+                button.Foreground = Brushes.White;
+            }
+            button.Click += (_, _) => CompleteInteraction(choice);
+            InteractionChoicePanel.Children.Add(button);
+        }
+
+        SetInteractionExpanded(true);
+        InteractionCard.Visibility = Visibility.Visible;
+        if (!IsVisible) Show();
+    }
+
+    private void DismissInteraction_Click(object sender, RoutedEventArgs e)
+        => CompleteInteraction(null);
+
+    private void CompleteInteraction(PetInteractionChoice? choice)
+    {
+        if (!IsInteractionVisible && _interactionCallback is null) return;
+        var callback = _interactionCallback;
+        _interactionCallback = null;
+        InteractionCard.Visibility = Visibility.Collapsed;
+        InteractionChoicePanel.Children.Clear();
+        SetInteractionExpanded(false);
+        callback?.Invoke(choice);
+    }
+
+    private void SetInteractionExpanded(bool expanded)
+    {
+        var bottom = IsLoaded && double.IsFinite(Top) ? Top + Height : double.NaN;
+        BubbleRow.Height = new GridLength(expanded ? 190 : 90);
+        Height = _baseWindowHeight + (expanded ? InteractionExtraHeight : 0);
+        if (double.IsFinite(bottom)) AnchorBottomWithinWorkingArea(bottom);
+    }
+
+    private void AnchorBottomWithinWorkingArea(double bottom)
+    {
+        var area = GetWorkingArea();
+        Top = Math.Clamp(bottom - Height, area.Top, Math.Max(area.Top, area.Bottom - Height));
     }
 
     public void Place(Point position)
@@ -200,6 +279,9 @@ public partial class PetWindow : Window
             NativeMethods.UnregisterHotKey(_source.Handle, HotkeyId);
             _source.RemoveHook(WindowHook);
         }
+        var callback = _interactionCallback;
+        _interactionCallback = null;
+        callback?.Invoke(null);
         _gifPlayer.Dispose();
     }
 
@@ -216,6 +298,7 @@ public partial class PetWindow : Window
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
         if (_isCompanion || _controller.Settings.ClickThrough || _scripted) return;
+        if (IsInteractionVisible && InteractionCard.IsMouseOver) return;
         if (e.ClickCount == 2)
         {
             _controller.ShowSettings();
@@ -297,6 +380,12 @@ public partial class PetWindow : Window
         _lastFrameTicks = nowTicks;
         var dt = Math.Clamp(elapsed, 0.001, 0.05);
         if (!IsVisible || _isDragging) return;
+        if (IsInteractionVisible)
+        {
+            _inertiaActive = false;
+            _velocity = default;
+            return;
+        }
 
         if (_scripted && _scriptTarget is not null)
         {
@@ -639,3 +728,5 @@ public partial class PetWindow : Window
         return value * maximum;
     }
 }
+
+public sealed record PetInteractionChoice(string Label, string Value, bool IsPrimary = false);

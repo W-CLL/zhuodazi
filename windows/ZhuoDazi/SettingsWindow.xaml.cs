@@ -17,6 +17,7 @@ public partial class SettingsWindow : Window
     private readonly AppController _controller;
     private bool _refreshing;
     private bool _feedbackLoading;
+    private bool _interactionContentLoading;
     private string? _editingReminderId;
 
     public SettingsWindow(AppController controller)
@@ -77,6 +78,9 @@ public partial class SettingsWindow : Window
             if (item.Tag?.ToString() == settings.Personality) item.IsSelected = true;
         MouseInteractionCheck.IsChecked = settings.MouseInteractionEnabled;
         RandomMovementCheck.IsChecked = settings.RandomMovementEnabled;
+        RandomInteractionCheck.IsChecked = settings.RandomInteractionsEnabled;
+        foreach (var item in InteractionModeCombo.Items.OfType<ComboBoxItem>())
+            if (item.Tag?.ToString() == settings.InteractionMode) item.IsSelected = true;
         TheaterEnabledCheck.IsChecked = settings.TheaterEnabled;
         foreach (var item in TheaterIntervalCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == settings.TheaterIntervalSeconds.ToString(CultureInfo.InvariantCulture)) item.IsSelected = true;
@@ -111,6 +115,9 @@ public partial class SettingsWindow : Window
         WordPackList.SelectedItem = wordPackItems.First(item => item.Id == settings.ActiveInteractionWordPackId);
         WordPackSummary.Text = $"已上传 {settings.InteractionWordPacks.Count}/5 个词包 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "内置提示语")}";
         DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
+        InteractionContentStatusText.Text = _controller.InteractionStatus;
+        SyncInteractionContentButton.IsEnabled = !_interactionContentLoading;
+        DownloadInteractionPackButton.IsEnabled = !_interactionContentLoading;
 
         var selectedTheaterScriptId = (TheaterScriptList.SelectedItem as TheaterScriptListItem)?.Id;
         var theaterScriptItems = settings.TheaterScripts.Select(item => new TheaterScriptListItem(
@@ -213,6 +220,75 @@ public partial class SettingsWindow : Window
     private void RandomMovementCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (!_refreshing) _controller.SetRandomMovement(RandomMovementCheck.IsChecked == true);
+    }
+
+    private void RandomInteractionCheck_Changed(object sender, RoutedEventArgs e)
+        => ApplyInteractionSettings();
+
+    private void InteractionModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_refreshing) ApplyInteractionSettings();
+    }
+
+    private void ApplyInteractionSettings()
+    {
+        if (_refreshing || InteractionModeCombo.SelectedItem is not ComboBoxItem item) return;
+        _controller.SetInteractionConfig(
+            RandomInteractionCheck.IsChecked == true,
+            item.Tag?.ToString() ?? "standard");
+    }
+
+    private void TryInteraction_Click(object sender, RoutedEventArgs e)
+        => _controller.StartRandomInteraction();
+
+    private async void SyncInteractionContent_Click(object sender, RoutedEventArgs e)
+    {
+        if (_interactionContentLoading) return;
+        SetInteractionContentLoading(true, "正在同步线上内容…");
+        try
+        {
+            var added = await _controller.SyncInteractionContentAsync();
+            RefreshAll();
+            InteractionContentStatusText.Text = $"{_controller.InteractionStatus} · 本次新增 {added} 条";
+        }
+        catch (Exception error)
+        {
+            InteractionContentStatusText.Text = _controller.InteractionStatus;
+            WpfMessageBox.Show(this, error.Message, "同步互动内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            SetInteractionContentLoading(false);
+        }
+    }
+
+    private async void DownloadInteractionPack_Click(object sender, RoutedEventArgs e)
+    {
+        if (_interactionContentLoading) return;
+        SetInteractionContentLoading(true, "正在下载离线内容包…");
+        try
+        {
+            var count = await _controller.DownloadInteractionPackAsync();
+            RefreshAll();
+            InteractionContentStatusText.Text = $"{_controller.InteractionStatus} · 离线包共 {count} 条";
+        }
+        catch (Exception error)
+        {
+            InteractionContentStatusText.Text = _controller.InteractionStatus;
+            WpfMessageBox.Show(this, error.Message, "下载离线内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        finally
+        {
+            SetInteractionContentLoading(false);
+        }
+    }
+
+    private void SetInteractionContentLoading(bool loading, string? status = null)
+    {
+        _interactionContentLoading = loading;
+        SyncInteractionContentButton.IsEnabled = !loading;
+        DownloadInteractionPackButton.IsEnabled = !loading;
+        if (status is not null) InteractionContentStatusText.Text = status;
     }
 
     private void TheaterEnabledCheck_Changed(object sender, RoutedEventArgs e) => ApplyTheaterSettings();
