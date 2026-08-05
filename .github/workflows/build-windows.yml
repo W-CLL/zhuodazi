@@ -111,7 +111,7 @@ jobs:
           name: ZhuoDazi-Windows-Installer-${{ env.APP_VERSION }}
           path: windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}.exe
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
 
       - name: Upload Windows portable package
         uses: actions/upload-artifact@v7
@@ -119,4 +119,4 @@ jobs:
           name: ZhuoDazi-Windows-Portable-${{ env.APP_VERSION }}
           path: windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}-portable.zip
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 3
