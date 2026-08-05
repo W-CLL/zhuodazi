@@ -13,12 +13,12 @@ zhuodazi/
 
 ## 自动构建
 
-- `Build Windows`：在 Windows runner 上构建 x64 自包含程序、Inno Setup 安装包和便携 ZIP，安装版与便携版分别上传，避免同一 Artifact 重复包含两份程序。
+- `Build Windows`：在 Windows runner 上构建 x64 自包含程序、Inno Setup 安装包和便携 ZIP，并直接上传到对应的 Windows Draft Release。
 - `Build macOS`：分别在 Apple Silicon 与 Intel runner 上构建原生 AppKit 应用，执行 ad-hoc 签名并输出 ZIP。
 - 创建 Pull Request 或手动触发工作流时会自动运行构建。
 - 合并到 `main` 后，`Build and Release` 会在三个构建全部成功后分别创建或更新 Windows 与 macOS 的 Draft Release，例如 `v2.5.3` 和 `macos-v2.2.1`。
 
-构建完成后，可在对应 GitHub Actions 运行记录的 Artifacts 区域下载产物；合并到 `main` 后，产物还会自动附加到 Draft Release。验证通过后，在 GitHub Release 页面手动点击发布即可。已发布的同版本 Release 不会被后续构建覆盖。macOS 当前产物没有 Developer ID 签名和 Apple 公证，首次打开需要在“系统设置 > 隐私与安全性”中手动允许。
+推送到 `main` 或手动运行工作流后，Windows 和 macOS 产物会直接上传到各自的 Draft Release，不占用 GitHub Actions Artifact 存储额度。Pull Request 只执行构建与测试，不上传安装包。验证通过后，在 GitHub Release 页面手动点击发布即可；已发布的同版本 Release 不会被后续构建覆盖。macOS 当前产物没有 Developer ID 签名和 Apple 公证，首次打开需要在“系统设置 > 隐私与安全性”中手动允许。
 
 ## 平台状态
 

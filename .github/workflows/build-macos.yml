@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: macos-${{ github.workflow }}-${{ github.ref }}
@@ -50,10 +50,32 @@ jobs:
           file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
 
-      - name: Upload macOS package
-        uses: actions/upload-artifact@v7
-        with:
-          name: ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}
-          path: macos/dist/ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}.zip
-          if-no-files-found: error
-          retention-days: 3
+      - name: Upload macOS package to draft release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="macos-v${APP_VERSION}"
+          title="ZhuoDazi macOS ${APP_VERSION}"
+          notes="macOS release. Ad-hoc signed and not notarized. Source commit: ${GITHUB_SHA}"
+          asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
+
+          release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          if [[ "$release_state" == "false" ]]; then
+            echo "Release $tag is already published; leaving it unchanged."
+            exit 0
+          fi
+
+          if [[ -z "$release_state" ]]; then
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes" || true
+            release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          fi
+
+          if [[ "$release_state" != "true" ]]; then
+            echo "Unable to create or find draft release $tag." >&2
+            exit 1
+          fi
+
+          gh release upload "$tag" "$asset" --clobber
+          gh release edit "$tag" --target "$GITHUB_SHA" --title "$title" --notes "$notes"

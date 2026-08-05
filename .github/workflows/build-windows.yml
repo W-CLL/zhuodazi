@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: windows-${{ github.workflow }}-${{ github.ref }}
@@ -105,18 +105,44 @@ jobs:
           $archive = "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"
           Compress-Archive -Path "windows/publish/win-x64/*" -DestinationPath $archive -CompressionLevel Optimal -Force
 
-      - name: Upload Windows installer
-        uses: actions/upload-artifact@v7
-        with:
-          name: ZhuoDazi-Windows-Installer-${{ env.APP_VERSION }}
-          path: windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}.exe
-          if-no-files-found: error
-          retention-days: 3
+      - name: Upload Windows packages to draft release
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          $tag = "v$env:APP_VERSION"
+          $title = "ZhuoDazi Windows $env:APP_VERSION"
+          $notes = "Windows release. Source commit: $env:GITHUB_SHA"
+          $assets = @(
+            "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION.exe"
+            "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"
+          )
 
-      - name: Upload Windows portable package
-        uses: actions/upload-artifact@v7
-        with:
-          name: ZhuoDazi-Windows-Portable-${{ env.APP_VERSION }}
-          path: windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}-portable.zip
-          if-no-files-found: error
-          retention-days: 3
+          $releaseState = gh release view $tag --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            $releaseState = $null
+          }
+
+          if ($releaseState -eq "false") {
+            Write-Host "Release $tag is already published; leaving it unchanged."
+            exit 0
+          }
+
+          if (-not $releaseState) {
+            gh release create $tag --draft --target $env:GITHUB_SHA --title $title --notes $notes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to create draft release $tag."
+            }
+          } else {
+            gh release edit $tag --target $env:GITHUB_SHA --title $title --notes $notes
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to update draft release $tag."
+            }
+          }
+
+          gh release upload $tag $assets --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "Unable to upload Windows packages to draft release $tag."
+          }
