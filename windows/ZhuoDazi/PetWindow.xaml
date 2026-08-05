@@ -68,9 +68,14 @@
                             BorderBrush="Transparent" Cursor="Hand" ToolTip="稍后再说"
                             Click="DismissInteraction_Click" />
                 </Grid>
-                <TextBlock x:Name="InteractionMessage" MaxHeight="76" Margin="0,0,0,10"
-                           Foreground="#202323" FontSize="13" LineHeight="20"
-                           TextWrapping="Wrap" TextTrimming="CharacterEllipsis" />
+                <ScrollViewer x:Name="InteractionMessageScroll" Margin="0,0,0,10"
+                              HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              Focusable="False">
+                    <TextBlock x:Name="InteractionMessage"
+                               Foreground="#202323" FontSize="13" LineHeight="20"
+                               TextWrapping="Wrap" />
+                </ScrollViewer>
                 <WrapPanel x:Name="InteractionChoicePanel" />
             </StackPanel>
         </Border>

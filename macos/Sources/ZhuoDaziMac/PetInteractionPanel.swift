@@ -16,6 +16,10 @@ private final class InteractionChoiceButton: NSButton {
     var choice: PetInteractionChoice?
 }
 
+private final class FlippedDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 final class PetInteractionPanelController: NSWindowController {
     private var completion: ((PetInteractionChoice?) -> Void)?
 
@@ -73,13 +77,49 @@ final class PetInteractionPanelController: NSWindowController {
         header.widthAnchor.constraint(equalToConstant: 348).isActive = true
         stack.addArrangedSubview(header)
 
-        let messageLabel = NSTextField(wrappingLabelWithString: String(message.prefix(1_200)))
+        let messageLabel = NSTextField(wrappingLabelWithString: message)
         messageLabel.font = .systemFont(ofSize: 13)
-        messageLabel.maximumNumberOfLines = 5
-        messageLabel.lineBreakMode = .byTruncatingTail
-        messageLabel.toolTip = message
-        messageLabel.widthAnchor.constraint(equalToConstant: 348).isActive = true
-        stack.addArrangedSubview(messageLabel)
+        messageLabel.maximumNumberOfLines = 0
+        messageLabel.lineBreakMode = .byWordWrapping
+
+        let messageWidth: CGFloat = 348
+        let measurementBounds = NSRect(
+            x: 0,
+            y: 0,
+            width: messageWidth,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        let naturalMessageHeight = max(
+            20,
+            ceil(messageLabel.cell?.cellSize(forBounds: measurementBounds).height ?? 20)
+        )
+        let rowCount = (choices.count + 1) / 2
+        let fixedContentHeight = CGFloat(62 + rowCount * 52)
+        let screenBounds = parent.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1_200, height: 800)
+        let maximumPanelHeight = max(220, screenBounds.height - 24)
+        let visibleMessageHeight = min(
+            naturalMessageHeight,
+            max(80, maximumPanelHeight - fixedContentHeight)
+        )
+
+        let messageDocument = FlippedDocumentView(
+            frame: NSRect(x: 0, y: 0, width: messageWidth, height: naturalMessageHeight)
+        )
+        messageLabel.frame = messageDocument.bounds
+        messageLabel.autoresizingMask = [.width]
+        messageDocument.addSubview(messageLabel)
+
+        let messageScroll = NSScrollView()
+        messageScroll.drawsBackground = false
+        messageScroll.borderType = .noBorder
+        messageScroll.hasHorizontalScroller = false
+        messageScroll.hasVerticalScroller = naturalMessageHeight > visibleMessageHeight
+        messageScroll.autohidesScrollers = true
+        messageScroll.documentView = messageDocument
+        messageScroll.widthAnchor.constraint(equalToConstant: messageWidth).isActive = true
+        messageScroll.heightAnchor.constraint(equalToConstant: visibleMessageHeight).isActive = true
+        stack.addArrangedSubview(messageScroll)
 
         for start in stride(from: 0, to: choices.count, by: 2) {
             let rowChoices = Array(choices[start..<min(start + 2, choices.count)])
@@ -97,10 +137,10 @@ final class PetInteractionPanelController: NSWindowController {
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
             stack.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
-            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 14)
+            stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 14),
+            stack.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -14)
         ])
-        let rowCount = max(1, (choices.count + 1) / 2)
-        let panelHeight = CGFloat(132 + rowCount * 50)
+        let panelHeight = min(maximumPanelHeight, fixedContentHeight + visibleMessageHeight)
         panel.setContentSize(NSSize(width: 380, height: panelHeight))
         panel.contentView = content
         panel.level = parent.level
@@ -109,6 +149,11 @@ final class PetInteractionPanelController: NSWindowController {
     }
 
     func updateLevel(_ level: NSWindow.Level) { window?.level = level }
+
+    func reposition(relativeTo parent: NSWindow) {
+        guard let panel = window as? NSPanel, panel.isVisible else { return }
+        position(panel, relativeTo: parent)
+    }
 
     func dismiss(notifying: Bool = true) {
         guard completion != nil || window?.isVisible == true else { return }

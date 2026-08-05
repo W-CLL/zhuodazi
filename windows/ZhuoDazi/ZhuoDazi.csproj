@@ -9,8 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ZhuoDazi</AssemblyName>
     <RootNamespace>ZhuoDazi</RootNamespace>
-    <Version>2.5.2</Version>
-    <FileVersion>2.5.2.0</FileVersion>
+    <Version>2.5.3</Version>
+    <FileVersion>2.5.3.0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\build\app-icon.ico</ApplicationIcon>

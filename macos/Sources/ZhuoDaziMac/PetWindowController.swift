@@ -549,13 +549,12 @@ final class PetWindowController {
     }
 
     private func beginDrag(at point: NSPoint) {
-        guard !interactionActive else { return }
         dragging = true
         velocity = .zero
         dragOffset = NSPoint(x: point.x - window.frame.origin.x, y: point.y - window.frame.origin.y)
         previousDragPoint = point
         previousDragTime = Date()
-        showReaction("grab")
+        if !interactionActive { showReaction("grab") }
     }
 
     private func continueDrag(to point: NSPoint) {
@@ -566,6 +565,7 @@ final class PetWindowController {
         previousDragPoint = point
         previousDragTime = now
         window.setFrameOrigin(NSPoint(x: point.x - dragOffset.x, y: point.y - dragOffset.y))
+        interactionPanel.reposition(relativeTo: window)
     }
 
     private func endDrag(at point: NSPoint) {

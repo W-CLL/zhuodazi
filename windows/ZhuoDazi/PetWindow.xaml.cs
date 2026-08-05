@@ -22,7 +22,10 @@ public partial class PetWindow : Window
 {
     private const int HotkeyId = 0xDA21;
     private const int WmHotkey = 0x0312;
-    private const double InteractionExtraHeight = 100;
+    private const double CollapsedBubbleHeight = 90;
+    private const double MinimumInteractionBubbleHeight = 190;
+    private const double MinimumScrollableMessageHeight = 76;
+    private const double WindowEdgeGap = 16;
     private readonly AppController _controller;
     private readonly AnimatedGifPlayer _gifPlayer;
     private readonly bool _isCompanion;
@@ -94,9 +97,6 @@ public partial class PetWindow : Window
         var bottom = IsLoaded && double.IsFinite(Top) ? Top + Height : double.NaN;
         Width = Math.Max(250, size + 70);
         _baseWindowHeight = Math.Max(320, size + 150);
-        Height = _baseWindowHeight + (IsInteractionVisible ? InteractionExtraHeight : 0);
-        BubbleRow.Height = new GridLength(IsInteractionVisible ? 190 : 90);
-        if (double.IsFinite(bottom)) AnchorBottomWithinWorkingArea(bottom);
         PetStage.Width = size + 20;
         PetStage.Height = size + 20;
         Opacity = _controller.Settings.Opacity / 100d;
@@ -110,6 +110,7 @@ public partial class PetWindow : Window
         PetImage.Visibility = _petLoaded ? Visibility.Visible : Visibility.Collapsed;
         DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
         NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough);
+        SetInteractionExpanded(IsInteractionVisible, bottom);
     }
 
     public void RefreshBehavior()
@@ -123,7 +124,7 @@ public partial class PetWindow : Window
     public void ShowReaction(string message)
     {
         if (string.IsNullOrWhiteSpace(message)) return;
-        if (IsInteractionVisible) CompleteInteraction(null);
+        if (IsInteractionVisible) return;
         SpeechText.Text = message;
         SpeechBubble.Visibility = Visibility.Visible;
         _speechTimer.Stop();
@@ -167,8 +168,9 @@ public partial class PetWindow : Window
             InteractionChoicePanel.Children.Add(button);
         }
 
-        SetInteractionExpanded(true);
         InteractionCard.Visibility = Visibility.Visible;
+        InteractionMessageScroll.ScrollToHome();
+        SetInteractionExpanded(true);
         if (!IsVisible) Show();
     }
 
@@ -186,11 +188,40 @@ public partial class PetWindow : Window
         callback?.Invoke(choice);
     }
 
-    private void SetInteractionExpanded(bool expanded)
+    private void SetInteractionExpanded(bool expanded, double? anchoredBottom = null)
     {
-        var bottom = IsLoaded && double.IsFinite(Top) ? Top + Height : double.NaN;
-        BubbleRow.Height = new GridLength(expanded ? 190 : 90);
-        Height = _baseWindowHeight + (expanded ? InteractionExtraHeight : 0);
+        var bottom = anchoredBottom ?? (IsLoaded && double.IsFinite(Top) ? Top + Height : double.NaN);
+        if (!expanded)
+        {
+            BubbleRow.Height = new GridLength(CollapsedBubbleHeight);
+            Height = _baseWindowHeight;
+            if (double.IsFinite(bottom)) AnchorBottomWithinWorkingArea(bottom);
+            return;
+        }
+
+        var area = GetWorkingArea();
+        var maximumBubbleHeight = Math.Max(
+            MinimumInteractionBubbleHeight,
+            CollapsedBubbleHeight + area.Height - _baseWindowHeight - WindowEdgeGap);
+
+        InteractionMessageScroll.ClearValue(MaxHeightProperty);
+        InteractionCard.Measure(new System.Windows.Size(Width, double.PositiveInfinity));
+
+        if (InteractionCard.DesiredSize.Height > maximumBubbleHeight)
+        {
+            var overflow = InteractionCard.DesiredSize.Height - maximumBubbleHeight;
+            InteractionMessageScroll.MaxHeight = Math.Max(
+                MinimumScrollableMessageHeight,
+                InteractionMessageScroll.DesiredSize.Height - overflow);
+            InteractionCard.Measure(new System.Windows.Size(Width, double.PositiveInfinity));
+        }
+
+        var bubbleHeight = Math.Clamp(
+            Math.Ceiling(InteractionCard.DesiredSize.Height),
+            MinimumInteractionBubbleHeight,
+            maximumBubbleHeight);
+        BubbleRow.Height = new GridLength(bubbleHeight);
+        Height = _baseWindowHeight + bubbleHeight - CollapsedBubbleHeight;
         if (double.IsFinite(bottom)) AnchorBottomWithinWorkingArea(bottom);
     }
 
