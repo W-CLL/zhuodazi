@@ -1,6 +1,6 @@
 # 桌搭子 macOS 版
 
-这是使用 Swift 与 AppKit 实现的原生 macOS 2.2.2 版，最低支持 macOS 13。
+这是使用 Swift 与 AppKit 实现的原生 macOS 2.2.3 版，最低支持 macOS 13。
 
 ## 当前功能
 
@@ -50,7 +50,7 @@ bash macos/scripts/build-app.sh
 
 从 `2.0.0` 开始，App、ZIP 和 GitHub Actions Artifact 都包含三段式版本号。当前版本示例：
 
-- `ZhuoDazi-macOS-2.2.2-arm64.zip`
-- `ZhuoDazi-macOS-2.2.2-x86_64.zip`
+- `ZhuoDazi-macOS-2.2.3-arm64.zip`
+- `ZhuoDazi-macOS-2.2.3-x86_64.zip`
 
 在线更新后台按 `macos/arm64` 与 `macos/x86_64` 分别上传、发布，不能上传 Windows EXE。以后配置 Developer ID 和公证凭据时，可在现有打包脚本后追加正式签名、公证和 DMG 步骤。
