@@ -192,7 +192,7 @@ public partial class SettingsWindow : Window
         catch (Exception error)
         {
             RefreshAll();
-            WpfMessageBox.Show(this, error.Message, "设置开机启动失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法修改开机启动设置。"), "设置开机启动失败", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -254,7 +254,7 @@ public partial class SettingsWindow : Window
         catch (Exception error)
         {
             InteractionContentStatusText.Text = _controller.InteractionStatus;
-            WpfMessageBox.Show(this, error.Message, "同步互动内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法同步互动内容，请稍后重试。"), "同步互动内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -275,7 +275,7 @@ public partial class SettingsWindow : Window
         catch (Exception error)
         {
             InteractionContentStatusText.Text = _controller.InteractionStatus;
-            WpfMessageBox.Show(this, error.Message, "下载离线内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法下载离线内容，请稍后重试。"), "下载离线内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -615,13 +615,13 @@ public partial class SettingsWindow : Window
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)
     {
         try { await _controller.Updates.CheckAsync(); }
-        catch (Exception error) { WpfMessageBox.Show(this, error.Message, "检查更新失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception error) { WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法检查更新，请稍后重试。"), "检查更新失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     private async void DownloadUpdate_Click(object sender, RoutedEventArgs e)
     {
         try { await _controller.Updates.DownloadAsync(); }
-        catch (Exception error) { WpfMessageBox.Show(this, error.Message, "下载更新失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception error) { WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法下载更新，请稍后重试。"), "下载更新失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     private void InstallUpdate_Click(object sender, RoutedEventArgs e)
@@ -633,7 +633,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception error)
         {
-            WpfMessageBox.Show(this, error.Message, "启动更新失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法启动更新，请稍后重试。"), "启动更新失败", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
     }
 
@@ -645,7 +645,7 @@ public partial class SettingsWindow : Window
     private void RunUiAction(Action action)
     {
         try { action(); }
-        catch (Exception error) { WpfMessageBox.Show(this, error.Message, "操作失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
+        catch (Exception error) { WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "操作未完成，请稍后重试。"), "操作失败", MessageBoxButton.OK, MessageBoxImage.Warning); }
     }
 
     private sealed class ReminderListItem

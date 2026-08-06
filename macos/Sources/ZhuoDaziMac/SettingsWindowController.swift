@@ -15,7 +15,7 @@ enum ActivationPrompts {
                 success.runModal()
                 return true
             } catch {
-                NSAlert(error: error).runModal()
+                presentFriendlyError(error, title: "绑定未完成")
             }
         }
     }
@@ -1020,7 +1020,19 @@ final class SettingsWindowController: NSWindowController {
         return alert.runModal() == .alertFirstButtonReturn
     }
 
-    private func show(_ error: Error) { NSAlert(error: error).runModal() }
+    private func show(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "操作未完成"
+        if let localized = error as? LocalizedError, let message = localized.errorDescription,
+           !message.isEmpty {
+            alert.informativeText = message
+        } else {
+            alert.informativeText = "请稍后重试；如果问题持续，请检查网络或联系支持。"
+        }
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
 
     private func showGuide(title: String, text: String) {
         let textView = NSTextView(frame: NSRect(x: 0, y: 0, width: 560, height: 300))

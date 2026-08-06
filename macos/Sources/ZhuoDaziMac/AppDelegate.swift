@@ -2,6 +2,22 @@ import AppKit
 import UserNotifications
 
 @MainActor
+func presentFriendlyError(_ error: Error, title: String) {
+    let alert = NSAlert()
+    alert.messageText = title
+    if let localized = error as? LocalizedError,
+       let message = localized.errorDescription,
+       !message.isEmpty {
+        alert.informativeText = message
+    } else {
+        alert.informativeText = "请稍后重试；如果问题持续，请检查网络或联系支持。"
+    }
+    alert.alertStyle = .warning
+    alert.addButton(withTitle: "知道了")
+    alert.runModal()
+}
+
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
     private var settings = AppSettings()
@@ -51,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 startPet()
             }
         } catch {
-            NSAlert(error: error).runModal()
+            presentFriendlyError(error, title: "启动失败")
             NSApplication.shared.terminate(nil)
         }
     }

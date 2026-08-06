@@ -223,7 +223,10 @@ public sealed class UpdateService : IDisposable
     {
         if (string.IsNullOrWhiteSpace(manifest.Version) || CompareVersions(manifest.Version, "0.0.0") <= 0)
             throw new InvalidOperationException("更新清单版本号无效。");
-        if (!Uri.TryCreate(manifest.Url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        if (!Uri.TryCreate(manifest.Url, UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || !uri.Host.Equals("in.desktoppet.online", StringComparison.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.StartsWith("/downloads/", StringComparison.Ordinal))
             throw new InvalidOperationException("更新下载地址无效。");
         if (manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit))
             throw new InvalidOperationException("更新清单缺少有效的 SHA-256。");

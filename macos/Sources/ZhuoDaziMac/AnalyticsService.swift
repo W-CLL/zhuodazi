@@ -45,11 +45,20 @@ final class AnalyticsService {
         guard let body = try? JSONSerialization.data(withJSONObject: ["events": events]) else { return }
         request.httpBody = body
         Task {
-            guard let (_, response) = try? await URLSession.shared.data(for: request),
-                  let http = response as? HTTPURLResponse,
-                  (200..<300).contains(http.statusCode),
-                  !FileManager.default.fileExists(atPath: firstLaunchMarkerURL.path) else { return }
-            try? Data(occurredAt.utf8).write(to: firstLaunchMarkerURL, options: .atomic)
+            for attempt in 0..<3 {
+                guard let (_, response) = try? await URLSession.shared.data(for: request),
+                      let http = response as? HTTPURLResponse else {
+                    if attempt < 2 { try? await Task.sleep(for: .seconds(attempt + 1)) }
+                    continue
+                }
+                if (200..<300).contains(http.statusCode) {
+                    if !FileManager.default.fileExists(atPath: firstLaunchMarkerURL.path) {
+                        try? Data(occurredAt.utf8).write(to: firstLaunchMarkerURL, options: .atomic)
+                    }
+                    return
+                }
+                if attempt < 2 { try? await Task.sleep(for: .seconds(attempt + 1)) }
+            }
         }
     }
 }

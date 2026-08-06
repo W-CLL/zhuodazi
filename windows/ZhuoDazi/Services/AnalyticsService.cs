@@ -31,17 +31,25 @@ public sealed class AnalyticsService : IDisposable
         try
         {
             var payload = JsonSerializer.SerializeToUtf8Bytes(new { events });
-            using var request = new HttpRequestMessage(HttpMethod.Post, EventsUrl)
+            for (var attempt = 0; attempt < 3; attempt++)
             {
-                Content = new ByteArrayContent(payload)
-            };
-            request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
-            request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
-            request.Headers.TryAddWithoutValidation("X-DeskPet-Platform", "windows");
-            request.Headers.TryAddWithoutValidation("X-DeskPet-Architecture", "x64");
-            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-            if (response.IsSuccessStatusCode && !File.Exists(_firstLaunchMarkerPath))
-                await File.WriteAllTextAsync(_firstLaunchMarkerPath, occurredAt);
+                using var request = new HttpRequestMessage(HttpMethod.Post, EventsUrl)
+                {
+                    Content = new ByteArrayContent(payload)
+                };
+                request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+                request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
+                request.Headers.TryAddWithoutValidation("X-DeskPet-Platform", "windows");
+                request.Headers.TryAddWithoutValidation("X-DeskPet-Architecture", "x64");
+                using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+                if (response.IsSuccessStatusCode)
+                {
+                    if (!File.Exists(_firstLaunchMarkerPath))
+                        await File.WriteAllTextAsync(_firstLaunchMarkerPath, occurredAt);
+                    return;
+                }
+                if (attempt < 2) await Task.Delay(TimeSpan.FromSeconds(attempt + 1));
+            }
         }
         catch
         {

@@ -100,7 +100,7 @@ final class UpdateService {
             return manifest
         } catch {
             availableManifest = nil
-            setStatus(.failed, error.localizedDescription, 0)
+            setStatus(.failed, friendlyMessage(for: error), 0)
             throw error
         }
     }
@@ -131,7 +131,7 @@ final class UpdateService {
             setStatus(.downloaded, "更新包已下载并通过校验", 100)
         } catch {
             downloadedArchive = nil
-            setStatus(.failed, error.localizedDescription, 0)
+            setStatus(.failed, friendlyMessage(for: error), 0)
             throw error
         }
     }
@@ -159,7 +159,9 @@ final class UpdateService {
         }
         guard manifest.version.range(of: "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$", options: .regularExpression) != nil,
               manifest.sha256.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil,
-              manifest.url.scheme == "https" || manifest.url.scheme == "http",
+               manifest.url.scheme == "https",
+               manifest.url.host?.lowercased() == "in.desktoppet.online",
+               manifest.url.path.hasPrefix("/downloads/"),
               manifest.signatureAlgorithm.lowercased() == "ed25519",
               let signature = Data(base64Encoded: manifest.signature) else {
             throw UpdateError.invalidManifest("更新清单格式无效")
@@ -194,6 +196,19 @@ final class UpdateService {
 
     private func setStatus(_ phase: UpdatePhase, _ message: String, _ progress: Int) {
         status = UpdateStatus(phase: phase, message: message, progress: progress)
+    }
+
+    private func friendlyMessage(for error: Error) -> String {
+        if let updateError = error as? UpdateError { return updateError.localizedDescription }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut: return "连接服务超时，请稍后重试。"
+            case .notConnectedToInternet, .networkConnectionLost:
+                return "暂时无法连接服务，请检查网络后重试。"
+            default: return "更新服务暂时不可用，请稍后重试。"
+            }
+        }
+        return "更新失败，请稍后重试。"
     }
 
     private static var architecture: String {

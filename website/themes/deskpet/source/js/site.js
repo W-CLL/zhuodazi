@@ -245,13 +245,20 @@
         occurredAt: new Date().toISOString()
       }]
     };
-    fetch(analyticsEndpoint, {
+    const request = fetch(analyticsEndpoint, {
       method: 'POST',
       mode: 'cors',
       keepalive: true,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
-    }).catch(() => {});
+    });
+    request.catch(() => {
+      try {
+        if (navigator.sendBeacon) {
+          navigator.sendBeacon(analyticsEndpoint, new Blob([JSON.stringify(body)], { type: 'application/json' }));
+        }
+      } catch {}
+    });
   };
 
   track('page_view');

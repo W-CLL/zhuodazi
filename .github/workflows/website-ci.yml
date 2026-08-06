@@ -1,0 +1,38 @@
+name: Website CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "scripts/check-release-consistency.py"
+      - ".github/workflows/website-ci.yml"
+  pull_request:
+    paths:
+      - "website/**"
+      - "scripts/check-release-consistency.py"
+      - ".github/workflows/website-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - name: Check release metadata
+        run: python3 scripts/check-release-consistency.py
+      - name: Install website dependencies
+        working-directory: website
+        run: npm ci
+      - name: Build Hexo site
+        working-directory: website
+        run: npm run check

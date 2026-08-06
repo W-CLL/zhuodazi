@@ -11,6 +11,13 @@ internal static class NetworkConnectionErrors
     {
         if (error is TaskCanceledException) return timeoutMessage;
         if (error is HttpRequestException) return SecureConnectionMessage;
-        return error.Message;
+        return "暂时无法连接服务，请检查网络后重试。";
+    }
+
+    internal static string ForUser(Exception error, string fallback)
+    {
+        return error is InvalidOperationException && !string.IsNullOrWhiteSpace(error.Message)
+            ? error.Message
+            : fallback;
     }
 }
