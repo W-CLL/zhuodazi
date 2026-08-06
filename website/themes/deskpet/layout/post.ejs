@@ -1,0 +1,17 @@
+<article class="article-page">
+  <header class="article-hero">
+    <div class="site-shell article-hero-inner reveal">
+      <a class="back-link" href="<%= url_for('/archives/') %>"><span aria-hidden="true">←</span> 所有文章</a>
+      <p class="section-kicker"><%= page.categories && page.categories.length ? page.categories.first().name : '桌搭子手记' %></p>
+      <h1><%= page.title %></h1>
+      <p class="article-date"><time datetime="<%= date_xml(page.date) %>"><%= date(page.date, 'YYYY 年 MM 月 DD 日') %></time></p>
+    </div>
+  </header>
+  <div class="site-shell article-layout">
+    <aside class="article-aside reveal">
+      <% if (page.cover) { %><img src="<%= url_for(page.cover) %>" width="160" height="160" alt=""><% } %>
+      <p>桌搭子手记</p>
+    </aside>
+    <div class="article-content reveal"><%- page.content %></div>
+  </div>
+</article>

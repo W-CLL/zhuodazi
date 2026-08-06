@@ -58,6 +58,10 @@ final class LicenseService {
         record.licenseId?.lowercased() ?? "pending-\(record.installationId.lowercased())"
     }
 
+    var installationId: String {
+        record.installationId
+    }
+
     init() throws {
         if let stored = try Self.readKeychain(service: service, account: account),
            let decoded = try? JSONDecoder().decode(LicenseRecord.self, from: stored),
@@ -88,6 +92,8 @@ final class LicenseService {
         request.timeoutInterval = 25
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+        request.setValue("macos", forHTTPHeaderField: "X-DeskPet-Platform")
+        request.setValue(Self.architecture, forHTTPHeaderField: "X-DeskPet-Architecture")
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -124,6 +130,14 @@ final class LicenseService {
             installationId: randomBytes(count: 16).map { String(format: "%02x", $0) }.joined(),
             credential: base64URLEncoded(randomBytes(count: 32))
         )
+    }
+
+    private static var architecture: String {
+#if arch(arm64)
+        return "arm64"
+#else
+        return "x86_64"
+#endif
     }
 
     private static func isValid(_ record: LicenseRecord) -> Bool {

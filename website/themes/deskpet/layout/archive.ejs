@@ -1,0 +1,21 @@
+<% const archivePosts = page.posts ? page.posts.sort('date', 'desc').toArray() : site.posts.sort('date', 'desc').toArray(); %>
+<section class="archive-page">
+  <div class="site-shell archive-head reveal">
+    <p class="section-kicker">桌搭子手记</p>
+    <h1>把桌面的日常，写下来。</h1>
+    <p>产品更新、桌宠养成和那些值得被记住的小瞬间。</p>
+  </div>
+  <div class="site-shell archive-list">
+    <% archivePosts.forEach(function(post, index) { %>
+      <article class="archive-item reveal">
+        <time datetime="<%= date_xml(post.date) %>"><%= date(post.date, 'YYYY.MM.DD') %></time>
+        <div>
+          <p class="archive-category"><%= post.categories && post.categories.length ? post.categories.first().name : '桌搭子手记' %></p>
+          <h2><a href="<%= url_for(post.path) %>"><%= post.title %></a></h2>
+          <p><%= post.excerpt || truncate(strip_html(post.content), {length: 120}) %></p>
+        </div>
+        <a class="archive-arrow" href="<%= url_for(post.path) %>" aria-label="阅读 <%= post.title %>">→</a>
+      </article>
+    <% }) %>
+  </div>
+</section>

@@ -23,6 +23,7 @@ public sealed class LicenseService : IDisposable
 
     public bool IsActivated => Guid.TryParse(_record.LicenseId, out _);
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
+    public string InstallationId => _record.InstallationId;
     public string Summary => IsActivated ? $"此设备已完成绑定 · {LicenseId[^8..]}" : "此设备尚未绑定";
 
     public LicenseService()
@@ -61,6 +62,8 @@ public sealed class LicenseService : IDisposable
         };
         request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
         request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
+        request.Headers.TryAddWithoutValidation("X-DeskPet-Platform", "windows");
+        request.Headers.TryAddWithoutValidation("X-DeskPet-Architecture", "x64");
         HttpResponseMessage response;
         try
         {

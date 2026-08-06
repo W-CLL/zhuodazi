@@ -21,3 +21,8 @@ xcuserdata/
 
 # Duplicate local packaging staging files
 **/build/build/
+
+# Hexo local dependencies, generated output and capture cache
+website/node_modules/
+website/public/
+website/.capture-*/

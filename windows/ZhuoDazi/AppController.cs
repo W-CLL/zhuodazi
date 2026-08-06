@@ -14,6 +14,7 @@ public sealed class AppController : IDisposable
 {
     private readonly SettingsStore _store = new();
     private readonly LicenseService _licenses;
+    private readonly AnalyticsService _analytics;
     private readonly StartupRegistrationService _startupRegistration = new();
     private readonly GifLibraryService _library = new();
     private readonly Random _random = new();
@@ -57,6 +58,7 @@ public sealed class AppController : IDisposable
     public AppController(LicenseService licenses)
     {
         _licenses = licenses;
+        _analytics = new AnalyticsService(_licenses);
         Settings = _store.Load();
         Updates = new UpdateService(_store, _licenses);
         Feedback = new FeedbackService(_licenses);
@@ -103,6 +105,7 @@ public sealed class AppController : IDisposable
         _interactionSyncTimer.Interval = TimeSpan.FromSeconds(5);
         _interactionSyncTimer.Start();
         Save();
+        _ = _analytics.TrackStartupAsync();
         if (Settings.AutoCheckUpdates)
         {
             var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
@@ -1088,6 +1091,7 @@ public sealed class AppController : IDisposable
         Updates.Dispose();
         Feedback.Dispose();
         Interactions.Dispose();
+        _analytics.Dispose();
         if (_tray is not null) _tray.Visible = false;
         _tray?.Dispose();
         _trayMenu?.Dispose();

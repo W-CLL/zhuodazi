@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settings = AppSettings()
     private var petController: PetWindowController!
     private var licenses: LicenseService!
+    private var analytics: AnalyticsService!
     private var interactions: InteractionService!
     private var updates: UpdateService!
     private var settingsWindow: SettingsWindowController?
@@ -26,6 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             settings = settingsStore.load()
             licenses = try LicenseService()
+            analytics = AnalyticsService(licenses: licenses)
             interactions = InteractionService(licenses: licenses)
             updates = UpdateService(licenses: licenses)
             petController = PetWindowController(settings: settings, interactions: interactions) { [weak self] settings in
@@ -67,6 +69,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         petController.show()
         petController.startInteractionServices()
         startReminderChecks()
+        analytics.trackStartup()
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard settings.autoCheckUpdates else { return }

@@ -1,0 +1,24 @@
+{
+  "name": "deskpet-site",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DeskPet product blog built with Hexo.",
+  "scripts": {
+    "clean": "hexo clean",
+    "build": "hexo clean && hexo generate",
+    "serve": "hexo server",
+    "check": "hexo clean && hexo generate"
+  },
+  "dependencies": {
+    "hexo": "8.1.2",
+    "hexo-generator-archive": "2.0.0",
+    "hexo-generator-category": "2.0.0",
+    "hexo-generator-index": "4.0.0",
+    "hexo-generator-tag": "2.0.0",
+    "hexo-renderer-ejs": "2.0.0",
+    "hexo-renderer-marked": "7.0.1"
+  },
+  "hexo": {
+    "version": "8.1.2"
+  }
+}
