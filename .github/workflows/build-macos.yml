@@ -58,7 +58,7 @@ jobs:
         run: |
           tag="macos-v${APP_VERSION}"
           title="ZhuoDazi macOS ${APP_VERSION}"
-          notes="macOS release. Ad-hoc signed and not notarized. Source commit: ${GITHUB_SHA}"
+          notes="修复互动内容显示问题，优化桌宠拖动体验。"
           asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
 
           release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"

@@ -114,7 +114,7 @@ jobs:
         run: |
           $tag = "v$env:APP_VERSION"
           $title = "ZhuoDazi Windows $env:APP_VERSION"
-          $notes = "Windows release. Source commit: $env:GITHUB_SHA"
+          $notes = "修复互动内容显示问题，优化桌宠拖动体验。"
           $assets = @(
             "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION.exe"
             "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"
