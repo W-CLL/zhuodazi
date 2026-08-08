@@ -277,6 +277,101 @@
     if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${bytes} B`;
   };
+
+  const resourceList = document.querySelector('[data-resource-list]');
+  const resourceState = document.querySelector('[data-resource-state]');
+  const resourceFilters = document.querySelectorAll('[data-resource-filter]');
+  let resourcePacks = [];
+  let resourceCategory = 'all';
+  const resourceCategoryLabel = (category) => category === 'theater-scripts' ? '小剧场剧本' : '互动词包';
+  const formatResourceDate = (value) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
+  };
+  const renderResourcePacks = () => {
+    if (!resourceList || !resourceState) return;
+    const visible = resourceCategory === 'all'
+      ? resourcePacks
+      : resourcePacks.filter((pack) => pack.category === resourceCategory);
+    resourceList.replaceChildren();
+    resourceList.hidden = visible.length === 0;
+    resourceState.hidden = visible.length > 0;
+    if (visible.length === 0) {
+      resourceState.querySelector('.resource-state-mark').textContent = '—';
+      resourceState.querySelector('p').textContent = resourcePacks.length
+        ? '这个分类暂时没有资源包'
+        : '资源包正在整理中，稍后再来看看';
+      return;
+    }
+
+    for (const pack of visible) {
+      const card = document.createElement('article');
+      card.className = 'resource-pack-card';
+      const header = document.createElement('div');
+      header.className = 'resource-pack-card-header';
+      const title = document.createElement('h3');
+      title.textContent = pack.title;
+      const category = document.createElement('span');
+      category.className = 'resource-pack-category';
+      category.dataset.category = pack.category;
+      category.textContent = resourceCategoryLabel(pack.category);
+      header.append(title, category);
+
+      const description = document.createElement('p');
+      description.className = 'resource-pack-description';
+      description.textContent = pack.description;
+
+      const footer = document.createElement('div');
+      footer.className = 'resource-pack-card-footer';
+      const meta = document.createElement('div');
+      meta.className = 'resource-pack-meta';
+      const size = document.createElement('span');
+      size.textContent = formatBytes(pack.size);
+      const date = document.createElement('span');
+      date.textContent = formatResourceDate(pack.createdAt);
+      meta.append(size, date);
+      const download = document.createElement('a');
+      download.className = 'button button-primary';
+      download.href = pack.url;
+      download.textContent = '下载 ZIP ↓';
+      download.addEventListener('click', () => track('download_click', {
+        platform: 'resource',
+        architecture: pack.category,
+        pagePath: window.location.pathname
+      }));
+      footer.append(meta, download);
+      card.append(header, description, footer);
+      resourceList.append(card);
+    }
+  };
+
+  resourceFilters.forEach((button) => {
+    button.addEventListener('click', () => {
+      resourceCategory = button.dataset.resourceFilter || 'all';
+      resourceFilters.forEach((item) => {
+        const selected = item === button;
+        item.classList.toggle('is-active', selected);
+        item.setAttribute('aria-selected', String(selected));
+      });
+      renderResourcePacks();
+    });
+  });
+
+  if (resourceList) {
+    fetch('https://in.desktoppet.online/api/public/resource-packs', { mode: 'cors' })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('resource request failed')))
+      .then((payload) => {
+        resourcePacks = Array.isArray(payload?.packs) ? payload.packs : [];
+        renderResourcePacks();
+      })
+      .catch(() => {
+        resourcePacks = [];
+        renderResourcePacks();
+        if (resourceState) resourceState.querySelector('p').textContent = '暂时无法读取资源包，请稍后再试';
+      });
+  }
+
   fetch('https://in.desktoppet.online/api/public/downloads', { mode: 'cors' })
     .then((response) => response.ok ? response.json() : null)
     .then((payload) => {

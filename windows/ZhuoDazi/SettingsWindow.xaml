@@ -356,9 +356,9 @@
                                         <Grid Margin="0,7,0,0">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="220"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                             <ComboBox x:Name="InteractionModeCombo" SelectionChanged="InteractionModeCombo_SelectionChanged">
-                                                <ComboBoxItem Content="安静（90–240 分钟）" Tag="quiet" />
-                                                <ComboBoxItem Content="标准（45–120 分钟）" Tag="standard" />
-                                                <ComboBoxItem Content="活跃（20–60 分钟）" Tag="lively" />
+                                                <ComboBoxItem Content="安静（60–120 分钟）" Tag="quiet" />
+                                                <ComboBoxItem Content="标准（30–60 分钟）" Tag="standard" />
+                                                <ComboBoxItem Content="活跃（10–30 分钟）" Tag="lively" />
                                             </ComboBox>
                                             <Button Grid.Column="1" Content="立即互动" Margin="10,0,0,0" Click="TryInteraction_Click" />
                                         </Grid>
@@ -618,7 +618,7 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
                                 <WrapPanel>
-                                    <Button Content="导入词包" Style="{StaticResource PrimaryButton}"
+                                    <Button Content="导入词包（可多选）" Style="{StaticResource PrimaryButton}"
                                             Click="ImportWords_Click" Margin="0,0,8,8" />
                                     <Button x:Name="DeleteWordPackButton" Content="删除" Style="{StaticResource DangerButton}"
                                             Click="DeleteWordPack_Click" Margin="0,0,8,8" />
@@ -646,7 +646,7 @@
                                     </ListBox.ItemTemplate>
                                 </ListBox>
                                 <WrapPanel>
-                                    <Button Content="导入剧本" Style="{StaticResource PrimaryButton}"
+                                    <Button Content="导入剧本（可多选）" Style="{StaticResource PrimaryButton}"
                                             Click="ImportTheaterScript_Click" Margin="0,0,8,8" />
                                     <Button x:Name="DeleteTheaterScriptButton" Content="删除" Style="{StaticResource DangerButton}"
                                             Click="DeleteTheaterScript_Click" Margin="0,0,8,8" />

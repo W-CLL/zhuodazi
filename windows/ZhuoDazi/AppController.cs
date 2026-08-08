@@ -388,26 +388,35 @@ public sealed class AppController : IDisposable
     public void StartTheater() => _ = RunTheaterAsync(true);
 
     public InteractionWordPackDefinition ImportInteractionWords(string filePath)
-    {
-        if (Settings.InteractionWordPacks.Count >= 5)
-            throw new InvalidOperationException("最多只能上传 5 个互动词包。");
-        var words = InteractionWordsService.Parse(filePath);
-        var baseName = Path.GetFileNameWithoutExtension(filePath);
-        var name = baseName;
-        var suffix = 2;
-        while (Settings.InteractionWordPacks.Any(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
-            name = $"{baseName} {suffix++}";
+        => ImportInteractionWords([filePath])[0];
 
-        var pack = new InteractionWordPackDefinition
+    public IReadOnlyList<InteractionWordPackDefinition> ImportInteractionWords(IEnumerable<string> filePaths)
+    {
+        var paths = filePaths.ToArray();
+        if (paths.Length == 0) return [];
+        if (Settings.InteractionWordPacks.Count + paths.Length > 5)
+            throw new InvalidOperationException("最多只能导入 5 个互动词包。");
+
+        var imported = new List<InteractionWordPackDefinition>();
+        foreach (var filePath in paths)
         {
-            Id = $"words-{Guid.NewGuid():N}",
-            Name = name,
-            Words = words
-        };
-        Settings.InteractionWordPacks.Add(pack);
-        Settings.ActiveInteractionWordPackId = pack.Id;
+            var baseName = Path.GetFileNameWithoutExtension(filePath);
+            var name = baseName;
+            var suffix = 2;
+            while (Settings.InteractionWordPacks.Concat(imported).Any(item => item.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                name = $"{baseName} {suffix++}";
+            imported.Add(new InteractionWordPackDefinition
+            {
+                Id = $"words-{Guid.NewGuid():N}",
+                Name = name,
+                Words = InteractionWordsService.Parse(filePath)
+            });
+        }
+
+        Settings.InteractionWordPacks.AddRange(imported);
+        Settings.ActiveInteractionWordPackId = imported[^1].Id;
         SaveAndRefresh();
-        return pack;
+        return imported;
     }
 
     public void SelectInteractionWordPack(string? id)
@@ -428,17 +437,29 @@ public sealed class AppController : IDisposable
     }
 
     public TheaterScriptDefinition ImportTheaterScript(string filePath)
+        => ImportTheaterScripts([filePath])[0];
+
+    public IReadOnlyList<TheaterScriptDefinition> ImportTheaterScripts(IEnumerable<string> filePaths)
     {
-        if (Settings.TheaterScripts.Count >= 10)
+        var paths = filePaths.ToArray();
+        if (paths.Length == 0) return [];
+        if (Settings.TheaterScripts.Count + paths.Length > 10)
             throw new InvalidOperationException("最多只能导入 10 个小剧场剧本。");
-        var script = TheaterScriptService.Parse(filePath);
-        var baseName = script.Name;
-        var suffix = 2;
-        while (Settings.TheaterScripts.Any(item => item.Name.Equals(script.Name, StringComparison.OrdinalIgnoreCase)))
-            script.Name = $"{baseName} {suffix++}";
-        Settings.TheaterScripts.Add(script);
+
+        var imported = new List<TheaterScriptDefinition>();
+        foreach (var filePath in paths)
+        {
+            var script = TheaterScriptService.Parse(filePath);
+            var baseName = script.Name;
+            var suffix = 2;
+            while (Settings.TheaterScripts.Concat(imported).Any(item => item.Name.Equals(script.Name, StringComparison.OrdinalIgnoreCase)))
+                script.Name = $"{baseName} {suffix++}";
+            imported.Add(script);
+        }
+
+        Settings.TheaterScripts.AddRange(imported);
         SaveAndRefresh();
-        return script;
+        return imported;
     }
 
     public void DeleteTheaterScript(string id)
@@ -791,8 +812,8 @@ public sealed class AppController : IDisposable
         var theaterScript = Settings.TheaterScripts.Count == 0
             ? null : Settings.TheaterScripts[_random.Next(Settings.TheaterScripts.Count)];
         var actorA = !string.IsNullOrWhiteSpace(originalPetPath) && File.Exists(originalPetPath)
-            ? originalPetPath : _library.Pick(_libraryFiles);
-        var actorB = _library.Pick(_libraryFiles, actorA);
+            ? originalPetPath : PickTemporaryPet();
+        var actorB = PickTemporaryPet(actorA);
         if (actorA is null || actorB is null || string.Equals(actorA, actorB, StringComparison.OrdinalIgnoreCase))
         {
             if (manual) main.ShowReaction("小剧场还缺一位演员，再准备一个 GIF 吧。");
@@ -1042,6 +1063,14 @@ public sealed class AppController : IDisposable
         _tray = new Forms.NotifyIcon { Icon = icon, Text = "桌搭子", Visible = true };
         _tray.DoubleClick += (_, _) => ShowSettings();
         RefreshTray();
+    }
+
+    private string? PickTemporaryPet(string? excluded = null)
+    {
+        var candidates = _libraryFiles
+            .Where(item => !string.Equals(item, excluded, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        return candidates.Length == 0 ? null : candidates[_random.Next(candidates.Length)];
     }
 
     private void RefreshTray()

@@ -3,7 +3,7 @@ import XCTest
 
 final class RandomBagTests: XCTestCase {
     func testEachCycleUsesEveryItemExactlyOnce() {
-        let files = (1...100).map { "pet-\($0)" }
+        let files = (1...262).map { "pet-\($0)" }
         let bag = RandomBag<String>()
 
         let firstCycle = takeCycle(bag, files: files)

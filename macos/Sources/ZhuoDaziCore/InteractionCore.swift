@@ -173,9 +173,9 @@ public enum InteractionRules {
 
     public static func scheduleBounds(for mode: String) -> ClosedRange<Int> {
         switch normalizeMode(mode) {
-        case "quiet": return 90...240
-        case "lively": return 20...60
-        default: return 45...120
+        case "quiet": return 60...120
+        case "lively": return 10...30
+        default: return 30...60
         }
     }
 

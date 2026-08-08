@@ -363,6 +363,7 @@ final class PetWindowController {
 
     @discardableResult
     func randomizePet() -> Bool {
+        guard theaterTask == nil, !interactionActive else { return false }
         guard let selected = petBag.next(from: petURLs, excluding: currentPetURL) else { return false }
         currentPetURL = selected
         petView.showPet(at: selected)
@@ -658,7 +659,7 @@ final class PetWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = view
         view.setMirrored(!settings.mirrored)
-        let companionURL = petBag.next(from: petURLs, excluding: currentPetURL) ?? currentPetURL
+        let companionURL = petURLs.filter { $0 != currentPetURL }.randomElement() ?? currentPetURL
         if let companionURL { view.showPet(at: companionURL) }
         return (panel, view)
     }

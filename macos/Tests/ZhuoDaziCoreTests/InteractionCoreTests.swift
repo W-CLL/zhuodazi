@@ -3,10 +3,10 @@ import XCTest
 
 final class InteractionCoreTests: XCTestCase {
     func testScheduleBoundsMatchInteractionModes() {
-        XCTAssertEqual(InteractionRules.scheduleBounds(for: "quiet"), 90...240)
-        XCTAssertEqual(InteractionRules.scheduleBounds(for: "standard"), 45...120)
-        XCTAssertEqual(InteractionRules.scheduleBounds(for: "lively"), 20...60)
-        XCTAssertEqual(InteractionRules.scheduleBounds(for: "unknown"), 45...120)
+        XCTAssertEqual(InteractionRules.scheduleBounds(for: "quiet"), 60...120)
+        XCTAssertEqual(InteractionRules.scheduleBounds(for: "standard"), 30...60)
+        XCTAssertEqual(InteractionRules.scheduleBounds(for: "lively"), 10...30)
+        XCTAssertEqual(InteractionRules.scheduleBounds(for: "unknown"), 30...60)
     }
 
     func testContentValidationRequiresAnswerAmongChoices() {

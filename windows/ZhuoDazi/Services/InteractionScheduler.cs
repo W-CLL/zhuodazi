@@ -6,9 +6,9 @@ internal static class InteractionScheduler
 {
     public static (int MinimumMinutes, int MaximumMinutes) Bounds(string mode) => mode switch
     {
-        "quiet" => (90, 240),
-        "lively" => (20, 60),
-        _ => (45, 120)
+        "quiet" => (60, 120),
+        "lively" => (10, 30),
+        _ => (30, 60)
     };
 
     public static TimeSpan NextDelay(string mode)

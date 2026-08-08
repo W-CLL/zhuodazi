@@ -1,0 +1,45 @@
+<section class="resource-hero">
+  <div class="site-shell resource-hero-inner">
+    <div class="resource-hero-copy reveal">
+      <p class="section-kicker">互动资源</p>
+      <h1>桌搭子资源包</h1>
+      <p>下载互动词包与小剧场剧本，解压后可在 Windows 和 macOS 客户端中多选导入。</p>
+    </div>
+    <div class="resource-hero-media reveal" aria-hidden="true">
+      <img src="<%= url_for('/images/pet-keyboard.gif') %>?v=<%= theme.asset_version %>" width="560" height="560" alt="">
+      <img src="<%= url_for('/images/pet-celebrate.gif') %>?v=<%= theme.asset_version %>" width="560" height="560" alt="">
+    </div>
+  </div>
+</section>
+
+<section class="resource-catalog" aria-labelledby="resource-catalog-title">
+  <div class="site-shell">
+    <div class="resource-catalog-heading reveal">
+      <div>
+        <p class="section-kicker">资源目录</p>
+        <h2 id="resource-catalog-title">挑一套喜欢的内容。</h2>
+      </div>
+      <div class="resource-filters" role="tablist" aria-label="资源分类">
+        <button class="is-active" type="button" role="tab" aria-selected="true" data-resource-filter="all">全部</button>
+        <button type="button" role="tab" aria-selected="false" data-resource-filter="interaction-words">互动词包</button>
+        <button type="button" role="tab" aria-selected="false" data-resource-filter="theater-scripts">小剧场剧本</button>
+      </div>
+    </div>
+    <div class="resource-list" data-resource-list aria-live="polite"></div>
+    <div class="resource-state" data-resource-state>
+      <span class="resource-state-mark" aria-hidden="true">...</span>
+      <p>正在读取资源包</p>
+    </div>
+  </div>
+</section>
+
+<section class="resource-import-note">
+  <div class="site-shell resource-import-note-inner reveal">
+    <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="">
+    <div>
+      <strong>下载 ZIP，解压后多选导入</strong>
+      <p>互动词包支持 JSON / TXT，小剧场剧本使用 JSON。客户端会在导入前检查格式和数量上限。</p>
+    </div>
+    <a class="button button-secondary" href="<%= url_for('/download/') %>">下载客户端</a>
+  </div>
+</section>

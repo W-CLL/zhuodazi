@@ -79,6 +79,7 @@ public partial class SettingsWindow : Window
         MouseInteractionCheck.IsChecked = settings.MouseInteractionEnabled;
         RandomMovementCheck.IsChecked = settings.RandomMovementEnabled;
         RandomInteractionCheck.IsChecked = settings.RandomInteractionsEnabled;
+        InteractionModeCombo.IsEnabled = settings.RandomInteractionsEnabled;
         foreach (var item in InteractionModeCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == settings.InteractionMode) item.IsSelected = true;
         TheaterEnabledCheck.IsChecked = settings.TheaterEnabled;
@@ -367,9 +368,9 @@ public partial class SettingsWindow : Window
 
     private void ImportWords_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new WpfOpenFileDialog { Title = "导入互动词包", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = false };
+        var dialog = new WpfOpenFileDialog { Title = "导入互动词包", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = true };
         if (dialog.ShowDialog(this) != true) return;
-        RunUiAction(() => _controller.ImportInteractionWords(dialog.FileName));
+        RunUiAction(() => _controller.ImportInteractionWords(dialog.FileNames));
     }
 
     private void WordPackList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -395,10 +396,10 @@ public partial class SettingsWindow : Window
         {
             Title = "导入小剧场剧本",
             Filter = "小剧场剧本 (*.json)|*.json",
-            Multiselect = false
+            Multiselect = true
         };
         if (dialog.ShowDialog(this) != true) return;
-        RunUiAction(() => _controller.ImportTheaterScript(dialog.FileName));
+        RunUiAction(() => _controller.ImportTheaterScripts(dialog.FileNames));
     }
 
     private void TheaterScriptList_SelectionChanged(object sender, SelectionChangedEventArgs e)

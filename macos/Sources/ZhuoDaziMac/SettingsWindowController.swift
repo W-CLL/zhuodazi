@@ -177,7 +177,7 @@ final class SettingsWindowController: NSWindowController {
 
         randomInteractionCheckbox.target = self
         randomInteractionCheckbox.action = #selector(behaviorChanged(_:))
-        interactionModePopup.addItems(withTitles: ["安静（90–240 分钟）", "标准（45–120 分钟）", "活跃（20–60 分钟）"])
+        interactionModePopup.addItems(withTitles: ["安静（60–120 分钟）", "标准（30–60 分钟）", "活跃（10–30 分钟）"])
         interactionModePopup.target = self
         interactionModePopup.action = #selector(behaviorChanged(_:))
         let interactNow = NSButton(title: "立即互动", target: self, action: #selector(startRandomInteraction))
@@ -457,6 +457,7 @@ final class SettingsWindowController: NSWindowController {
         mouseCheckbox.state = settings.mouseInteractionEnabled ? .on : .off
         movementCheckbox.state = settings.randomMovementEnabled ? .on : .off
         randomInteractionCheckbox.state = settings.randomInteractionsEnabled ? .on : .off
+        interactionModePopup.isEnabled = settings.randomInteractionsEnabled
         interactionModePopup.selectItem(at: interactionModes.firstIndex(of: settings.interactionMode) ?? 1)
         theaterCheckbox.state = settings.theaterEnabled ? .on : .off
         theaterIntervalPopup.selectItem(at: theaterIntervals.firstIndex(of: settings.theaterIntervalSeconds) ?? 2)
@@ -662,6 +663,7 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func behaviorChanged(_ sender: Any) {
         guard !refreshing else { return }
+        interactionModePopup.isEnabled = randomInteractionCheckbox.state == .on
         if sender as AnyObject === startupCheckbox {
             do { try LoginItemService.setEnabled(startupCheckbox.state == .on) }
             catch { startupCheckbox.state = LoginItemService.isEnabled ? .on : .off; show(error) }
@@ -812,10 +814,13 @@ final class SettingsWindowController: NSWindowController {
         let panel = NSOpenPanel()
         panel.title = "导入互动词包"
         panel.allowedFileTypes = ["json", "txt"]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
         do {
-            let pack = try InteractionWordPackImporter.load(from: url)
-            petController.update { $0.interactionWordPacks.append(pack); $0.activeInteractionWordPackId = pack.id }
+            let remaining = 5 - petController.currentSettings.interactionWordPacks.count
+            guard panel.urls.count <= remaining else { throw ContentImportError.limitReached("最多只能导入 5 个互动词包") }
+            let packs = try panel.urls.map { try InteractionWordPackImporter.load(from: $0) }
+            petController.update { $0.interactionWordPacks.append(contentsOf: packs); $0.activeInteractionWordPackId = packs.last?.id }
             refresh()
         } catch { show(error) }
     }
@@ -841,10 +846,13 @@ final class SettingsWindowController: NSWindowController {
         let panel = NSOpenPanel()
         panel.title = "导入小剧场剧本"
         panel.allowedFileTypes = ["json"]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+        panel.allowsMultipleSelection = true
+        guard panel.runModal() == .OK else { return }
         do {
-            let script = try TheaterScriptImporter.load(from: url)
-            petController.update { $0.theaterScripts.append(script) }
+            let remaining = 10 - petController.currentSettings.theaterScripts.count
+            guard panel.urls.count <= remaining else { throw ContentImportError.limitReached("最多只能导入 10 个小剧场剧本") }
+            let scripts = try panel.urls.map { try TheaterScriptImporter.load(from: $0) }
+            petController.update { $0.theaterScripts.append(contentsOf: scripts) }
             refresh()
         } catch { show(error) }
     }

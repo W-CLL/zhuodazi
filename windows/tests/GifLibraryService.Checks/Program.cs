@@ -162,6 +162,9 @@ internal static class Program
 
     private static void CheckInteractionSchedulerBounds()
     {
+        Require(InteractionScheduler.Bounds("quiet") == (60, 120), "The quiet interaction range changed unexpectedly.");
+        Require(InteractionScheduler.Bounds("standard") == (30, 60), "The standard interaction range changed unexpectedly.");
+        Require(InteractionScheduler.Bounds("lively") == (10, 30), "The lively interaction range changed unexpectedly.");
         foreach (var mode in new[] { "quiet", "standard", "lively" })
         {
             var bounds = InteractionScheduler.Bounds(mode);
@@ -194,7 +197,7 @@ internal static class Program
 
     private static void CheckGifLibraryRandomization()
     {
-        var files = Enumerable.Range(1, 100).Select(index => $"pet-{index:000}.gif").ToArray();
+        var files = Enumerable.Range(1, 262).Select(index => $"pet-{index:000}.gif").ToArray();
         var library = new GifLibraryService();
 
         var firstCycle = TakeCycle(library, files);
