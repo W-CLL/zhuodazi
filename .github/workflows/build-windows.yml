@@ -106,6 +106,7 @@ jobs:
           Compress-Archive -Path "windows/publish/win-x64/*" -DestinationPath $archive -CompressionLevel Optimal -Force
 
       - name: Upload Windows build artifacts
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ZhuoDazi-Windows-${{ env.APP_VERSION }}

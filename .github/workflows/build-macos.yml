@@ -51,6 +51,7 @@ jobs:
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
 
       - name: Upload macOS build artifact
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}
