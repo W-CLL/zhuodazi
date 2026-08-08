@@ -38,6 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var topmostItem: NSMenuItem!
     private var clickThroughItem: NSMenuItem!
     private var reminderTimer: Timer?
+    private var trialTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -57,9 +58,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !licenses.isActivated {
                 Task { @MainActor [weak self] in
                     guard let self else { return }
-                    guard await ActivationPrompts.activate(licenses: licenses, required: true) else {
-                        NSApplication.shared.terminate(nil)
-                        return
+                    do {
+                        let trial = try await licenses.checkTrial()
+                        if trial.allowed {
+                            scheduleTrialCheck(trial.remainingSeconds)
+                        } else {
+                            guard await ActivationPrompts.activate(
+                                licenses: licenses,
+                                required: true,
+                                statusMessage: "十分钟试用已结束，输入激活码后继续使用。"
+                            ) else {
+                                NSApplication.shared.terminate(nil)
+                                return
+                            }
+                        }
+                    } catch {
+                        guard await ActivationPrompts.activate(
+                            licenses: licenses,
+                            required: true,
+                            statusMessage: "暂时无法开始试用，也可以直接输入激活码继续。"
+                        ) else {
+                            NSApplication.shared.terminate(nil)
+                            return
+                        }
                     }
                     startPet()
                 }
@@ -93,6 +114,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = try? await updates.check()
             if let manifest = updates.availableManifest, manifest.version != settings.ignoredUpdateVersion {
                 petController.showBubble("发现新版本 v\(manifest.version)，可在设置中安装。")
+            }
+        }
+    }
+
+    private func scheduleTrialCheck(_ remainingSeconds: Int) {
+        trialTimer?.invalidate()
+        trialTimer = Timer.scheduledTimer(withTimeInterval: Double(max(1, min(600, remainingSeconds))), repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard !self.licenses.isActivated else { return }
+                do {
+                    let trial = try await self.licenses.checkTrial()
+                    if trial.allowed {
+                        self.scheduleTrialCheck(trial.remainingSeconds)
+                        return
+                    }
+                } catch { }
+                guard await ActivationPrompts.activate(
+                    licenses: self.licenses,
+                    required: true,
+                    statusMessage: "十分钟试用结束啦，输入激活码后继续使用。"
+                ) else {
+                    NSApplication.shared.terminate(nil)
+                    return
+                }
             }
         }
     }

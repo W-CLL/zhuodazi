@@ -105,6 +105,16 @@ jobs:
           $archive = "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"
           Compress-Archive -Path "windows/publish/win-x64/*" -DestinationPath $archive -CompressionLevel Optimal -Force
 
+      - name: Upload Windows build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZhuoDazi-Windows-${{ env.APP_VERSION }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}.exe
+            windows/dist/ZhuoDazi-Desktop-Pet-${{ env.APP_VERSION }}-portable.zip
+
       - name: Upload Windows packages to draft release
         if: github.event_name != 'pull_request'
         shell: pwsh
@@ -114,7 +124,7 @@ jobs:
         run: |
           $tag = "v$env:APP_VERSION"
           $title = "ZhuoDazi Windows $env:APP_VERSION"
-          $notes = "修复互动内容显示问题，优化桌宠拖动体验。"
+          $notes = "新增 10 分钟免费试用，完善激活与定制说明。"
           $assets = @(
             "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION.exe"
             "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"

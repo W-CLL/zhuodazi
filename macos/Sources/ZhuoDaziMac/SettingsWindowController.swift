@@ -2,9 +2,14 @@ import AppKit
 
 @MainActor
 enum ActivationPrompts {
-    static func activate(licenses: LicenseService, required: Bool, replacingExisting: Bool = false) async -> Bool {
+    static func activate(
+        licenses: LicenseService,
+        required: Bool,
+        replacingExisting: Bool = false,
+        statusMessage: String? = nil
+    ) async -> Bool {
         while true {
-            let prompt = InvitationWindowController(required: required)
+            let prompt = InvitationWindowController(required: required, statusMessage: statusMessage)
             guard let code = prompt.runModal() else { return false }
 
             do {
@@ -356,7 +361,7 @@ final class SettingsWindowController: NSWindowController {
         addSection("使用授权", to: stack)
         activationLabel.textColor = .secondaryLabelColor
         stack.addArrangedSubview(activationLabel)
-        stack.addArrangedSubview(NSButton(title: "更换邀请码", target: self, action: #selector(activateDevice)))
+        stack.addArrangedSubview(NSButton(title: "更换激活码", target: self, action: #selector(activateDevice)))
         stack.addArrangedSubview(separator())
         addSection("当前状态", to: stack)
         updateLabel.textColor = .secondaryLabelColor
@@ -960,8 +965,8 @@ final class SettingsWindowController: NSWindowController {
             guard let self else { return }
             if licenses.isActivated {
                 let confirm = NSAlert()
-                confirm.messageText = "更换邀请码"
-                confirm.informativeText = "输入新的邀请码后，当前设备会更新绑定记录。"
+                confirm.messageText = "更换激活码"
+                confirm.informativeText = "输入新的激活码后，当前设备会更新绑定记录。"
                 confirm.addButton(withTitle: "继续")
                 confirm.addButton(withTitle: "取消")
                 guard confirm.runModal() == .alertFirstButtonReturn else { return }

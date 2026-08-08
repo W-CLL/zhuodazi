@@ -814,7 +814,7 @@
                     <Grid Margin="0,0,0,18">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <CheckBox x:Name="AutoUpdateCheck" Content="自动检查更新" Click="AutoUpdateCheck_Click" VerticalAlignment="Center" />
-                        <Button Grid.Column="1" Content="更换邀请码" Click="Reactivate_Click" />
+                        <Button Grid.Column="1" Content="更换激活码" Click="Reactivate_Click" />
                     </Grid>
                     <WrapPanel>
                         <Button x:Name="CheckUpdateButton" Content="检查更新" Style="{StaticResource PrimaryButton}" Click="CheckUpdate_Click" Margin="0,0,8,0" />

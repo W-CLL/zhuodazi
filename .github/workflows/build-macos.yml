@@ -50,6 +50,14 @@ jobs:
           file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
 
+      - name: Upload macOS build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}
+          if-no-files-found: error
+          retention-days: 14
+          path: macos/dist/ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}.zip
+
       - name: Upload macOS package to draft release
         if: github.event_name != 'pull_request'
         env:
@@ -58,7 +66,7 @@ jobs:
         run: |
           tag="macos-v${APP_VERSION}"
           title="ZhuoDazi macOS ${APP_VERSION}"
-          notes="修复互动内容显示问题，优化桌宠拖动体验。"
+          notes="新增 10 分钟免费试用，完善激活与定制说明。"
           asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
 
           release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"

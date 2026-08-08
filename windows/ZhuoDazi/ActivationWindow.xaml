@@ -53,12 +53,12 @@
             <Image Width="52" Height="52" Source="pack://application:,,,/assets/app-icon.png" />
             <StackPanel Margin="14,1,0,0">
                 <TextBlock Text="欢迎带桌搭子回家" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
-                <TextBlock Text="输入邀请码，开始今天的陪伴" Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="先免费试用 10 分钟，满意后再激活" Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" />
             </StackPanel>
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,30,0,0">
-            <TextBlock Text="6 位邀请码" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+            <TextBlock Text="6 位激活码" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
             <TextBox x:Name="CodeTextBox" Height="58" Margin="0,9,0,0" MaxLength="6"
                      Padding="14,4" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                      FontFamily="Consolas" FontSize="27" FontWeight="SemiBold" CharacterCasing="Upper"
@@ -72,7 +72,7 @@
         </Grid>
 
         <StackPanel Grid.Row="3" Margin="0,4,0,16">
-            <Button x:Name="ContactToggleButton" Content="没有邀请码？联系作者获取  ›"
+            <Button x:Name="ContactToggleButton" Content="没有激活码？看看怎么支持作者  ›"
                     Click="ContactToggleButton_Click" HorizontalAlignment="Left"
                     MinHeight="30" Padding="0,4" BorderThickness="0" Background="Transparent"
                     Foreground="{StaticResource AccentBrush}" FontWeight="SemiBold" />
@@ -90,7 +90,7 @@
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <TextBlock Text="扫码添加作者微信" FontSize="16" FontWeight="SemiBold"
                                    Foreground="{StaticResource InkBrush}" />
-                        <TextBlock Margin="0,9,0,0" Text="备注「桌搭子」，即可联系获取邀请码。"
+                        <TextBlock Margin="0,9,0,0" Text="备注「桌搭子」，支付 6.68 元后领取激活码。"
                                    FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
                         <TextBlock Margin="0,12,0,0" Text="微信号" FontSize="11"
                                    Foreground="{StaticResource MutedBrush}" />
@@ -98,7 +98,7 @@
                                    Foreground="{StaticResource InkBrush}" />
                         <TextBlock Margin="0,13,0,0" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{StaticResource MutedBrush}"
-                                   Text="如果桌搭子刚好给你带来一点陪伴，也欢迎请作者喝一杯库迪，支持后续维护与更新。" />
+                                   Text="这 6.68 元不是赎金，是给作者续一杯咖啡：赞助继续开发，桌搭子继续营业。想定制角色、动作或功能，也可以直接聊。" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -106,7 +106,7 @@
 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="退出" Click="Exit_Click" Margin="0,0,8,0" />
-            <Button x:Name="ActivateButton" Content="开始使用" Width="112" Style="{StaticResource PrimaryButton}"
+            <Button x:Name="ActivateButton" Content="激活并继续" Width="112" Style="{StaticResource PrimaryButton}"
                     IsDefault="True" Click="ActivateButton_Click" />
         </StackPanel>
     </Grid>

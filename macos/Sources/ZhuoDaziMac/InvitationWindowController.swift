@@ -5,11 +5,11 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let input = NSTextField(string: "")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let contactButton = NSButton(title: "没有邀请码？联系作者获取  ›", target: nil, action: nil)
+    private let contactButton = NSButton(title: "没有激活码？看看怎么支持作者  ›", target: nil, action: nil)
     private let contactBox = NSBox()
     private var result: String?
 
-    init(required: Bool) {
+    init(required: Bool, statusMessage: String? = nil) {
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 350),
             styleMask: [.titled, .closable],
@@ -17,10 +17,10 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         super.init()
-        window.title = required ? "欢迎带桌搭子回家" : "更换邀请码"
+        window.title = required ? "欢迎带桌搭子回家" : "更换激活码"
         window.isReleasedWhenClosed = false
         window.delegate = self
-        buildInterface(required: required)
+        buildInterface(required: required, statusMessage: statusMessage)
         window.center()
     }
 
@@ -40,7 +40,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         return true
     }
 
-    private func buildInterface(required: Bool) {
+    private func buildInterface(required: Bool, statusMessage: String?) {
         let root = NSView()
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -56,19 +56,19 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         ])
         window.contentView = root
 
-        let heading = NSTextField(labelWithString: required ? "欢迎带桌搭子回家" : "更换邀请码")
+        let heading = NSTextField(labelWithString: required ? "欢迎带桌搭子回家" : "更换激活码")
         heading.font = .systemFont(ofSize: 23, weight: .bold)
         stack.addArrangedSubview(heading)
-        let subtitle = NSTextField(labelWithString: required ? "输入邀请码，开始今天的陪伴" : "输入新的邀请码以更新此设备的绑定")
+        let subtitle = NSTextField(labelWithString: required ? "先免费试用 10 分钟，满意后再激活" : "输入新的激活码以更新此设备的绑定")
         subtitle.textColor = .secondaryLabelColor
         stack.addArrangedSubview(subtitle)
 
-        let inputLabel = NSTextField(labelWithString: "6 位邀请码")
+        let inputLabel = NSTextField(labelWithString: "6 位激活码")
         inputLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         inputLabel.setContentHuggingPriority(.required, for: .vertical)
         stack.setCustomSpacing(24, after: subtitle)
         stack.addArrangedSubview(inputLabel)
-        input.placeholderString = "请输入邀请码"
+        input.placeholderString = "请输入激活码"
         input.font = .monospacedSystemFont(ofSize: 22, weight: .semibold)
         input.alignment = .center
         input.widthAnchor.constraint(equalToConstant: 444).isActive = true
@@ -77,7 +77,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
 
         statusLabel.textColor = .systemRed
         statusLabel.font = .systemFont(ofSize: 12)
-        statusLabel.stringValue = " "
+        statusLabel.stringValue = statusMessage ?? " "
         stack.addArrangedSubview(statusLabel)
 
         contactButton.target = self
@@ -92,7 +92,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(contactBox)
 
         let cancel = NSButton(title: required ? "退出" : "取消", target: self, action: #selector(cancelPrompt))
-        let submit = NSButton(title: "开始使用", target: self, action: #selector(submitPrompt))
+        let submit = NSButton(title: "激活并继续", target: self, action: #selector(submitPrompt))
         submit.keyEquivalent = "\r"
         submit.bezelColor = .controlAccentColor
         let buttons = NSStackView(views: [cancel, submit])
@@ -121,7 +121,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.cornerRadius = 8
         contactBox.contentViewMargins = NSSize(width: 14, height: 14)
         contactBox.widthAnchor.constraint(equalToConstant: 444).isActive = true
-        contactBox.heightAnchor.constraint(equalToConstant: 230).isActive = true
+        contactBox.heightAnchor.constraint(equalToConstant: 250).isActive = true
 
         let qrView = NSImageView()
         qrView.imageScaling = .scaleProportionallyUpOrDown
@@ -131,14 +131,14 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
 
         let title = NSTextField(labelWithString: "扫码添加作者微信")
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-        let note = wrappingLabel("备注「桌搭子」，即可联系获取邀请码。")
+        let note = wrappingLabel("备注「桌搭子」，支付 6.68 元后领取激活码。")
         let accountTitle = NSTextField(labelWithString: "微信号")
         accountTitle.font = .systemFont(ofSize: 11)
         accountTitle.textColor = .secondaryLabelColor
         let account = NSTextField(labelWithString: "wcl_lcw627")
         account.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
         account.isSelectable = true
-        let support = wrappingLabel("如果桌搭子刚好给你带来一点陪伴，也欢迎请作者喝一杯库迪，支持后续维护与更新。")
+        let support = wrappingLabel("这 6.68 元不是赎金，是给作者续一杯咖啡：赞助继续开发，桌搭子继续营业。想定制角色、动作或功能，也可以直接聊。")
 
         let copy = NSStackView(views: [title, note, accountTitle, account, support])
         copy.orientation = .vertical
@@ -156,7 +156,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         let label = NSTextField(wrappingLabelWithString: text)
         label.font = .systemFont(ofSize: 12)
         label.textColor = .secondaryLabelColor
-        label.maximumNumberOfLines = 4
+        label.maximumNumberOfLines = 6
         label.lineBreakMode = .byWordWrapping
         return label
     }
@@ -164,8 +164,8 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     @objc private func toggleContact() {
         let show = contactBox.isHidden
         contactBox.isHidden = !show
-        contactButton.title = show ? "收起联系方式  ‹" : "没有邀请码？联系作者获取  ›"
-        window.setContentSize(NSSize(width: 500, height: show ? 590 : 350))
+        contactButton.title = show ? "收起联系方式  ‹" : "没有激活码？看看怎么支持作者  ›"
+        window.setContentSize(NSSize(width: 500, height: show ? 620 : 350))
         window.center()
     }
 
@@ -174,7 +174,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         let normalized = input.stringValue.uppercased().filter { allowed.contains($0) }
         input.stringValue = String(normalized.prefix(6))
         guard input.stringValue.count == 6 else {
-            statusLabel.stringValue = "请输入完整的 6 位邀请码。"
+            statusLabel.stringValue = "请输入完整的 6 位激活码。"
             window.makeFirstResponder(input)
             return
         }

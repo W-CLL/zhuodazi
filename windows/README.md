@@ -1,6 +1,6 @@
 # 桌搭子 Windows 版
 
-这是桌搭子的 C# / WPF 原生实现。它继续使用旧版的 `%APPDATA%\poko-desktop-pet\settings.json`，因此自定义桌宠、词包、提醒和外观设置会自动迁移。首次运行必须使用管理后台生成的一次性邀请码，设备授权加密保存在同目录的 `license.dat`；线上互动缓存和待上传事件保存在 `interactions.json`。
+这是桌搭子的 C# / WPF 原生实现。它继续使用旧版的 `%APPDATA%\poko-desktop-pet\settings.json`，因此自定义桌宠、词包、提醒和外观设置会自动迁移。首次运行可免费试用 10 分钟，之后使用管理后台生成的一次性激活码继续使用；设备授权加密保存在同目录的 `license.dat`，线上互动缓存和待上传事件保存在 `interactions.json`。
 
 ## 开发运行
 

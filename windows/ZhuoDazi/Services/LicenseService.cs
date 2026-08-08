@@ -6,10 +6,13 @@ using System.Text.Json.Serialization;
 
 namespace ZhuoDazi.Services;
 
+public sealed record TrialStatus(bool Allowed, int RemainingSeconds);
+
 public sealed class LicenseService : IDisposable
 {
     internal const string ServiceBaseUrl = "https://in.desktoppet.online";
     private const string ActivationUrl = ServiceBaseUrl + "/api/activate";
+    private const string TrialUrl = ServiceBaseUrl + "/api/trial";
     private static readonly byte[] OptionalEntropy = Encoding.UTF8.GetBytes("ZhuoDazi.Native.License.v1");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,6 +23,7 @@ public sealed class LicenseService : IDisposable
     private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(25) };
     private readonly string _licensePath;
     private LicenseRecord _record;
+    private bool _trialActive;
 
     public bool IsActivated => Guid.TryParse(_record.LicenseId, out _);
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
@@ -46,7 +50,7 @@ public sealed class LicenseService : IDisposable
     {
         var code = new string((activationCode ?? string.Empty)
             .Trim().ToUpperInvariant().Where(char.IsLetterOrDigit).ToArray());
-        if (code.Length != 6) throw new InvalidOperationException("请输入有效的 6 位邀请码。");
+        if (code.Length != 6) throw new InvalidOperationException("请输入有效的 6 位激活码。");
 
         var candidate = replacingExisting ? CreatePendingRecord() : _record;
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
@@ -71,21 +75,21 @@ public sealed class LicenseService : IDisposable
         }
         catch (Exception error)
         {
-            var message = NetworkConnectionErrors.Format(error, "连接邀请服务超时。");
+            var message = NetworkConnectionErrors.Format(error, "连接激活服务超时。");
             throw new InvalidOperationException(message, error);
         }
         using (response)
         {
             var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
-            if (responseBytes.Length > 32 * 1024) throw new InvalidOperationException("邀请服务响应无效。");
+            if (responseBytes.Length > 32 * 1024) throw new InvalidOperationException("激活服务响应无效。");
             if (!response.IsSuccessStatusCode)
             {
-                var message = TryReadError(responseBytes) ?? "邀请码验证失败，请检查后重试。";
+                var message = TryReadError(responseBytes) ?? "激活码验证失败，请检查后重试。";
                 throw new InvalidOperationException(message);
             }
             var result = JsonSerializer.Deserialize<ActivationResponse>(responseBytes, JsonOptions);
             if (result is null || !Guid.TryParse(result.LicenseId, out _))
-                throw new InvalidOperationException("邀请服务返回的授权无效。");
+                throw new InvalidOperationException("激活服务返回的授权无效。");
             candidate.LicenseId = result.LicenseId;
             candidate.ActivatedAt = result.ActivatedAt;
             _record = candidate;
@@ -93,10 +97,53 @@ public sealed class LicenseService : IDisposable
         }
     }
 
+    public async Task<TrialStatus> CheckTrialAsync(CancellationToken cancellationToken = default)
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            installationId = _record.InstallationId,
+            credential = _record.Credential,
+            appVersion = UpdateService.CurrentVersion
+        });
+        using var request = new HttpRequestMessage(HttpMethod.Post, TrialUrl)
+        {
+            Content = new ByteArrayContent(payload)
+        };
+        request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+        request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
+        request.Headers.TryAddWithoutValidation("X-DeskPet-Platform", "windows");
+        request.Headers.TryAddWithoutValidation("X-DeskPet-Architecture", "x64");
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        }
+        catch (Exception error)
+        {
+            throw new InvalidOperationException(NetworkConnectionErrors.Format(error, "暂时无法获取试用状态，请稍后重试。"), error);
+        }
+        using (response)
+        {
+            var responseBytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
+            if (responseBytes.Length > 32 * 1024) throw new InvalidOperationException("试用服务响应无效。");
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException(TryReadError(responseBytes) ?? "试用时间校验失败，请稍后重试。");
+            var result = JsonSerializer.Deserialize<TrialResponse>(responseBytes, JsonOptions);
+            if (result is null || result.RemainingSeconds is < 0 or > 600)
+                throw new InvalidOperationException("试用服务返回的数据无效。");
+            _trialActive = result.Allowed && result.RemainingSeconds > 0;
+            return new TrialStatus(_trialActive, result.RemainingSeconds);
+        }
+    }
+
     public void Authorize(HttpRequestMessage request)
     {
-        if (!IsActivated) throw new InvalidOperationException("此设备尚未完成绑定。");
-        request.Headers.Authorization = new("Bearer", $"{_record.LicenseId}.{_record.Credential}");
+        if (IsActivated)
+            request.Headers.Authorization = new("Bearer", $"{_record.LicenseId}.{_record.Credential}");
+        else if (_trialActive)
+            request.Headers.Authorization = new("Trial", $"{_record.InstallationId}.{_record.Credential}");
+        else
+            throw new InvalidOperationException("此设备尚未完成绑定。");
         request.Headers.TryAddWithoutValidation("X-DeskPet-Version", UpdateService.CurrentVersion);
         request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
     }
@@ -184,6 +231,15 @@ public sealed class LicenseService : IDisposable
 
         [JsonPropertyName("activatedAt")]
         public string? ActivatedAt { get; set; }
+    }
+
+    private sealed class TrialResponse
+    {
+        [JsonPropertyName("allowed")]
+        public bool Allowed { get; set; }
+
+        [JsonPropertyName("remainingSeconds")]
+        public int RemainingSeconds { get; set; }
     }
 
     private sealed class ErrorResponse

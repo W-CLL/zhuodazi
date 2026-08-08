@@ -1,6 +1,6 @@
 # 桌搭子 macOS 版
 
-这是使用 Swift 与 AppKit 实现的原生 macOS 2.2.3 版，最低支持 macOS 13。
+这是使用 Swift 与 AppKit 实现的原生 macOS 2.2.4 版，最低支持 macOS 13。
 
 ## 当前功能
 
@@ -15,7 +15,7 @@
 - 菜单栏显示/隐藏和退出
 - Dock 应用图标与 App 图标；可在设置中切换是否显示 Dock 图标
 - 设置窗口：跟随鼠标、随机移动、自动换宠和始终置顶都会保存到本机
-- 首次使用邀请码完成设备绑定，设置中可更换邀请码；授权凭据保存在 macOS Keychain
+- 首次使用可免费试用 10 分钟，之后使用激活码完成设备绑定；设置中可更换激活码，授权凭据保存在 macOS Keychain
 - “反馈与建议”页支持提交问题或功能建议、查看处理状态和后台回复；每台设备最多同时保留 3 条待处理或进行中的反馈
 - 在线更新：仅获取当前 CPU 架构的 macOS ZIP，校验 Ed25519 清单签名和 SHA-256 后自动替换 App 并重启
 
@@ -50,7 +50,7 @@ bash macos/scripts/build-app.sh
 
 从 `2.0.0` 开始，App、ZIP 和 GitHub Actions Artifact 都包含三段式版本号。当前版本示例：
 
-- `ZhuoDazi-macOS-2.2.3-arm64.zip`
-- `ZhuoDazi-macOS-2.2.3-x86_64.zip`
+- `ZhuoDazi-macOS-2.2.4-arm64.zip`
+- `ZhuoDazi-macOS-2.2.4-x86_64.zip`
 
 在线更新后台按 `macos/arm64` 与 `macos/x86_64` 分别上传、发布，不能上传 Windows EXE。以后配置 Developer ID 和公证凭据时，可在现有打包脚本后追加正式签名、公证和 DMG 步骤。

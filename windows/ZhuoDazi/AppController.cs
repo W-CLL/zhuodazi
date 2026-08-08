@@ -138,7 +138,7 @@ public sealed class AppController : IDisposable
         if (activated)
         {
             StateChanged?.Invoke();
-            _petWindow?.ShowReaction("新的邀请码已经绑定完成。");
+            _petWindow?.ShowReaction("新的激活码已经绑定完成。");
             ScheduleInteractionSync();
         }
         return activated;

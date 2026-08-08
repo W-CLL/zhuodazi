@@ -14,6 +14,11 @@ private struct ActivationResponse: Decodable {
     let activatedAt: String?
 }
 
+struct TrialStatus {
+    let allowed: Bool
+    let remainingSeconds: Int
+}
+
 enum LicenseError: LocalizedError {
     case inactive
     case invalidActivationCode
@@ -26,11 +31,11 @@ enum LicenseError: LocalizedError {
         case .inactive:
             return "此设备尚未完成绑定"
         case .invalidActivationCode:
-            return "请输入 6 位有效邀请码"
+            return "请输入 6 位有效激活码"
         case .server(let message):
             return message
         case .invalidResponse:
-            return "邀请服务返回的数据无效"
+            return "激活服务返回的数据无效"
         case .keychain:
             return "无法安全保存本机授权信息"
         }
@@ -40,9 +45,11 @@ enum LicenseError: LocalizedError {
 final class LicenseService {
     static let serviceBaseURL = URL(string: "https://in.desktoppet.online")!
     private static let activationURL = serviceBaseURL.appendingPathComponent("api/activate")
+    private static let trialURL = serviceBaseURL.appendingPathComponent("api/trial")
     private let service = Bundle.main.bundleIdentifier ?? "com.zhuodazi.desktop-pet"
     private let account = "device-license"
     private var record: LicenseRecord
+    private var trialActive = false
 
     var isActivated: Bool {
         guard let identifier = record.licenseId else { return false }
@@ -101,7 +108,7 @@ final class LicenseService {
             throw LicenseError.invalidResponse
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw LicenseError.server(Self.readError(data) ?? "邀请码验证失败，请检查后重试")
+            throw LicenseError.server(Self.readError(data) ?? "激活码验证失败，请检查后重试")
         }
         guard let result = try? JSONDecoder().decode(ActivationResponse.self, from: data),
               UUID(uuidString: result.licenseId) != nil else {
@@ -113,9 +120,47 @@ final class LicenseService {
         try save()
     }
 
+    func checkTrial() async throws -> TrialStatus {
+        let payload: [String: String] = [
+            "installationId": record.installationId,
+            "credential": record.credential,
+            "appVersion": AppVersion.current
+        ]
+        var request = URLRequest(url: Self.trialURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 25
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+        request.setValue("macos", forHTTPHeaderField: "X-DeskPet-Platform")
+        request.setValue(Self.architecture, forHTTPHeaderField: "X-DeskPet-Architecture")
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard data.count <= 32 * 1024, let http = response as? HTTPURLResponse else {
+            throw LicenseError.invalidResponse
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw LicenseError.server(Self.readError(data) ?? "试用时间校验失败，请稍后重试")
+        }
+        guard let result = try? JSONDecoder().decode(TrialResponse.self, from: data),
+              (0...600).contains(result.remainingSeconds) else {
+            throw LicenseError.invalidResponse
+        }
+        trialActive = result.allowed && result.remainingSeconds > 0
+        return TrialStatus(
+            allowed: trialActive,
+            remainingSeconds: result.remainingSeconds
+        )
+    }
+
     func authorize(_ request: inout URLRequest) throws {
-        guard isActivated, let licenseId = record.licenseId else { throw LicenseError.inactive }
-        request.setValue("Bearer \(licenseId).\(record.credential)", forHTTPHeaderField: "Authorization")
+        if isActivated, let licenseId = record.licenseId {
+            request.setValue("Bearer \(licenseId).\(record.credential)", forHTTPHeaderField: "Authorization")
+        } else if trialActive {
+            request.setValue("Trial \(record.installationId).\(record.credential)", forHTTPHeaderField: "Authorization")
+        } else {
+            throw LicenseError.inactive
+        }
         request.setValue(AppVersion.current, forHTTPHeaderField: "X-DeskPet-Version")
         request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
     }
@@ -149,6 +194,11 @@ final class LicenseService {
             return false
         }
         return record.licenseId == nil || UUID(uuidString: record.licenseId!) != nil
+    }
+
+    private struct TrialResponse: Decodable {
+        let allowed: Bool
+        let remainingSeconds: Int
     }
 
     private static func randomBytes(count: Int) -> [UInt8] {

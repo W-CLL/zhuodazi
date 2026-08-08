@@ -1,5 +1,6 @@
 using System.Threading;
 using System.Windows;
+using System.Windows.Threading;
 using ZhuoDazi.Services;
 
 namespace ZhuoDazi;
@@ -12,6 +13,7 @@ public partial class App : System.Windows.Application
     private Thread? _signalThread;
     private ActivationWindow? _activationWindow;
     private LicenseService? _licenseService;
+    private DispatcherTimer? _trialTimer;
     private volatile bool _stopping;
     internal AppController? Controller { get; private set; }
 
@@ -29,7 +31,7 @@ public partial class App : System.Windows.Application
         };
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         _singleInstanceMutex = new Mutex(true, "Local\\ZhuoDazi.Native.Singleton", out var ownsMutex);
@@ -46,13 +48,31 @@ public partial class App : System.Windows.Application
             _licenseService = new LicenseService();
             if (!_licenseService.IsActivated)
             {
-                _activationWindow = new ActivationWindow(_licenseService);
-                var activated = _activationWindow.ShowDialog() == true;
-                _activationWindow = null;
-                if (!activated)
+                TrialStatus? trial = null;
+                string? trialMessage = null;
+                try
                 {
-                    Shutdown();
-                    return;
+                    trial = await _licenseService.CheckTrialAsync();
+                }
+                catch (Exception error)
+                {
+                    trialMessage = NetworkConnectionErrors.ForUser(
+                        error,
+                        "暂时无法开始试用，也可以直接输入激活码继续。");
+                }
+
+                if (trial is not { Allowed: true })
+                {
+                    trialMessage ??= "十分钟试用已结束，输入激活码后继续使用。";
+                    if (!ShowActivation(trialMessage))
+                    {
+                        Shutdown();
+                        return;
+                    }
+                }
+                else
+                {
+                    ScheduleTrialCheck(trial.RemainingSeconds);
                 }
             }
             Controller = new AppController(_licenseService);
@@ -71,6 +91,7 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _stopping = true;
+        _trialTimer?.Stop();
         _showSettingsSignal?.Set();
         _signalThread?.Join(TimeSpan.FromSeconds(1));
         _showSettingsSignal?.Dispose();
@@ -82,6 +103,47 @@ public partial class App : System.Windows.Application
             _singleInstanceMutex.Dispose();
         }
         base.OnExit(e);
+    }
+
+    private bool ShowActivation(string? status = null)
+    {
+        if (_licenseService is null) return false;
+        _activationWindow = new ActivationWindow(_licenseService, false, status);
+        var activated = _activationWindow.ShowDialog() == true;
+        _activationWindow = null;
+        return activated;
+    }
+
+    private void ScheduleTrialCheck(int remainingSeconds)
+    {
+        _trialTimer?.Stop();
+        _trialTimer = new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(Math.Clamp(remainingSeconds, 1, 600))
+        };
+        _trialTimer.Tick += TrialTimer_Tick;
+        _trialTimer.Start();
+    }
+
+    private async void TrialTimer_Tick(object? sender, EventArgs e)
+    {
+        _trialTimer?.Stop();
+        if (_licenseService is null || _licenseService.IsActivated) return;
+        try
+        {
+            var trial = await _licenseService.CheckTrialAsync();
+            if (trial.Allowed)
+            {
+                ScheduleTrialCheck(trial.RemainingSeconds);
+                return;
+            }
+        }
+        catch
+        {
+            // Expiry still requires a fresh online check; activation remains available.
+        }
+
+        if (!ShowActivation("十分钟试用结束啦，输入激活码后继续使用。")) Shutdown();
     }
 
     private void StartSettingsSignalListener()
