@@ -20,7 +20,7 @@
     <header class="site-header" data-site-header>
       <div class="site-shell header-inner">
         <a class="brand" href="<%= url_for('/') %>" aria-label="桌搭子首页">
-          <img src="<%= url_for('/images/app-icon.png') %>" width="38" height="38" alt="">
+          <img src="<%= url_for('/images/app-icon.png') %>" width="38" height="38" alt="" decoding="async">
           <span>桌搭子</span>
         </a>
         <nav class="site-nav" id="site-navigation" aria-label="主导航" data-site-nav>
@@ -50,7 +50,7 @@
       <div class="site-shell footer-inner">
         <div>
           <a class="brand footer-brand" href="<%= url_for('/') %>">
-            <img src="<%= url_for('/images/app-icon.png') %>" width="34" height="34" alt="">
+            <img src="<%= url_for('/images/app-icon.png') %>" width="34" height="34" alt="" loading="lazy" decoding="async">
             <span>桌搭子</span>
           </a>
           <p>让屏幕边角多一份刚好的陪伴。</p>

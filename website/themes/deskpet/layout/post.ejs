@@ -9,7 +9,7 @@
   </header>
   <div class="site-shell article-layout">
     <aside class="article-aside reveal">
-      <% if (page.cover) { %><img src="<%= url_for(page.cover) %>" width="160" height="160" alt=""><% } %>
+      <% if (page.cover) { %><img src="<%= url_for(page.cover) %>" width="160" height="160" alt="" loading="lazy" decoding="async"><% } %>
       <p>桌搭子手记</p>
     </aside>
     <div class="article-content reveal"><%- page.content %></div>

@@ -1099,7 +1099,7 @@ img {
 }
 
 .feature {
-  min-height: 294px;
+  min-height: 352px;
   padding: 29px 30px 33px 0;
 }
 
@@ -1118,8 +1118,24 @@ img {
   font-weight: 900;
 }
 
+.feature-media {
+  display: flex;
+  min-height: 120px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.feature-media img {
+  display: block;
+  width: 112px;
+  height: 112px;
+  margin-top: -7px;
+  object-fit: contain;
+}
+
 .feature h3 {
-  margin: 70px 0 12px;
+  margin: 25px 0 12px;
   font-size: 23px;
   line-height: 1.25;
 }
@@ -1195,6 +1211,14 @@ img {
 .client-tour figcaption strong,
 .client-shot figcaption strong {
   font-size: 14px;
+}
+
+.client-shot figcaption i {
+  margin-right: 8px;
+  color: var(--coral);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .client-shot-grid {
@@ -2777,7 +2801,16 @@ img {
   }
 
   .feature h3 {
-    margin-top: 33px;
+    margin-top: 18px;
+  }
+
+  .feature-media {
+    min-height: 96px;
+  }
+
+  .feature-media img {
+    width: 92px;
+    height: 92px;
   }
 
   .modes-layout {

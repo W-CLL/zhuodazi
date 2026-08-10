@@ -91,10 +91,10 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
-    private bool ShowActivation(string? status = null)
+    private bool ShowActivation(string? status = null, bool trialEnded = false)
     {
         if (_licenseService is null) return false;
-        _activationWindow = new ActivationWindow(_licenseService, false, status);
+        _activationWindow = new ActivationWindow(_licenseService, false, status, trialEnded);
         var activated = _activationWindow.ShowDialog() == true;
         _activationWindow = null;
         return activated;
@@ -131,7 +131,7 @@ public partial class App : System.Windows.Application
 
         _licenseService.EndTrial();
         Controller?.RefreshPremiumAccess("五分钟完整体验结束啦，基础陪伴继续免费营业。");
-        ShowActivation("激活后可继续使用小剧场、提醒、互动词包和外部 GIF 资源库。");
+        ShowActivation("输入激活码即可继续完整玩法，也可以先保留基础陪伴。", trialEnded: true);
         Controller?.RefreshPremiumAccess();
     }
 

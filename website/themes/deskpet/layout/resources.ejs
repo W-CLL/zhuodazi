@@ -11,8 +11,8 @@
       </dl>
     </div>
     <div class="resource-hero-media reveal" aria-hidden="true">
-      <img src="<%= url_for('/images/pet-keyboard.gif') %>?v=<%= theme.asset_version %>" width="560" height="560" alt="">
-      <img src="<%= url_for('/images/pet-celebrate.gif') %>?v=<%= theme.asset_version %>" width="560" height="560" alt="">
+      <img src="<%= url_for('/images/pet-keyboard.gif') %>?v=<%= theme.asset_version %>" width="560" height="560" alt="" decoding="async" fetchpriority="high">
+      <img src="<%= url_for('/images/pet-celebrate.gif') %>?v=<%= theme.asset_version %>" width="560" height="560" alt="" decoding="async" fetchpriority="high">
     </div>
   </div>
 </section>
@@ -84,7 +84,7 @@
 
 <section class="resource-import-note">
   <div class="site-shell resource-import-note-inner reveal">
-    <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="">
+    <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="" loading="lazy" decoding="async">
     <div>
       <strong>下载 ZIP，解压后多选导入</strong>
       <p>互动词包支持 JSON / TXT，小剧场剧本使用 JSON。客户端会在导入前检查格式和数量上限。</p>

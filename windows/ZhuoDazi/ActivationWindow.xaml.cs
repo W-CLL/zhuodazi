@@ -16,12 +16,23 @@ public partial class ActivationWindow : Window
     public ActivationWindow(
         LicenseService licenses,
         bool replacingExisting = false,
-        string? initialStatus = null)
+        string? initialStatus = null,
+        bool trialEnded = false)
     {
         _licenses = licenses;
         _replacingExisting = replacingExisting;
         InitializeComponent();
         ContinueButton.Content = replacingExisting ? "取消" : "继续使用免费版";
+        if (trialEnded)
+        {
+            Title = "完整体验结束，基础陪伴继续";
+            HeadingText.Text = "五分钟体验结束啦";
+            SubtitleText.Text = "桌搭子不会离开：基础陪伴继续免费；激活后可接着使用小剧场、提醒、互动词包和外部资源库。";
+            WebsiteButton.Content = "去官网看看玩法";
+            ContinueButton.Content = "继续基础陪伴";
+            ActivateButton.Content = "解锁完整功能";
+            ActivateButton.Width = 118;
+        }
         StatusText.Text = initialStatus ?? string.Empty;
         ContentRendered += (_, _) => CodeTextBox.Focus();
     }

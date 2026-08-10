@@ -6,10 +6,11 @@ enum ActivationPrompts {
         licenses: LicenseService,
         required: Bool,
         replacingExisting: Bool = false,
-        statusMessage: String? = nil
+        statusMessage: String? = nil,
+        trialEnded: Bool = false
     ) async -> Bool {
         while true {
-            let prompt = InvitationWindowController(required: required, statusMessage: statusMessage)
+            let prompt = InvitationWindowController(required: required, statusMessage: statusMessage, trialEnded: trialEnded)
             guard let code = prompt.runModal() else { return false }
 
             do {

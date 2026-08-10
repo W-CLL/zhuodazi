@@ -70,7 +70,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             if await ActivationPrompts.activate(
                                 licenses: licenses,
                                 required: true,
-                                statusMessage: "完整体验已结束；基础陪伴仍可免费使用。"
+                                statusMessage: "输入激活码即可继续完整玩法，也可以先保留基础陪伴。",
+                                trialEnded: true
                             ) {
                                 petController.refreshPremiumAccess()
                             }
@@ -133,7 +134,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if await ActivationPrompts.activate(
                     licenses: self.licenses,
                     required: true,
-                    statusMessage: "完整体验结束啦；激活后可继续使用小剧场、提醒、互动词包和外部资源库。"
+                    statusMessage: "输入激活码即可继续完整玩法，也可以先保留基础陪伴。",
+                    trialEnded: true
                 ) {
                     self.petController.refreshPremiumAccess()
                     self.settingsWindow?.refreshAccessState()

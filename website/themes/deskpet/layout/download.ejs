@@ -5,13 +5,13 @@
       <h1>下载桌搭子</h1>
       <p>选择适合你电脑的版本。安装后先体验互动、指定表情提醒、词包和小剧场，基础陪伴可以一直免费使用。</p>
       <div class="download-version-line">
-        <span data-release-version="windows/x64">Windows 3.0.0</span>
-        <span data-release-version="macos/arm64">macOS 3.0.0</span>
+        <span data-release-version="windows/x64">Windows 3.0.1</span>
+        <span data-release-version="macos/arm64">macOS 3.0.1</span>
         <span>2026.08 更新</span>
       </div>
     </div>
     <figure class="download-hero-media reveal">
-      <img src="<%= url_for('/images/screenshots/theater-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只桌搭子在小剧场中对白演出">
+      <img src="<%= url_for('/images/screenshots/theater-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只桌搭子在小剧场中对白演出" decoding="async" fetchpriority="high">
       <figcaption>小剧场场景演示</figcaption>
     </figure>
   </div>
@@ -29,7 +29,7 @@
           <span class="platform-mark">WIN</span>
           <div>
             <p>Windows</p>
-            <h3 data-release-version="windows/x64">桌搭子 3.0.0</h3>
+            <h3 data-release-version="windows/x64">桌搭子 3.0.1</h3>
           </div>
         </div>
         <p class="download-card-copy">适用于 Windows 10 22H2 与 Windows 11 x64。本站直接提供 EXE 安装包，并已包含 .NET 8 运行环境。</p>
@@ -46,7 +46,7 @@
           <span class="platform-mark platform-mark-mac">MAC</span>
           <div>
             <p>macOS</p>
-            <h3 data-release-version="macos/arm64">桌搭子 3.0.0</h3>
+            <h3 data-release-version="macos/arm64">桌搭子 3.0.1</h3>
           </div>
         </div>
         <p class="download-card-copy">为 Apple 芯片与 Intel 芯片分别准备。下载后解压，将桌搭子移入“应用程序”。</p>
@@ -91,7 +91,7 @@
 
 <section class="download-note">
   <div class="site-shell download-note-inner reveal">
-    <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="">
+    <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="" loading="lazy" decoding="async">
     <div><strong>只从本站下载安装包</strong><p>请认准 desktoppet.online。Windows 请下载 EXE 安装程序，不使用来历不明的便携包。</p></div>
   </div>
 </section>

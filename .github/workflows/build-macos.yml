@@ -67,7 +67,7 @@ jobs:
         run: |
           tag="macos-v${APP_VERSION}"
           title="ZhuoDazi macOS ${APP_VERSION}"
-          notes="3.0.0：新增免费模式与指定表情提醒；激活后解锁互动、小剧场、词包和外部资源库导入。"
+          notes="3.0.1：优化五分钟体验结束后的功能引导；基础陪伴仍可继续免费使用。"
           asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
 
           release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"

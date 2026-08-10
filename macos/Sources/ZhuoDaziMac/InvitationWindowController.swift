@@ -9,7 +9,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private let contactBox = NSBox()
     private var result: String?
 
-    init(required: Bool, statusMessage: String? = nil) {
+    init(required: Bool, statusMessage: String? = nil, trialEnded: Bool = false) {
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 395),
             styleMask: [.titled, .closable],
@@ -17,10 +17,10 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
         super.init()
-        window.title = required ? "解锁桌搭子完整功能" : "更换激活码"
+        window.title = trialEnded ? "完整体验结束，基础陪伴继续" : (required ? "解锁桌搭子完整功能" : "更换激活码")
         window.isReleasedWhenClosed = false
         window.delegate = self
-        buildInterface(required: required, statusMessage: statusMessage)
+        buildInterface(required: required, statusMessage: statusMessage, trialEnded: trialEnded)
         window.center()
     }
 
@@ -40,7 +40,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         return true
     }
 
-    private func buildInterface(required: Bool, statusMessage: String?) {
+    private func buildInterface(required: Bool, statusMessage: String?, trialEnded: Bool) {
         let root = NSView()
         let stack = NSStackView()
         stack.orientation = .vertical
@@ -56,12 +56,13 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         ])
         window.contentView = root
 
-        let heading = NSTextField(labelWithString: required ? "解锁桌搭子完整功能" : "更换激活码")
+        let heading = NSTextField(labelWithString: trialEnded ? "五分钟体验结束啦" : (required ? "解锁桌搭子完整功能" : "更换激活码"))
         heading.font = .systemFont(ofSize: 23, weight: .bold)
         stack.addArrangedSubview(heading)
-        let subtitle = NSTextField(wrappingLabelWithString: required
-            ? "基础陪伴永久免费；激活后解锁小剧场、提醒、互动词包和资源库导入"
-            : "输入新的激活码以更新此设备的绑定")
+        let subtitle = NSTextField(wrappingLabelWithString: trialEnded
+            ? "桌搭子不会离开：基础陪伴继续免费；激活后可接着使用小剧场、提醒、互动词包和外部资源库。"
+            : (required ? "基础陪伴永久免费；激活后解锁小剧场、提醒、互动词包和资源库导入"
+            : "输入新的激活码以更新此设备的绑定"))
         subtitle.textColor = .secondaryLabelColor
         subtitle.maximumNumberOfLines = 2
         subtitle.widthAnchor.constraint(equalToConstant: 444).isActive = true
@@ -79,7 +80,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         input.heightAnchor.constraint(equalToConstant: 42).isActive = true
         stack.addArrangedSubview(input)
 
-        statusLabel.textColor = .systemRed
+        statusLabel.textColor = trialEnded ? .secondaryLabelColor : .systemRed
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.stringValue = statusMessage ?? " "
         stack.addArrangedSubview(statusLabel)
@@ -95,9 +96,9 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.isHidden = true
         stack.addArrangedSubview(contactBox)
 
-        let website = NSButton(title: "去官网看看", target: self, action: #selector(openWebsite))
-        let cancel = NSButton(title: required ? "继续使用免费版" : "取消", target: self, action: #selector(cancelPrompt))
-        let submit = NSButton(title: "立即激活", target: self, action: #selector(submitPrompt))
+        let website = NSButton(title: trialEnded ? "去官网看看玩法" : "去官网看看", target: self, action: #selector(openWebsite))
+        let cancel = NSButton(title: trialEnded ? "继续基础陪伴" : (required ? "继续使用免费版" : "取消"), target: self, action: #selector(cancelPrompt))
+        let submit = NSButton(title: trialEnded ? "解锁完整功能" : "立即激活", target: self, action: #selector(submitPrompt))
         submit.keyEquivalent = "\r"
         submit.bezelColor = .controlAccentColor
         let buttons = NSStackView(views: [website, cancel, submit])
