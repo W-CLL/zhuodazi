@@ -194,7 +194,7 @@ final class PetWindowController {
 
     func downloadInteractionPack() async throws -> Int {
         guard hasPremiumAccess else { throw LicenseError.inactive }
-        try await interactions.downloadOfflinePack()
+        return try await interactions.downloadOfflinePack()
     }
 
     private func presentRandomInteraction(manual: Bool) async {
