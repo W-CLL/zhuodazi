@@ -41,12 +41,42 @@
   line-height: 1.04;
 }
 
-.resource-hero-copy > p:last-child {
+.resource-hero-lead {
   max-width: 650px;
   margin: 0;
   color: var(--muted);
   font-size: 18px;
   line-height: 1.8;
+}
+
+.resource-hero-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 30px 0 0;
+  padding: 22px 0 0;
+  border-top: 1px solid var(--line);
+}
+
+.resource-hero-stats div {
+  display: grid;
+  gap: 3px;
+}
+
+.resource-hero-stats dt,
+.resource-hero-stats dd {
+  margin: 0;
+}
+
+.resource-hero-stats dt {
+  color: var(--ink);
+  font-size: 21px;
+  font-weight: 900;
+}
+
+.resource-hero-stats dd {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .resource-hero-media {
@@ -69,6 +99,118 @@
 .resource-hero-media img:last-child {
   right: 0;
   bottom: 0;
+}
+
+.resource-preview {
+  padding: 78px 0 24px;
+  background: var(--surface);
+}
+
+.resource-preview-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 0.62fr);
+  align-items: end;
+  gap: 60px;
+}
+
+.resource-preview-heading h2 {
+  margin: 8px 0 0;
+  font-size: 38px;
+}
+
+.resource-preview-heading > p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.resource-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 38px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.resource-preview-block {
+  min-width: 0;
+  padding: 30px 34px 32px 0;
+}
+
+.resource-preview-block + .resource-preview-block {
+  padding-right: 0;
+  padding-left: 34px;
+  border-left: 1px solid var(--line);
+}
+
+.resource-preview-type,
+.resource-preview-meta {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.resource-preview-type {
+  margin: 0;
+}
+
+.resource-preview-block h3 {
+  margin: 8px 0 24px;
+  font-size: 23px;
+}
+
+.word-preview-list,
+.theater-preview-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.word-preview-list li {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 11px;
+  align-items: start;
+  padding: 12px 14px;
+  background: var(--canvas);
+  border-radius: 5px;
+}
+
+.word-preview-list span,
+.theater-preview-list span {
+  color: var(--mint-strong);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.word-preview-list q {
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.theater-preview-list li {
+  padding: 12px 14px;
+  background: var(--canvas);
+  border-radius: 5px;
+}
+
+.theater-preview-list p {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 8px;
+  margin: 0;
+  line-height: 1.55;
+}
+
+.theater-preview-list p + p {
+  margin-top: 8px;
+}
+
+.resource-preview-meta {
+  margin: 20px 0 0;
+  line-height: 1.65;
 }
 
 .resource-catalog {
@@ -280,6 +422,33 @@
     height: 160px;
   }
 
+  .resource-preview {
+    padding-top: 54px;
+  }
+
+  .resource-preview-heading,
+  .resource-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .resource-preview-heading {
+    gap: 18px;
+  }
+
+  .resource-preview-heading h2 {
+    font-size: 31px;
+  }
+
+  .resource-preview-block,
+  .resource-preview-block + .resource-preview-block {
+    padding: 26px 0;
+    border-left: 0;
+  }
+
+  .resource-preview-block + .resource-preview-block {
+    border-top: 1px solid var(--line);
+  }
+
   .resource-catalog {
     padding: 54px 0 64px;
   }
@@ -314,6 +483,11 @@
 }
 
 @media (max-width: 520px) {
+  .resource-hero-stats {
+    grid-template-columns: 1fr;
+    gap: 13px;
+  }
+
   .resource-filters {
     width: 100%;
     grid-template-columns: 1fr;
@@ -1822,9 +1996,52 @@ img {
 }
 
 .gallery-heading {
+  max-width: none;
   display: flex;
   align-items: end;
   justify-content: space-between;
+  gap: 56px;
+}
+
+.gallery-heading > div {
+  max-width: 650px;
+}
+
+.gallery-heading > p {
+  max-width: 390px;
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+
+.library-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 42px 0 0;
+  padding: 22px 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.library-facts div {
+  display: grid;
+  gap: 3px;
+}
+
+.library-facts dt,
+.library-facts dd {
+  margin: 0;
+}
+
+.library-facts dt {
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.library-facts dd {
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .gallery-grid {
@@ -1832,6 +2049,10 @@ img {
   grid-template-columns: repeat(3, 1fr);
   gap: 24px;
   margin-top: 53px;
+}
+
+.library-gallery {
+  margin-top: 32px;
 }
 
 .gallery-item {
@@ -1862,6 +2083,12 @@ img {
   z-index: 1;
   width: 150px;
   height: 150px;
+}
+
+.library-gallery .gallery-frame img {
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
 }
 
 .frame-mint { background: #cde9de; }
@@ -2382,6 +2609,35 @@ img {
     grid-template-columns: 1fr;
   }
 
+  .gallery-heading {
+    align-items: start;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .gallery-heading > p {
+    max-width: 620px;
+  }
+
+  .library-facts,
+  .library-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .library-facts div:last-child {
+    grid-column: 1 / -1;
+    margin-top: 16px;
+  }
+
+  .library-gallery .gallery-frame {
+    min-height: 200px;
+  }
+
+  .library-gallery .gallery-frame img {
+    width: 150px;
+    height: 150px;
+  }
+
   .customize-heading,
   .customize-panel,
   .client-showcase-heading,
@@ -2639,6 +2895,36 @@ img {
   .gallery-grid,
   .post-grid {
     margin-top: 38px;
+  }
+
+  .library-facts {
+    grid-template-columns: 1fr;
+  }
+
+  .library-facts div:last-child {
+    grid-column: auto;
+  }
+
+  .library-facts div + div {
+    margin-top: 13px;
+  }
+
+  .library-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px 10px;
+  }
+
+  .library-gallery .gallery-frame {
+    min-height: 158px;
+  }
+
+  .library-gallery .gallery-frame img {
+    width: 120px;
+    height: 120px;
+  }
+
+  .library-gallery .gallery-item strong {
+    font-size: 16px;
   }
 
   .customize-tabs {

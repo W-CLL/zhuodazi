@@ -181,36 +181,44 @@
   </div>
 </section>
 
-<section class="pet-gallery">
+<section class="pet-gallery" aria-labelledby="pet-gallery-title">
   <div class="site-shell">
     <div class="section-heading gallery-heading reveal">
-      <p class="section-kicker">桌面上的伙伴</p>
-      <h2>今天的表情，也可以由你选。</h2>
+      <div>
+        <p class="section-kicker">真实 GIF 素材库</p>
+        <h2 id="pet-gallery-title">一个目录，就是一整轮不重复的陪伴。</h2>
+      </div>
+      <p>把喜欢的 GIF 放进目录，桌搭子会按文件数量和切换时间随机播放；一轮全部出现后，才开始下一轮。</p>
     </div>
-    <div class="gallery-grid">
+    <dl class="library-facts reveal" aria-label="本次 GIF 素材盘点">
+      <div><dt>506</dt><dd>个 GIF 示例素材</dd></div>
+      <div><dt>200</dt><dd>最长单目录文件数</dd></div>
+      <div><dt>一轮不重复</dt><dd>完成后重新随机</dd></div>
+    </dl>
+    <div class="gallery-grid library-gallery">
       <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-mint"><img src="<%= url_for('/images/pet-wave.gif') %>" width="128" height="128" alt="挥手的桌搭子"></div>
-        <figcaption><strong>见面先打个招呼</strong><span>轻松开始一天</span></figcaption>
+        <div class="gallery-frame frame-mint"><img src="<%= url_for('/images/library/ride.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="骑着小猪前进的白色猫咪桌宠"></div>
+        <figcaption><strong>今天先出发</strong><span>每个动作都会轮到</span></figcaption>
       </figure>
       <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-yellow"><img src="<%= url_for('/images/pet-balance.gif') %>" width="128" height="128" alt="保持平衡的桌搭子"></div>
-        <figcaption><strong>忙里也要找平衡</strong><span>给自己留一口气</span></figcaption>
+        <div class="gallery-frame frame-yellow"><img src="<%= url_for('/images/library/together.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="两只猫咪靠在一起的桌宠动画"></div>
+        <figcaption><strong>搭子靠近一点</strong><span>双角色也能一起收藏</span></figcaption>
       </figure>
       <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-coral"><img src="<%= url_for('/images/pet-focus.gif') %>" width="128" height="128" alt="认真工作的桌搭子"></div>
-        <figcaption><strong>专注时也不孤单</strong><span>安静地坐在一旁</span></figcaption>
+        <div class="gallery-frame frame-coral"><img src="<%= url_for('/images/library/box.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="躲进纸箱的白色猫咪桌宠"></div>
+        <figcaption><strong>偶尔躲进纸箱</strong><span>安静动作也有出场机会</span></figcaption>
       </figure>
       <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-yellow"><img src="<%= url_for('/images/pet-reading.gif') %>" width="128" height="128" alt="正在读书的桌搭子"></div>
-        <figcaption><strong>陪你读完这一页</strong><span>一起进入安静时间</span></figcaption>
+        <div class="gallery-frame frame-yellow"><img src="<%= url_for('/images/library/heart.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="捧着爱心的白色猫咪桌宠"></div>
+        <figcaption><strong>给今天比个心</strong><span>下一只仍然随机</span></figcaption>
       </figure>
       <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-coral"><img src="<%= url_for('/images/pet-keyboard.gif') %>" width="128" height="128" alt="趴在键盘前的桌搭子"></div>
-        <figcaption><strong>键盘先借我一下</strong><span>偶尔也会占领工位</span></figcaption>
+        <div class="gallery-frame frame-coral"><img src="<%= url_for('/images/library/costume.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="穿着小熊装的灰色猫咪桌宠"></div>
+        <figcaption><strong>换件新衣服</strong><span>目录内容随时可以增减</span></figcaption>
       </figure>
       <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-mint"><img src="<%= url_for('/images/pet-celebrate.gif') %>" width="128" height="128" alt="举手庆祝的桌搭子"></div>
-        <figcaption><strong>完成就值得庆祝</strong><span>给今天一个小小彩蛋</span></figcaption>
+        <div class="gallery-frame frame-mint"><img src="<%= url_for('/images/library/peek.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="从屏幕边缘探头的白色猫咪桌宠"></div>
+        <figcaption><strong>从边缘探个头</strong><span>轮完一遍再重新洗牌</span></figcaption>
       </figure>
     </div>
   </div>
