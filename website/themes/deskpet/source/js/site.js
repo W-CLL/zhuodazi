@@ -335,9 +335,7 @@
       download.className = 'button button-primary';
       download.href = pack.url;
       download.textContent = '下载 ZIP ↓';
-      download.addEventListener('click', () => track('download_click', {
-        platform: 'resource',
-        architecture: pack.category,
+      download.addEventListener('click', () => track('resource_download_click', {
         pagePath: window.location.pathname
       }));
       footer.append(meta, download);
