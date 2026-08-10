@@ -2288,6 +2288,15 @@ img {
   color: var(--mint-strong);
 }
 
+.footer-disclaimer {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  opacity: .72;
+  text-align: center;
+}
+
 .article-hero {
   padding: 102px 0 66px;
   border-bottom: 1px solid var(--line);
