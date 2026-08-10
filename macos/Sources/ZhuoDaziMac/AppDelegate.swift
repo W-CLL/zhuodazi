@@ -66,7 +66,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             guard await ActivationPrompts.activate(
                                 licenses: licenses,
                                 required: true,
-                                statusMessage: "十分钟试用已结束，输入激活码后继续使用。"
+                                statusMessage: "五分钟试用已结束，输入激活码后继续使用。"
                             ) else {
                                 NSApplication.shared.terminate(nil)
                                 return
@@ -120,7 +120,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scheduleTrialCheck(_ remainingSeconds: Int) {
         trialTimer?.invalidate()
-        trialTimer = Timer.scheduledTimer(withTimeInterval: Double(max(1, min(600, remainingSeconds))), repeats: false) { [weak self] _ in
+        trialTimer = Timer.scheduledTimer(withTimeInterval: Double(max(1, min(300, remainingSeconds))), repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 guard !self.licenses.isActivated else { return }
@@ -134,7 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard await ActivationPrompts.activate(
                     licenses: self.licenses,
                     required: true,
-                    statusMessage: "十分钟试用结束啦，输入激活码后继续使用。"
+                    statusMessage: "五分钟试用结束啦，输入激活码后继续使用。"
                 ) else {
                     NSApplication.shared.terminate(nil)
                     return

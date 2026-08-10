@@ -63,7 +63,7 @@ public partial class App : System.Windows.Application
 
                 if (trial is not { Allowed: true })
                 {
-                    trialMessage ??= "十分钟试用已结束，输入激活码后继续使用。";
+                    trialMessage ??= "五分钟试用已结束，输入激活码后继续使用。";
                     if (!ShowActivation(trialMessage))
                     {
                         Shutdown();
@@ -119,7 +119,7 @@ public partial class App : System.Windows.Application
         _trialTimer?.Stop();
         _trialTimer = new DispatcherTimer
         {
-            Interval = TimeSpan.FromSeconds(Math.Clamp(remainingSeconds, 1, 600))
+            Interval = TimeSpan.FromSeconds(Math.Clamp(remainingSeconds, 1, 300))
         };
         _trialTimer.Tick += TrialTimer_Tick;
         _trialTimer.Start();
@@ -143,7 +143,7 @@ public partial class App : System.Windows.Application
             // Expiry still requires a fresh online check; activation remains available.
         }
 
-        if (!ShowActivation("十分钟试用结束啦，输入激活码后继续使用。")) Shutdown();
+        if (!ShowActivation("五分钟试用结束啦，输入激活码后继续使用。")) Shutdown();
     }
 
     private void StartSettingsSignalListener()

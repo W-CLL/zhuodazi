@@ -53,7 +53,7 @@
             <Image Width="52" Height="52" Source="pack://application:,,,/assets/app-icon.png" />
             <StackPanel Margin="14,1,0,0">
                 <TextBlock Text="欢迎带桌搭子回家" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
-                <TextBlock Text="先免费试用 10 分钟，满意后再激活" Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="先免费试用 5 分钟，满意后再激活" Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" />
             </StackPanel>
         </StackPanel>
 

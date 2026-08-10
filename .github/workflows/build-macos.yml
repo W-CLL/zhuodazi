@@ -67,7 +67,7 @@ jobs:
         run: |
           tag="macos-v${APP_VERSION}"
           title="ZhuoDazi macOS ${APP_VERSION}"
-          notes="新增 10 分钟免费试用，完善激活与定制说明。"
+          notes="免费体验调整为 5 分钟，更新内置桌宠资源库与默认设置。"
           asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
 
           release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"

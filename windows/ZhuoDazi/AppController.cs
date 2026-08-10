@@ -364,7 +364,7 @@ public sealed class AppController : IDisposable
     public void SetRandomPetConfig(bool enabled, int intervalSeconds)
     {
         Settings.RandomPetEnabled = enabled;
-        Settings.RandomPetIntervalSeconds = intervalSeconds is 30 or 60 or 300 or 600 or 1800 ? intervalSeconds : 300;
+        Settings.RandomPetIntervalSeconds = intervalSeconds is 30 or 60 or 300 or 600 or 1800 ? intervalSeconds : 30;
         if (enabled && _activeLibraryPetPath is null) _activeLibraryPetPath = _library.Pick(_libraryFiles);
         RestartRandomTimer();
         SaveAndRefresh();

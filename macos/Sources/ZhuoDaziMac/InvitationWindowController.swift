@@ -59,7 +59,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         let heading = NSTextField(labelWithString: required ? "欢迎带桌搭子回家" : "更换激活码")
         heading.font = .systemFont(ofSize: 23, weight: .bold)
         stack.addArrangedSubview(heading)
-        let subtitle = NSTextField(labelWithString: required ? "先免费试用 10 分钟，满意后再激活" : "输入新的激活码以更新此设备的绑定")
+        let subtitle = NSTextField(labelWithString: required ? "先免费试用 5 分钟，满意后再激活" : "输入新的激活码以更新此设备的绑定")
         subtitle.textColor = .secondaryLabelColor
         stack.addArrangedSubview(subtitle)
 

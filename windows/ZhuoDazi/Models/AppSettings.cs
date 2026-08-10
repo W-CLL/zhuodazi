@@ -11,7 +11,7 @@ public sealed class AppSettings
     public string? ActivePetId { get; set; }
 
     [JsonPropertyName("size")]
-    public int Size { get; set; } = 220;
+    public int Size { get; set; } = 140;
 
     [JsonPropertyName("opacity")]
     public int Opacity { get; set; } = 100;
@@ -66,7 +66,7 @@ public sealed class AppSettings
     public bool RandomPetEnabled { get; set; } = true;
 
     [JsonPropertyName("randomPetIntervalSeconds")]
-    public int RandomPetIntervalSeconds { get; set; } = 300;
+    public int RandomPetIntervalSeconds { get; set; } = 30;
 
     [JsonPropertyName("interactionWords")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -109,7 +109,7 @@ public sealed class AppSettings
             ? TheaterIntervalSeconds : 300;
         NormalizeTheaterScripts();
         RandomPetIntervalSeconds = RandomPetIntervalSeconds is 30 or 60 or 300 or 600 or 1800
-            ? RandomPetIntervalSeconds : 300;
+            ? RandomPetIntervalSeconds : 30;
         NormalizeLibraries();
         NormalizeInteractionWordPacks();
         Reminders = (Reminders ?? []).Take(20).ToList();

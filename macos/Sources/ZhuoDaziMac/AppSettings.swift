@@ -43,7 +43,7 @@ struct ReminderDefinition: Codable, Equatable, Identifiable {
 struct AppSettings: Codable {
     var pets: [PetDefinition] = []
     var activePetId: String?
-    var size = 220
+    var size = 140
     var opacity = 100
     var alwaysOnTop = true
     var startAtLogin = false
@@ -60,7 +60,7 @@ struct AppSettings: Codable {
     var libraries: [LibraryDefinition] = []
     var activeLibraryId: String?
     var randomPetEnabled = true
-    var randomPetIntervalSeconds = 300
+    var randomPetIntervalSeconds = 30
     var interactionWordPacks: [InteractionWordPackDefinition] = []
     var activeInteractionWordPackId: String?
     var autoCheckUpdates = true
@@ -76,7 +76,7 @@ struct AppSettings: Codable {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         pets = try values.decodeIfPresent([PetDefinition].self, forKey: .pets) ?? []
         activePetId = try values.decodeIfPresent(String.self, forKey: .activePetId)
-        size = try values.decodeIfPresent(Int.self, forKey: .size) ?? 220
+        size = try values.decodeIfPresent(Int.self, forKey: .size) ?? 140
         opacity = try values.decodeIfPresent(Int.self, forKey: .opacity) ?? 100
         alwaysOnTop = try values.decodeIfPresent(Bool.self, forKey: .alwaysOnTop) ?? true
         startAtLogin = try values.decodeIfPresent(Bool.self, forKey: .startAtLogin) ?? false
@@ -93,7 +93,7 @@ struct AppSettings: Codable {
         libraries = try values.decodeIfPresent([LibraryDefinition].self, forKey: .libraries) ?? []
         activeLibraryId = try values.decodeIfPresent(String.self, forKey: .activeLibraryId)
         randomPetEnabled = try values.decodeIfPresent(Bool.self, forKey: .randomPetEnabled) ?? true
-        randomPetIntervalSeconds = try values.decodeIfPresent(Int.self, forKey: .randomPetIntervalSeconds) ?? 300
+        randomPetIntervalSeconds = try values.decodeIfPresent(Int.self, forKey: .randomPetIntervalSeconds) ?? 30
         interactionWordPacks = try values.decodeIfPresent([InteractionWordPackDefinition].self, forKey: .interactionWordPacks) ?? []
         activeInteractionWordPackId = try values.decodeIfPresent(String.self, forKey: .activeInteractionWordPackId)
         autoCheckUpdates = try values.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? true
@@ -124,7 +124,7 @@ struct AppSettings: Codable {
         if !["lively", "shy", "clingy", "chaotic"].contains(personality) { personality = "lively" }
         if !["quiet", "standard", "lively"].contains(interactionMode) { interactionMode = "standard" }
         if ![60, 180, 300, 600, 1800].contains(theaterIntervalSeconds) { theaterIntervalSeconds = 300 }
-        if ![30, 60, 300, 600, 1800].contains(randomPetIntervalSeconds) { randomPetIntervalSeconds = 300 }
+        if ![30, 60, 300, 600, 1800].contains(randomPetIntervalSeconds) { randomPetIntervalSeconds = 30 }
         if !pets.contains(where: { $0.id == activePetId }) { activePetId = nil }
         if !libraries.contains(where: { $0.id == activeLibraryId }) { activeLibraryId = nil }
         if !interactionWordPacks.contains(where: { $0.id == activeInteractionWordPackId }) { activeInteractionWordPackId = nil }

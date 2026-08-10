@@ -39,7 +39,7 @@ final class SettingsWindowController: NSWindowController {
     private var interactionLoading = false
     private var feedbackItems: [FeedbackItem] = []
 
-    private let sizeSlider = NSSlider(value: 220, minValue: 140, maxValue: 300, target: nil, action: nil)
+    private let sizeSlider = NSSlider(value: 140, minValue: 140, maxValue: 300, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "220")
     private let opacitySlider = NSSlider(value: 100, minValue: 20, maxValue: 100, target: nil, action: nil)
     private let opacityValue = NSTextField(labelWithString: "100%")
@@ -467,7 +467,7 @@ final class SettingsWindowController: NSWindowController {
         clickThroughCheckbox.state = settings.clickThrough ? .on : .off
         dockCheckbox.state = settings.dockIconVisible ? .on : .off
         randomPetCheckbox.state = settings.randomPetEnabled ? .on : .off
-        randomIntervalPopup.selectItem(at: randomIntervals.firstIndex(of: settings.randomPetIntervalSeconds) ?? 2)
+        randomIntervalPopup.selectItem(at: randomIntervals.firstIndex(of: settings.randomPetIntervalSeconds) ?? 0)
         autoUpdateCheckbox.state = settings.autoCheckUpdates ? .on : .off
         refreshPets(settings)
         refreshLibraries(settings)

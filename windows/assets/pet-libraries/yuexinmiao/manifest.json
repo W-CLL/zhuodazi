@@ -4,8 +4,8 @@
   "sourcePage": "https://www.mfuns.net/article/120254",
   "downloadedAt": "2026-07-22T05:47:11.525Z",
   "imageProcess": "resize,w_800",
-  "count": 62,
-  "totalBytes": 9384197,
+  "count": 54,
+  "totalBytes": 7713891,
   "files": [
     {
       "file": "001-76dec374.gif",
@@ -13,27 +13,6 @@
       "downloadUrl": "https://cdn.mfuns.net/static/76dec37400340f5ec366d6cb18297472864594a6cbff5dcb325584ebfe3fcfc6.gif?image_process=resize,w_800",
       "bytes": 78254,
       "sha256": "454169e112850e0ce9da3ab87e3eafe2fb3d9d874b21c11e598ee0220de5f138"
-    },
-    {
-      "file": "002-5f621524.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/5f621524d076c94f4b37194ddb74ebc4142c23a91197ad8cfa948b5ebddb9871.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/5f621524d076c94f4b37194ddb74ebc4142c23a91197ad8cfa948b5ebddb9871.gif?image_process=resize,w_800",
-      "bytes": 263279,
-      "sha256": "89dd21974366756062c64c4eaec75a94f082967f96a93b32742d3d0ac56a5864"
-    },
-    {
-      "file": "003-f15f07bc.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/f15f07bc67045927910284507d91b7a8cca8c55375cd11804fb64688f4f4641c.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/f15f07bc67045927910284507d91b7a8cca8c55375cd11804fb64688f4f4641c.gif?image_process=resize,w_800",
-      "bytes": 242371,
-      "sha256": "8bb9f813e9755e5336f08a15f04ca84155f12f4c4a0dd9b59625acb3e78faa44"
-    },
-    {
-      "file": "004-e32f6b67.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/e32f6b6754cea6f19602410191f32856d4ecd06275ebd8acf11b4f8fc2b902d0.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/e32f6b6754cea6f19602410191f32856d4ecd06275ebd8acf11b4f8fc2b902d0.gif?image_process=resize,w_800",
-      "bytes": 204742,
-      "sha256": "ce6a076e9e7ee869c33ba5ff5378a8ea7409294fd947e0ad8dc2ae5c89d6d56d"
     },
     {
       "file": "005-5473df2b.gif",
@@ -48,13 +27,6 @@
       "downloadUrl": "https://cdn.mfuns.net/static/a3bde93e9c0b6f1e0dd35f8c98c746865eb55bcfd9f95523f0c288cacae7e566.gif?image_process=resize,w_800",
       "bytes": 140954,
       "sha256": "08065b4b638632054f21f4c46dec74d37c924c524d82b2037f929e782ed0afb6"
-    },
-    {
-      "file": "007-46cdc06e.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/46cdc06e12e301344ebd7ce13aa422340c92323c0969c1334cca9af52a95530a.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/46cdc06e12e301344ebd7ce13aa422340c92323c0969c1334cca9af52a95530a.gif?image_process=resize,w_800",
-      "bytes": 225297,
-      "sha256": "24113e8cc2b27bee62194934953c642d8c9a5ffb65ee650de477fd75dcb39491"
     },
     {
       "file": "008-49b6477d.gif",
@@ -146,13 +118,6 @@
       "downloadUrl": "https://cdn.mfuns.net/static/d98fca7f3e76a982be9b7fbc6e49ce6508955e92a6679c435a352051c34a66d9.gif?image_process=resize,w_800",
       "bytes": 304086,
       "sha256": "d98fca7f3e76a982be9b7fbc6e49ce6508955e92a6679c435a352051c34a66d9"
-    },
-    {
-      "file": "021-f95912f3.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/f95912f33f4fbad968a5340a67e088384cc04bc4ba9c5163a0a77c8f8d94f01a.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/f95912f33f4fbad968a5340a67e088384cc04bc4ba9c5163a0a77c8f8d94f01a.gif?image_process=resize,w_800",
-      "bytes": 144278,
-      "sha256": "145bed2fdc7e3e78b16043519ab2d4e69576142b799cb549eeb66b5ed707e54a"
     },
     {
       "file": "022-ac8f6073.gif",
@@ -251,13 +216,6 @@
       "downloadUrl": "https://cdn.mfuns.net/static/b423d8b5487f65994274887b04dbc597a67555be62b6ced321f29b1e2989b92c.gif?image_process=resize,w_800",
       "bytes": 79967,
       "sha256": "8e6875d5e878a3c82a2d97af20cfdad19f980023fa519240f52ac40812606d49"
-    },
-    {
-      "file": "036-b1b949f6.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/b1b949f6a1fd8c18a7ec1b809b1d58b6fc574a7047f277fb836f8f3b5ed77cbf.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/b1b949f6a1fd8c18a7ec1b809b1d58b6fc574a7047f277fb836f8f3b5ed77cbf.gif?image_process=resize,w_800",
-      "bytes": 206098,
-      "sha256": "73fcc9b68827322bbf98aa4857284ac6e456de4c29d708d69a682073e873a077"
     },
     {
       "file": "037-400563d3.gif",
@@ -421,25 +379,11 @@
       "sha256": "4a84e52765674bf39fa5e461dc7df86e3733de9b4ebbb7d89642efc23c58f142"
     },
     {
-      "file": "060-63dc58ca.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/63dc58cad38ca7ddec832b44032d525de2bfea3566801c58791f92959480ab27.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/63dc58cad38ca7ddec832b44032d525de2bfea3566801c58791f92959480ab27.gif?image_process=resize,w_800",
-      "bytes": 126741,
-      "sha256": "63dc58cad38ca7ddec832b44032d525de2bfea3566801c58791f92959480ab27"
-    },
-    {
       "file": "061-5ff14b32.gif",
       "sourceUrl": "https://cdn.mfuns.net/static/5ff14b3231653c3e5f79b7d57c550285ffca189c46905d16d56b699331c3ed11.gif",
       "downloadUrl": "https://cdn.mfuns.net/static/5ff14b3231653c3e5f79b7d57c550285ffca189c46905d16d56b699331c3ed11.gif?image_process=resize,w_800",
       "bytes": 80397,
       "sha256": "8468b5e52ed36527a2edba39057285f14d7923c2e3c13af1594df5d40f8154d7"
-    },
-    {
-      "file": "062-69bee7d8.gif",
-      "sourceUrl": "https://cdn.mfuns.net/static/69bee7d8517462ce957dc6df93a127d1e4e9be0ec758ef842c82e17356c9dda0.gif",
-      "downloadUrl": "https://cdn.mfuns.net/static/69bee7d8517462ce957dc6df93a127d1e4e9be0ec758ef842c82e17356c9dda0.gif?image_process=resize,w_800",
-      "bytes": 257500,
-      "sha256": "261a29c1ea6441e2686293ad01b61907be92bd692eb184fef7bca4e9bebe6b13"
     }
   ]
 }
