@@ -10,7 +10,7 @@
     <meta property="og:title" content="<%= page.title ? page.title + ' | ' + config.title : config.title %>">
     <meta property="og:description" content="<%= page.description || config.description %>">
     <meta property="og:url" content="<%= config.url + url_for(page.path || '/') %>">
-    <meta property="og:image" content="<%= config.url + url_for('/images/pet-work.gif') %>">
+    <meta property="og:image" content="<%= config.url + url_for('/images/collection/peach-headphones.gif') %>">
     <title><%= page.title ? page.title + ' | ' + config.title : config.title %></title>
     <link rel="icon" href="<%= url_for('/images/app-icon.png') %>" type="image/png">
     <link rel="stylesheet" href="<%= url_for('/css/site.css') %>?v=<%= theme.asset_version %>">
@@ -29,6 +29,7 @@
           <a href="<%= url_for('/#customize') %>">素材与互动</a>
           <a href="<%= url_for('/resources/') %>">资源包</a>
           <a href="<%= url_for('/download/') %>">下载</a>
+          <a href="<%= url_for('/#support') %>">支持</a>
           <a href="<%= url_for('/archives/') %>">动态</a>
           <a href="<%= url_for('/about/') %>">关于</a>
         </nav>
@@ -57,6 +58,7 @@
         <div class="footer-links">
           <a href="<%= url_for('/download/') %>">下载安装</a>
           <a href="<%= url_for('/resources/') %>">互动资源</a>
+          <a href="<%= url_for('/#support') %>">支持与定制</a>
           <a href="<%= url_for('/archives/') %>">产品动态</a>
           <a href="<%= url_for('/about/') %>">关于我们</a>
         </div>

@@ -41,9 +41,9 @@
       points: ['最多添加 3 个自定义桌宠', '最多绑定 3 个外部 GIF 目录', '支持手动切换与定时随机换宠'],
       status: '资源库 / 3 个来源',
       summary: '随机切换：每 5 分钟',
-      images: ['/images/pet-reading.gif', '/images/pet-rest.gif', '/images/pet-celebrate.gif'],
+      images: ['/images/collection/kitty-hope.gif', '/images/collection/line-dog-wait.gif', '/images/collection/rilakkuma-hug.gif'],
       items: ['我的角色.gif', '午后休息.gif', '下班啦.gif'],
-      alts: ['读书中的桌搭子', '休息中的桌搭子', '开心庆祝的桌搭子']
+      alts: ['期待回应的 Kitty 桌宠', '坐在长椅上的线条小狗桌宠', '抱着小兔的轻松熊桌宠']
     },
     interaction: {
       label: '互动词包',
@@ -52,9 +52,9 @@
       points: ['最多保留 5 套互动词包', '支持问候、夸夸、冷笑话和小知识', '在线内容也会缓存为离线包'],
       status: '互动词包 / 128 条台词',
       summary: '当前词包：下班前夸夸',
-      images: ['/images/pet-keyboard.gif', '/images/pet-balance.gif', '/images/pet-wave.gif'],
+      images: ['/images/collection/kitty-thanks.gif', '/images/collection/peach-headphones.gif', '/images/collection/pooh-wave.gif'],
       items: ['今日小问候.json', '下班前夸夸.txt', '冷笑话合集.json'],
-      alts: ['趴在键盘前的桌搭子', '保持平衡的桌搭子', '挥手的桌搭子']
+      alts: ['一起道谢的 Kitty 桌宠', '戴着耳机的蜜桃喵桌宠', '挥手走来的维尼桌宠']
     },
     personality: {
       label: '行为与性格',
@@ -63,9 +63,9 @@
       points: ['四种性格预设，一键切换', '鼠标响应、随机走动可独立开关', '支持开机启动、点击穿透和窗口行为'],
       status: '行为设置 / 活泼',
       summary: '鼠标互动：开启 · 随机走动：开启',
-      images: ['/images/pet-chair.gif', '/images/pet-balance.gif', '/images/pet-celebrate.gif'],
+      images: ['/images/collection/line-dog-drive.gif', '/images/collection/line-dog-wait.gif', '/images/collection/rilakkuma-car.gif'],
       items: ['活泼 · 会追着鼠标看', '害羞 · 偶尔躲起来', '混乱 · 随机小剧场'],
-      alts: ['趴在椅子上的桌搭子', '保持平衡的桌搭子', '开心庆祝的桌搭子']
+      alts: ['开着小车的线条小狗桌宠', '坐在长椅上的线条小狗桌宠', '开着小车的轻松熊桌宠']
     },
     theater: {
       label: '小剧场剧本',
@@ -74,9 +74,9 @@
       points: ['最多导入 10 个 JSON 剧本', '每段包含 3-5 轮双人对白', '每次演出随机抽取，随时可以跳过'],
       status: '小剧场 / 10 个剧本',
       summary: '下一场：《键盘争夺战》',
-      images: ['/images/pet-celebrate.gif', '/images/pet-reading.gif', '/images/pet-rest.gif'],
+      images: ['/images/collection/peach-ride.gif', '/images/collection/kitty-thanks.gif', '/images/collection/rilakkuma-hug.gif'],
       items: ['键盘争夺战.json', '午休联盟.json', '周五下班.json'],
-      alts: ['举手庆祝的桌搭子', '读书中的桌搭子', '休息中的桌搭子']
+      alts: ['骑着小猪的蜜桃喵桌宠', '一起道谢的 Kitty 桌宠', '抱着小兔的轻松熊桌宠']
     }
   };
 
@@ -134,22 +134,22 @@
       title: '安静陪伴',
       copy: '把它留在角落，需要时再轻轻回应。适合想沉下心的下午。',
       speech: '我在，慢慢来。',
-      image: '/images/pet-focus.gif',
-      alt: '桌搭子安静陪伴的动画'
+      image: '/images/collection/line-dog-wait.gif',
+      alt: '线条小狗安静陪伴的动画'
     },
     steady: {
       title: '标准互动',
       copy: '在忙碌和休息之间，偶尔说一句恰到好处的话。',
       speech: '要不要喝口水，再继续？',
-      image: '/images/pet-balance.gif',
-      alt: '桌搭子标准互动的动画'
+      image: '/images/collection/pooh-run.gif',
+      alt: '维尼标准互动的动画'
     },
     lively: {
       title: '热闹一点',
       copy: '让词包和小剧场多出现一会儿，给桌面添一点热闹。',
       speech: '今天也辛苦啦，给你一个小彩蛋！',
-      image: '/images/pet-wave.gif',
-      alt: '桌搭子热闹互动的动画'
+      image: '/images/collection/peach-headphones.gif',
+      alt: '蜜桃喵热闹互动的动画'
     }
   };
 
@@ -385,4 +385,18 @@
       }
     })
     .catch(() => {});
+
+  const xianyuLinks = document.querySelectorAll('[data-xianyu-link]');
+  if (xianyuLinks.length) {
+    fetch('https://in.desktoppet.online/api/public/site-settings', { mode: 'cors' })
+      .then((response) => response.ok ? response.json() : null)
+      .then((settings) => {
+        if (!settings?.xianyuUrl) return;
+        xianyuLinks.forEach((link) => {
+          link.href = settings.xianyuUrl;
+          link.hidden = false;
+        });
+      })
+      .catch(() => {});
+  }
 })();

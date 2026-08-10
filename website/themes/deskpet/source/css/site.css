@@ -1481,6 +1481,80 @@ img {
   flex: 0 0 auto;
 }
 
+.support-band {
+  padding: 74px 0;
+  background: var(--canvas);
+  border-bottom: 1px solid var(--line);
+}
+
+.support-inner {
+  display: grid;
+  gap: 34px;
+}
+
+.support-heading {
+  display: grid;
+  max-width: 760px;
+  gap: 15px;
+}
+
+.support-heading h2 {
+  max-width: 720px;
+  margin: 0;
+  font-size: 32px;
+  line-height: 1.22;
+}
+
+.support-heading > p:last-child,
+.support-option p,
+.support-contact p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.support-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 28px;
+}
+
+.support-option {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.support-option span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.support-option strong {
+  font-size: 19px;
+  font-weight: 750;
+}
+
+.support-option p {
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.support-contact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding-top: 22px;
+  border-top: 1px solid var(--line);
+}
+
+[data-xianyu-link][hidden] {
+  display: none;
+}
+
 .download-hero {
   overflow: hidden;
   padding: 96px 0 82px;
@@ -2614,7 +2688,8 @@ img {
   .feature-grid,
   .gallery-grid,
   .post-grid,
-  .modes-layout {
+  .modes-layout,
+  .support-options {
     grid-template-columns: 1fr;
   }
 
@@ -2874,6 +2949,7 @@ img {
   .client-showcase,
   .customize,
   .pet-gallery,
+  .support-band,
   .journal,
   .modes {
     padding: 77px 0;
@@ -2887,6 +2963,7 @@ img {
   .section-heading h2,
   .customize-heading h2,
   .client-showcase-heading h2,
+  .support-heading h2,
   .download-band h2,
   .download-section-heading h2,
   .install-guide h2,
@@ -2996,6 +3073,12 @@ img {
     align-items: start;
     flex-direction: column;
     gap: 27px;
+  }
+
+  .support-contact {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
   }
 
   .download-band .button {
