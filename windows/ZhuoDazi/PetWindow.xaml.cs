@@ -36,6 +36,7 @@ public partial class PetWindow : Window
     private HwndSource? _source;
     private string? _currentPetPath;
     private bool _petLoaded;
+    private int _appearanceVersion;
     private bool _isDragging;
     private Point _lastDragPoint;
     private long _lastDragTicks;
@@ -93,6 +94,7 @@ public partial class PetWindow : Window
 
     public void RefreshAppearance(string? petPath)
     {
+        _appearanceVersion++;
         var size = _controller.Settings.Size;
         var bottom = IsLoaded && double.IsFinite(Top) ? Top + Height : double.NaN;
         Width = Math.Max(250, size + 70);
@@ -130,6 +132,20 @@ public partial class PetWindow : Window
         _speechTimer.Stop();
         _speechTimer.Start();
         if (!IsVisible) Show();
+    }
+
+    public async void ShowReminder(string message, string? expressionPath)
+    {
+        ShowReaction(message);
+        if (string.IsNullOrWhiteSpace(expressionPath) || !File.Exists(expressionPath)) return;
+
+        var version = ++_appearanceVersion;
+        _currentPetPath = expressionPath;
+        _petLoaded = _gifPlayer.Load(expressionPath);
+        PetImage.Visibility = _petLoaded ? Visibility.Visible : Visibility.Collapsed;
+        DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
+        await Task.Delay(TimeSpan.FromSeconds(6));
+        if (IsLoaded && version == _appearanceVersion) RefreshAppearance(_controller.CurrentPetPath());
     }
 
     public bool IsInteractionVisible => InteractionCard.Visibility == Visibility.Visible;

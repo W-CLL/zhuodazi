@@ -45,14 +45,20 @@ public sealed class AppController : IDisposable
     public InteractionService Interactions { get; }
     public event Action? StateChanged;
     public bool IsExiting { get; private set; }
-    public LibraryDefinition? ActiveLibrary => Settings.Libraries.FirstOrDefault(item => item.Id == Settings.ActiveLibraryId);
-    public InteractionWordPackDefinition? ActiveInteractionWordPack => Settings.InteractionWordPacks
-        .FirstOrDefault(item => item.Id == Settings.ActiveInteractionWordPackId);
+    public bool HasPremiumAccess => _licenses.HasPremiumAccess;
+    public LibraryDefinition? ActiveLibrary => HasPremiumAccess
+        ? Settings.Libraries.FirstOrDefault(item => item.Id == Settings.ActiveLibraryId)
+        : null;
+    public InteractionWordPackDefinition? ActiveInteractionWordPack => HasPremiumAccess
+        ? Settings.InteractionWordPacks.FirstOrDefault(item => item.Id == Settings.ActiveInteractionWordPackId)
+        : null;
     public string LibraryName => ActiveLibrary?.Name ?? "月薪喵";
     public string LibraryPath => ActiveLibrary?.Path ?? "内置：月薪喵";
     public int LibraryCount => _libraryFiles.Count;
     public int InteractionWordCount => ActiveInteractionWordPack?.WordCount ?? 0;
-    public string LicenseSummary => _licenses.Summary;
+    public string LicenseSummary => _licenses.IsActivated
+        ? _licenses.Summary
+        : HasPremiumAccess ? "五分钟完整功能体验中" : "免费版 · 激活可解锁完整功能";
     public string InteractionStatus => Interactions.StatusSummary;
 
     public AppController(LicenseService licenses)
@@ -102,8 +108,11 @@ public sealed class AppController : IDisposable
         _idleTimer.Start();
         RestartTheaterTimer();
         RestartInteractionTimer();
-        _interactionSyncTimer.Interval = TimeSpan.FromSeconds(5);
-        _interactionSyncTimer.Start();
+        if (HasPremiumAccess)
+        {
+            _interactionSyncTimer.Interval = TimeSpan.FromSeconds(5);
+            _interactionSyncTimer.Start();
+        }
         Save();
         _ = _analytics.TrackStartupAsync();
         if (Settings.AutoCheckUpdates)
@@ -130,18 +139,36 @@ public sealed class AppController : IDisposable
         _settingsWindow.Activate();
     }
 
-    public bool ShowActivation(Window? owner = null)
+    public bool ShowActivation(Window? owner = null, string? status = null)
     {
-        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated);
+        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status);
         if (owner is not null) activationWindow.Owner = owner;
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
         {
-            StateChanged?.Invoke();
             _petWindow?.ShowReaction("新的激活码已经绑定完成。");
-            ScheduleInteractionSync();
+            RefreshPremiumAccess();
         }
+        StateChanged?.Invoke();
         return activated;
+    }
+
+    public bool RequestPremiumAccess(string feature, Window? owner = null)
+    {
+        if (HasPremiumAccess) return true;
+        return ShowActivation(owner ?? _settingsWindow, $"{feature}需要激活完整功能；基础陪伴仍可免费使用。");
+    }
+
+    public void RefreshPremiumAccess(string? message = null)
+    {
+        RefreshLibrary(true);
+        RestartRandomTimer();
+        RestartTheaterTimer();
+        RestartInteractionTimer();
+        _interactionSyncTimer.Stop();
+        if (HasPremiumAccess) ScheduleInteractionSync();
+        if (!string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
+        SaveAndRefresh();
     }
 
     public void ShowTrayMenu() => _trayMenu?.Show(Forms.Cursor.Position);
@@ -215,6 +242,7 @@ public sealed class AppController : IDisposable
 
     public void SetInteractionConfig(bool enabled, string mode)
     {
+        if (!RequestPremiumAccess("随机互动")) return;
         Settings.RandomInteractionsEnabled = enabled;
         Settings.InteractionMode = mode is "quiet" or "standard" or "lively" ? mode : "standard";
         Interactions.MarkProfileDirty(Settings.InteractionMode, enabled);
@@ -223,10 +251,14 @@ public sealed class AppController : IDisposable
         ScheduleInteractionSync();
     }
 
-    public void StartRandomInteraction() => _ = PresentRandomInteractionAsync(true);
+    public void StartRandomInteraction()
+    {
+        if (RequestPremiumAccess("互动内容")) _ = PresentRandomInteractionAsync(true);
+    }
 
     public async Task<int> SyncInteractionContentAsync(CancellationToken cancellationToken = default)
     {
+        if (!HasPremiumAccess) throw new InvalidOperationException("激活后可同步互动内容。");
         var profile = await Interactions.SyncProfileAsync(
             Settings.InteractionMode,
             Settings.RandomInteractionsEnabled,
@@ -240,6 +272,7 @@ public sealed class AppController : IDisposable
 
     public async Task<int> DownloadInteractionPackAsync(CancellationToken cancellationToken = default)
     {
+        if (!HasPremiumAccess) throw new InvalidOperationException("激活后可下载互动内容包。");
         var count = await Interactions.DownloadOfflinePackAsync(cancellationToken);
         StateChanged?.Invoke();
         return count;
@@ -247,6 +280,7 @@ public sealed class AppController : IDisposable
 
     public void SetTheaterConfig(bool enabled, int intervalSeconds)
     {
+        if (!RequestPremiumAccess("小剧场")) return;
         Settings.TheaterEnabled = enabled;
         Settings.TheaterIntervalSeconds = intervalSeconds is 60 or 180 or 300 or 600 or 1800
             ? intervalSeconds : 300;
@@ -315,6 +349,7 @@ public sealed class AppController : IDisposable
 
     public LibraryDefinition AddLibraryDirectory(string directory)
     {
+        if (!HasPremiumAccess) throw new InvalidOperationException("激活后可绑定外部 GIF 资源库。");
         if (!Directory.Exists(directory))
             throw new InvalidOperationException("GIF 资源库目录不存在。");
         if (Settings.Libraries.Count >= 3) throw new InvalidOperationException("最多只能绑定 3 个 GIF 资源库目录。");
@@ -342,6 +377,7 @@ public sealed class AppController : IDisposable
 
     public void SelectLibrary(string? id)
     {
+        if (id is not null && !RequestPremiumAccess("外部 GIF 资源库")) return;
         if (id is not null && !Settings.Libraries.Any(item => item.Id == id))
             throw new InvalidOperationException("所选资源库不存在。");
         Settings.ActiveLibraryId = id;
@@ -385,13 +421,17 @@ public sealed class AppController : IDisposable
         _petWindow?.ShowReaction(GetInteractionWord("switch", "换班完成，新选手登场。"));
     }
 
-    public void StartTheater() => _ = RunTheaterAsync(true);
+    public void StartTheater()
+    {
+        if (RequestPremiumAccess("小剧场")) _ = RunTheaterAsync(true);
+    }
 
     public InteractionWordPackDefinition ImportInteractionWords(string filePath)
         => ImportInteractionWords([filePath])[0];
 
     public IReadOnlyList<InteractionWordPackDefinition> ImportInteractionWords(IEnumerable<string> filePaths)
     {
+        if (!RequestPremiumAccess("互动词包导入")) return [];
         var paths = filePaths.ToArray();
         if (paths.Length == 0) return [];
         if (Settings.InteractionWordPacks.Count + paths.Length > 5)
@@ -421,6 +461,7 @@ public sealed class AppController : IDisposable
 
     public void SelectInteractionWordPack(string? id)
     {
+        if (id is not null && !RequestPremiumAccess("互动词包")) return;
         if (id is not null && !Settings.InteractionWordPacks.Any(item => item.Id == id))
             throw new InvalidOperationException("所选互动词包不存在。");
         Settings.ActiveInteractionWordPackId = id;
@@ -441,6 +482,7 @@ public sealed class AppController : IDisposable
 
     public IReadOnlyList<TheaterScriptDefinition> ImportTheaterScripts(IEnumerable<string> filePaths)
     {
+        if (!RequestPremiumAccess("小剧场剧本导入")) return [];
         var paths = filePaths.ToArray();
         if (paths.Length == 0) return [];
         if (Settings.TheaterScripts.Count + paths.Length > 10)
@@ -470,6 +512,7 @@ public sealed class AppController : IDisposable
 
     public void SaveReminder(ReminderDefinition reminder)
     {
+        if (!RequestPremiumAccess("提醒")) return;
         var existing = Settings.Reminders.FindIndex(item => item.Id == reminder.Id);
         if (existing < 0 && Settings.Reminders.Count >= 20) throw new InvalidOperationException("最多只能添加 20 个提醒。");
         reminder.Message = string.Join(' ', reminder.Message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -533,7 +576,7 @@ public sealed class AppController : IDisposable
     private void RestartTheaterTimer()
     {
         _theaterTimer.Stop();
-        if (_disposed || IsExiting || !Settings.TheaterEnabled) return;
+        if (_disposed || IsExiting || !HasPremiumAccess || !Settings.TheaterEnabled) return;
         _theaterTimer.Interval = TimeSpan.FromSeconds(Settings.TheaterIntervalSeconds);
         _theaterTimer.Start();
     }
@@ -541,7 +584,7 @@ public sealed class AppController : IDisposable
     private void RestartInteractionTimer()
     {
         _interactionTimer.Stop();
-        if (_disposed || IsExiting || !Settings.RandomInteractionsEnabled) return;
+        if (_disposed || IsExiting || !HasPremiumAccess || !Settings.RandomInteractionsEnabled) return;
         _interactionTimer.Interval = InteractionScheduler.NextDelay(Settings.InteractionMode);
         _interactionTimer.Start();
     }
@@ -549,6 +592,7 @@ public sealed class AppController : IDisposable
     private async Task PresentRandomInteractionAsync(bool manual)
     {
         _interactionTimer.Stop();
+        if (!HasPremiumAccess) return;
         if (_interactionActive || _theaterActive || _petWindow is not { IsVisible: true } pet)
         {
             RestartInteractionTimer();
@@ -748,6 +792,7 @@ public sealed class AppController : IDisposable
 
     private void ScheduleInteractionSync()
     {
+        if (!HasPremiumAccess) return;
         _interactionSyncRequested = true;
         if (_interactionSyncing) return;
         _interactionSyncTimer.Stop();
@@ -758,7 +803,7 @@ public sealed class AppController : IDisposable
 
     private async Task RunInteractionSyncAsync()
     {
-        if (_disposed || IsExiting) return;
+        if (_disposed || IsExiting || !HasPremiumAccess) return;
         if (_interactionSyncing)
         {
             _interactionSyncRequested = true;
@@ -802,6 +847,7 @@ public sealed class AppController : IDisposable
 
     private async Task RunTheaterAsync(bool manual)
     {
+        if (!HasPremiumAccess) return;
         if (_theaterActive || _interactionActive || _petWindow is not { IsVisible: true } main)
         {
             if (!_theaterActive) RestartTheaterTimer();
@@ -994,13 +1040,14 @@ public sealed class AppController : IDisposable
     private void CheckReminders()
     {
         CheckMidnightSecret();
+        if (!HasPremiumAccess) return;
         var now = DateTime.Now;
         var due = Settings.Reminders.Where(item => item.Enabled && item.At.HasValue && item.LocalTime <= now).ToArray();
         if (due.Length == 0) return;
         foreach (var reminder in due)
         {
             SetClickThrough(false);
-            _petWindow?.ShowReaction(reminder.Message);
+            _petWindow?.ShowReminder(reminder.Message, reminder.ExpressionPath);
             _tray?.ShowBalloonTip(4000, "桌搭子提醒", reminder.Message, Forms.ToolTipIcon.Info);
             if (reminder.RepeatDaily)
             {
@@ -1080,8 +1127,9 @@ public sealed class AppController : IDisposable
         _trayMenu.Items.Add("打开设置", null, (_, _) => ShowSettings());
         _trayMenu.Items.Add(_petWindow?.IsVisible == true ? "隐藏桌宠" : "显示桌宠", null, (_, _) => TogglePetVisibility());
         _trayMenu.Items.Add("随机换一只", null, (_, _) => RandomizePet()).Enabled = _libraryFiles.Count > 0;
-        _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
-        _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
+        var premiumSuffix = HasPremiumAccess ? string.Empty : "（激活解锁）";
+        _trayMenu.Items.Add($"来点互动{premiumSuffix}", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
+        _trayMenu.Items.Add($"上演小剧场{premiumSuffix}", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("始终置顶", null, (_, _) => SetAlwaysOnTop(!Settings.AlwaysOnTop)) { Checked = Settings.AlwaysOnTop });
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("鼠标穿透", null, (_, _) => SetClickThrough(!Settings.ClickThrough)) { Checked = Settings.ClickThrough });

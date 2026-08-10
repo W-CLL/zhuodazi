@@ -28,10 +28,12 @@ final class PetWindowController {
     var canRandomizePet: Bool { petURLs.count > 1 }
     var currentSettings: AppSettings { settings }
     var interactionStatus: String { interactions.statusSummary }
+    var hasPremiumAccess: Bool { premiumAccess() }
 
     private let window: NSPanel
     private let petView: PetCanvasView
     private let interactions: InteractionService
+    private let premiumAccess: () -> Bool
     private let petBag = RandomBag<URL>()
     private var petURLs: [URL] = []
     private var currentPetURL: URL?
@@ -51,6 +53,7 @@ final class PetWindowController {
     private let settingsChanged: (AppSettings) -> Void
     private var companionWindow: NSPanel?
     private var theaterTask: Task<Void, Never>?
+    private var reminderExpressionTask: Task<Void, Never>?
     private let interactionPanel: PetInteractionPanelController
     private var interactionActive = false
     private var interactionSyncTask: Task<Void, Never>?
@@ -61,12 +64,14 @@ final class PetWindowController {
     init(
         settings: AppSettings,
         interactions: InteractionService,
+        premiumAccess: @escaping () -> Bool,
         settingsChanged: @escaping (AppSettings) -> Void
     ) {
         var normalized = settings
         normalized.normalize()
         self.settings = normalized
         self.interactions = interactions
+        self.premiumAccess = premiumAccess
         self.settingsChanged = settingsChanged
         self.interactionPanel = PetInteractionPanelController()
 
@@ -113,6 +118,7 @@ final class PetWindowController {
         interactionTimer?.invalidate()
         interactionSyncTimer?.invalidate()
         theaterTask?.cancel()
+        reminderExpressionTask?.cancel()
         interactionSyncTask?.cancel()
         if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
         if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
@@ -126,8 +132,18 @@ final class PetWindowController {
     func showBubble(_ text: String) { petView.showBubble(text) }
 
     func startInteractionServices() {
+        guard hasPremiumAccess else { return }
         restartInteractionTimer()
         scheduleInteractionSync(after: 1)
+    }
+
+    func refreshPremiumAccess() {
+        reloadPetSources(forceSelection: true)
+        restartTimers()
+        restartInteractionTimer()
+        interactionSyncTimer?.invalidate()
+        interactionSyncTimer = nil
+        if hasPremiumAccess { scheduleInteractionSync(after: 1) }
     }
 
     func apply(_ newSettings: AppSettings) {
@@ -161,10 +177,12 @@ final class PetWindowController {
     }
 
     func startRandomInteraction() {
+        guard hasPremiumAccess else { return }
         Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: true) }
     }
 
     func syncInteractionContent() async throws -> Int {
+        guard hasPremiumAccess else { throw LicenseError.inactive }
         let profile = try await interactions.syncProfile(
             localMode: settings.interactionMode,
             localPromptsEnabled: settings.randomInteractionsEnabled
@@ -175,12 +193,14 @@ final class PetWindowController {
     }
 
     func downloadInteractionPack() async throws -> Int {
+        guard hasPremiumAccess else { throw LicenseError.inactive }
         try await interactions.downloadOfflinePack()
     }
 
     private func presentRandomInteraction(manual: Bool) async {
         interactionTimer?.invalidate()
         interactionTimer = nil
+        guard hasPremiumAccess else { return }
         guard !interactionActive, theaterTask == nil, window.isVisible else {
             restartInteractionTimer()
             return
@@ -373,6 +393,7 @@ final class PetWindowController {
 
     @discardableResult
     func startTheater() -> Bool {
+        guard hasPremiumAccess else { return false }
         guard theaterTask == nil, !interactionActive else { return false }
         let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
@@ -415,6 +436,7 @@ final class PetWindowController {
     }
 
     func fireDueReminders(at now: Date = Date()) -> [ReminderDefinition] {
+        guard hasPremiumAccess else { return [] }
         var fired: [ReminderDefinition] = []
         var changed = false
         for index in settings.reminders.indices where settings.reminders[index].enabled && settings.reminders[index].at <= now {
@@ -435,6 +457,15 @@ final class PetWindowController {
     func showReminder(_ reminder: ReminderDefinition) {
         showBubble(reminder.message)
         NSSound(named: "Glass")?.play()
+        guard let path = reminder.expressionPath, FileManager.default.fileExists(atPath: path) else { return }
+        let originalURL = currentPetURL
+        petView.showPet(at: URL(fileURLWithPath: path))
+        reminderExpressionTask?.cancel()
+        reminderExpressionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard let self, !Task.isCancelled, currentPetURL == originalURL, let originalURL else { return }
+            petView.showPet(at: originalURL)
+        }
     }
 
     private var clickAction: String {
@@ -447,7 +478,9 @@ final class PetWindowController {
     }
 
     private func showReaction(_ action: String) {
-        let imported = settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId })?.words[action]
+        let imported = hasPremiumAccess
+            ? settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId })?.words[action]
+            : nil
         let text = imported?.randomElement() ?? Self.defaultWords[action]?.randomElement() ?? "我在这里。"
         petView.showBubble(text)
     }
@@ -455,7 +488,8 @@ final class PetWindowController {
     private func reloadPetSources(forceSelection: Bool) {
         if let pet = settings.pets.first(where: { $0.id == settings.activePetId }) {
             petURLs = [URL(fileURLWithPath: pet.path)]
-        } else if let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
+        } else if hasPremiumAccess,
+                  let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
             petURLs = Self.scanPetURLs(in: URL(fileURLWithPath: library.path, isDirectory: true))
         } else {
             petURLs = Self.builtInPetURLs()
@@ -479,7 +513,7 @@ final class PetWindowController {
             RunLoop.main.add(timer, forMode: .common)
             randomPetTimer = timer
         }
-        if settings.theaterEnabled {
+        if hasPremiumAccess, settings.theaterEnabled {
             let timer = Timer(timeInterval: TimeInterval(settings.theaterIntervalSeconds), repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in _ = self?.startTheater() }
             }
@@ -491,7 +525,7 @@ final class PetWindowController {
     private func restartInteractionTimer() {
         interactionTimer?.invalidate()
         interactionTimer = nil
-        guard settings.randomInteractionsEnabled else { return }
+        guard hasPremiumAccess, settings.randomInteractionsEnabled else { return }
         let timer = Timer(
             timeInterval: InteractionRules.nextDelay(for: settings.interactionMode),
             repeats: false
@@ -503,6 +537,7 @@ final class PetWindowController {
     }
 
     private func scheduleInteractionSync(after delay: TimeInterval) {
+        guard hasPremiumAccess else { return }
         if interactionSyncTask != nil {
             interactionSyncRequested = true
             return
@@ -516,6 +551,7 @@ final class PetWindowController {
     }
 
     private func runInteractionSync() {
+        guard hasPremiumAccess else { return }
         guard interactionSyncTask == nil else {
             interactionSyncRequested = true
             return
@@ -535,7 +571,9 @@ final class PetWindowController {
                 // Periodic synchronization retries without interrupting the desktop pet.
             }
             interactionSyncTask = nil
-            scheduleInteractionSync(after: interactionSyncRequested ? 2 : 15 * 60)
+            if hasPremiumAccess {
+                scheduleInteractionSync(after: interactionSyncRequested ? 2 : 15 * 60)
+            }
         }
     }
 

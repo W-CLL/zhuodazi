@@ -56,6 +56,8 @@ final class LicenseService {
         return UUID(uuidString: identifier) != nil
     }
 
+    var hasPremiumAccess: Bool { isActivated || trialActive }
+
     var summary: String {
         guard let identifier = record.licenseId, isActivated else { return "此设备尚未绑定" }
         return "已完成绑定 - \(identifier.suffix(8))"
@@ -152,6 +154,8 @@ final class LicenseService {
             remainingSeconds: result.remainingSeconds
         )
     }
+
+    func endTrial() { trialActive = false }
 
     func authorize(_ request: inout URLRequest) throws {
         if isActivated, let licenseId = record.licenseId {

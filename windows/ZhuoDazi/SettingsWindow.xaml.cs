@@ -66,6 +66,7 @@ public partial class SettingsWindow : Window
     {
         _refreshing = true;
         var settings = _controller.Settings;
+        var premium = _controller.HasPremiumAccess;
         SizeSlider.Value = settings.Size;
         SizeValue.Text = $"{settings.Size} px";
         OpacitySlider.Value = settings.Opacity;
@@ -98,8 +99,12 @@ public partial class SettingsWindow : Window
         libraryItems.AddRange(settings.Libraries.Select(item => new LibraryListItem(
             item.Id, item.Name, item.Path, false)));
         LibraryList.ItemsSource = libraryItems;
-        LibraryList.SelectedItem = libraryItems.First(item => item.Id == settings.ActiveLibraryId);
-        LibrarySummary.Text = $"已绑定 {settings.Libraries.Count}/3 个目录 · 当前 {_controller.LibraryName} · {_controller.LibraryCount} 个 GIF";
+        LibraryList.SelectedItem = premium
+            ? libraryItems.First(item => item.Id == settings.ActiveLibraryId)
+            : libraryItems[0];
+        LibrarySummary.Text = premium
+            ? $"已绑定 {settings.Libraries.Count}/3 个目录 · 当前 {_controller.LibraryName} · {_controller.LibraryCount} 个 GIF"
+            : $"免费版正在使用内置资源库 · {_controller.LibraryCount} 个 GIF · 激活可导入外部目录";
         LibraryPathText.Text = _controller.LibraryPath;
         DeleteLibraryButton.IsEnabled = settings.ActiveLibraryId is not null;
         RandomPetCheck.IsChecked = settings.RandomPetEnabled;
@@ -113,10 +118,14 @@ public partial class SettingsWindow : Window
         wordPackItems.AddRange(settings.InteractionWordPacks.Select(item => new WordPackListItem(
             item.Id, item.Name, $"{item.WordCount} 条互动台词", false)));
         WordPackList.ItemsSource = wordPackItems;
-        WordPackList.SelectedItem = wordPackItems.First(item => item.Id == settings.ActiveInteractionWordPackId);
+        WordPackList.SelectedItem = premium
+            ? wordPackItems.First(item => item.Id == settings.ActiveInteractionWordPackId)
+            : wordPackItems[0];
         WordPackSummary.Text = $"已上传 {settings.InteractionWordPacks.Count}/5 个词包 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "内置提示语")}";
         DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
-        InteractionContentStatusText.Text = _controller.InteractionStatus;
+        InteractionContentStatusText.Text = premium
+            ? _controller.InteractionStatus
+            : "激活后可使用随机互动、在线内容和互动词包";
         SyncInteractionContentButton.IsEnabled = !_interactionContentLoading;
         DownloadInteractionPackButton.IsEnabled = !_interactionContentLoading;
 
@@ -136,7 +145,9 @@ public partial class SettingsWindow : Window
             .Select(item => new ReminderListItem(item)).ToList();
         ReminderList.ItemsSource = reminderItems;
         ReminderList.SelectedItem = reminderItems.FirstOrDefault(item => item.Id == selectedReminderId);
-        ReminderCountText.Text = settings.Reminders.Count == 0 ? "暂无提醒" : $"共 {settings.Reminders.Count} 个提醒";
+        ReminderCountText.Text = premium
+            ? settings.Reminders.Count == 0 ? "暂无提醒" : $"共 {settings.Reminders.Count} 个提醒"
+            : "激活后可创建提醒，并为提醒指定 GIF 表情";
         ReminderEmptyState.Visibility = settings.Reminders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
@@ -244,6 +255,7 @@ public partial class SettingsWindow : Window
 
     private async void SyncInteractionContent_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("在线互动内容", this)) return;
         if (_interactionContentLoading) return;
         SetInteractionContentLoading(true, "正在同步线上内容…");
         try
@@ -265,6 +277,7 @@ public partial class SettingsWindow : Window
 
     private async void DownloadInteractionPack_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("互动内容包", this)) return;
         if (_interactionContentLoading) return;
         SetInteractionContentLoading(true, "正在下载离线内容包…");
         try
@@ -330,6 +343,7 @@ public partial class SettingsWindow : Window
 
     private void ChooseLibrary_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("外部 GIF 资源库", this)) return;
         using var dialog = new Forms.FolderBrowserDialog { Description = "选择包含 GIF 的资源库目录", UseDescriptionForTitle = true };
         if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
         RunUiAction(() => _controller.AddLibraryDirectory(dialog.SelectedPath));
@@ -368,6 +382,7 @@ public partial class SettingsWindow : Window
 
     private void ImportWords_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("互动词包导入", this)) return;
         var dialog = new WpfOpenFileDialog { Title = "导入互动词包", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = true };
         if (dialog.ShowDialog(this) != true) return;
         RunUiAction(() => _controller.ImportInteractionWords(dialog.FileNames));
@@ -392,6 +407,7 @@ public partial class SettingsWindow : Window
 
     private void ImportTheaterScript_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("小剧场剧本导入", this)) return;
         var dialog = new WpfOpenFileDialog
         {
             Title = "导入小剧场剧本",
@@ -426,6 +442,7 @@ public partial class SettingsWindow : Window
 
     private void NewReminder_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("提醒", this)) return;
         _editingReminderId = null;
         ReminderList.SelectedItem = null;
         ReminderFormTitle.Text = "新建提醒";
@@ -435,6 +452,7 @@ public partial class SettingsWindow : Window
         ReminderEnabledCheck.IsChecked = true;
         ReminderDailyCheck.IsChecked = false;
         ReminderEmotionCombo.SelectedIndex = 0;
+        ReminderExpressionPath.Text = string.Empty;
         DeleteReminderButton.IsEnabled = false;
     }
 
@@ -449,11 +467,28 @@ public partial class SettingsWindow : Window
         ReminderDailyCheck.IsChecked = reminder.RepeatDaily;
         foreach (var item in ReminderEmotionCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == reminder.Emotion) item.IsSelected = true;
+        ReminderExpressionPath.Text = reminder.ExpressionPath ?? string.Empty;
         DeleteReminderButton.IsEnabled = true;
     }
 
+    private void ChooseReminderExpression_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_controller.RequestPremiumAccess("提醒表情", this)) return;
+        var dialog = new WpfOpenFileDialog
+        {
+            Title = "选择提醒出现时展示的 GIF",
+            Filter = "GIF 动图 (*.gif)|*.gif",
+            Multiselect = false
+        };
+        if (dialog.ShowDialog(this) == true) ReminderExpressionPath.Text = dialog.FileName;
+    }
+
+    private void ClearReminderExpression_Click(object sender, RoutedEventArgs e)
+        => ReminderExpressionPath.Text = string.Empty;
+
     private void SaveReminder_Click(object sender, RoutedEventArgs e)
     {
+        if (!_controller.RequestPremiumAccess("提醒", this)) return;
         if (ReminderDatePicker.SelectedDate is not { } date
             || !TryGetReminderTime(out var time))
         {
@@ -466,6 +501,8 @@ public partial class SettingsWindow : Window
             Enabled = ReminderEnabledCheck.IsChecked == true,
             Message = ReminderMessageText.Text,
             Emotion = (ReminderEmotionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "happy",
+            ExpressionPath = string.IsNullOrWhiteSpace(ReminderExpressionPath.Text)
+                ? null : ReminderExpressionPath.Text,
             RepeatDaily = ReminderDailyCheck.IsChecked == true,
             LocalTime = date.Date + time
         };

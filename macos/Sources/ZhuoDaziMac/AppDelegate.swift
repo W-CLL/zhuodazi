@@ -47,11 +47,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             analytics = AnalyticsService(licenses: licenses)
             interactions = InteractionService(licenses: licenses)
             updates = UpdateService(licenses: licenses)
-            petController = PetWindowController(settings: settings, interactions: interactions) { [weak self] settings in
-                self?.settings = settings
-                self?.settingsStore.save(settings)
-                self?.refreshMenuState()
-            }
+            petController = PetWindowController(
+                settings: settings,
+                interactions: interactions,
+                premiumAccess: { [weak self] in self?.licenses?.hasPremiumAccess ?? false }
+            ) { [weak self] settings in
+                    self?.settings = settings
+                    self?.settingsStore.save(settings)
+                    self?.refreshMenuState()
+                }
             applyDockVisibility(settings.dockIconVisible)
             configureStatusMenu()
 
@@ -63,25 +67,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         if trial.allowed {
                             scheduleTrialCheck(trial.remainingSeconds)
                         } else {
-                            guard await ActivationPrompts.activate(
+                            if await ActivationPrompts.activate(
                                 licenses: licenses,
                                 required: true,
-                                statusMessage: "五分钟试用已结束，输入激活码后继续使用。"
-                            ) else {
-                                NSApplication.shared.terminate(nil)
-                                return
+                                statusMessage: "完整体验已结束；基础陪伴仍可免费使用。"
+                            ) {
+                                petController.refreshPremiumAccess()
                             }
                         }
-                    } catch {
-                        guard await ActivationPrompts.activate(
-                            licenses: licenses,
-                            required: true,
-                            statusMessage: "暂时无法开始试用，也可以直接输入激活码继续。"
-                        ) else {
-                            NSApplication.shared.terminate(nil)
-                            return
-                        }
-                    }
+                    } catch { }
+                    petController.refreshPremiumAccess()
+                    refreshMenuState()
                     startPet()
                 }
             } else {
@@ -131,14 +127,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         return
                     }
                 } catch { }
-                guard await ActivationPrompts.activate(
+                self.licenses.endTrial()
+                self.petController.refreshPremiumAccess()
+                self.settingsWindow?.refreshAccessState()
+                if await ActivationPrompts.activate(
                     licenses: self.licenses,
                     required: true,
-                    statusMessage: "五分钟试用结束啦，输入激活码后继续使用。"
-                ) else {
-                    NSApplication.shared.terminate(nil)
-                    return
+                    statusMessage: "完整体验结束啦；激活后可继续使用小剧场、提醒、互动词包和外部资源库。"
+                ) {
+                    self.petController.refreshPremiumAccess()
+                    self.settingsWindow?.refreshAccessState()
                 }
+                self.refreshMenuState()
             }
         }
     }
@@ -183,10 +183,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mouseItem.state = petController.mouseInteractionEnabled ? .on : .off
         movementItem.state = petController.randomMovementEnabled ? .on : .off
         interactionItem.state = petController.currentSettings.randomInteractionsEnabled ? .on : .off
+        interactionItem.title = licenses.hasPremiumAccess ? "随机互动" : "随机互动（激活解锁）"
         randomPetItem.state = petController.randomPetEnabled ? .on : .off
         randomPetItem.isEnabled = petController.canRandomizePet
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
+        theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场（激活解锁）"
         topmostItem.state = petController.alwaysOnTop ? .on : .off
         clickThroughItem.state = petController.clickThrough ? .on : .off
     }
@@ -234,12 +236,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleRandomInteractions(_ sender: NSMenuItem) {
-        petController.update { $0.randomInteractionsEnabled.toggle() }
-        refreshMenuState()
+        requestPremiumAccess("随机互动") { [weak self] in
+            self?.petController.update { $0.randomInteractionsEnabled.toggle() }
+            self?.refreshMenuState()
+        }
     }
 
     @objc private func startRandomInteraction(_ sender: NSMenuItem) {
-        petController.startRandomInteraction()
+        requestPremiumAccess("互动内容") { [weak self] in self?.petController.startRandomInteraction() }
     }
 
     @objc private func toggleRandomPet(_ sender: NSMenuItem) {
@@ -252,12 +256,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func toggleTheater(_ sender: NSMenuItem) {
-        petController.update { $0.theaterEnabled.toggle() }
-        refreshMenuState()
+        requestPremiumAccess("小剧场") { [weak self] in
+            self?.petController.update { $0.theaterEnabled.toggle() }
+            self?.refreshMenuState()
+        }
     }
 
     @objc private func startTheater(_ sender: NSMenuItem) {
-        _ = petController.startTheater()
+        requestPremiumAccess("小剧场") { [weak self] in _ = self?.petController.startTheater() }
+    }
+
+    private func requestPremiumAccess(_ feature: String, action: @escaping () -> Void) {
+        if licenses.hasPremiumAccess {
+            action()
+            return
+        }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if await ActivationPrompts.activate(
+                licenses: licenses,
+                required: true,
+                statusMessage: "\(feature)需要激活完整功能；基础陪伴仍可免费使用。"
+            ) {
+                petController.refreshPremiumAccess()
+                settingsWindow?.refreshAccessState()
+                refreshMenuState()
+                action()
+            }
+        }
     }
 
     @objc private func toggleTopmost(_ sender: NSMenuItem) {

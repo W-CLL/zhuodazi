@@ -46,37 +46,23 @@ public partial class App : System.Windows.Application
         {
             StartSettingsSignalListener();
             _licenseService = new LicenseService();
+            string? freeModeMessage = null;
             if (!_licenseService.IsActivated)
             {
-                TrialStatus? trial = null;
-                string? trialMessage = null;
                 try
                 {
-                    trial = await _licenseService.CheckTrialAsync();
+                    var trial = await _licenseService.CheckTrialAsync();
+                    if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
+                    else freeModeMessage = "五分钟完整体验已结束，基础陪伴仍可免费使用。";
                 }
-                catch (Exception error)
+                catch
                 {
-                    trialMessage = NetworkConnectionErrors.ForUser(
-                        error,
-                        "暂时无法开始试用，也可以直接输入激活码继续。");
-                }
-
-                if (trial is not { Allowed: true })
-                {
-                    trialMessage ??= "五分钟试用已结束，输入激活码后继续使用。";
-                    if (!ShowActivation(trialMessage))
-                    {
-                        Shutdown();
-                        return;
-                    }
-                }
-                else
-                {
-                    ScheduleTrialCheck(trial.RemainingSeconds);
+                    freeModeMessage = "已进入免费版，基础陪伴仍可继续使用。";
                 }
             }
             Controller = new AppController(_licenseService);
             Controller.Start();
+            if (freeModeMessage is not null) Controller.RefreshPremiumAccess(freeModeMessage);
             if (e.Args.Any(arg => arg.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
                 Controller.ShowSettings();
         }
@@ -140,10 +126,13 @@ public partial class App : System.Windows.Application
         }
         catch
         {
-            // Expiry still requires a fresh online check; activation remains available.
+            // The full trial ends locally if its expiry cannot be confirmed.
         }
 
-        if (!ShowActivation("五分钟试用结束啦，输入激活码后继续使用。")) Shutdown();
+        _licenseService.EndTrial();
+        Controller?.RefreshPremiumAccess("五分钟完整体验结束啦，基础陪伴继续免费营业。");
+        ShowActivation("激活后可继续使用小剧场、提醒、互动词包和外部 GIF 资源库。");
+        Controller?.RefreshPremiumAccess();
     }
 
     private void StartSettingsSignalListener()

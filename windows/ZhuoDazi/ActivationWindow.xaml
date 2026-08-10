@@ -1,8 +1,8 @@
 <Window x:Class="ZhuoDazi.ActivationWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="欢迎带桌搭子回家" Width="560" Height="500"
-        MinWidth="560" MinHeight="500" MaxWidth="560" MaxHeight="760"
+        Title="解锁桌搭子完整功能" Width="560" Height="550"
+        MinWidth="560" MinHeight="550" MaxWidth="560" MaxHeight="800"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
         Background="#F8FAF9" Icon="pack://application:,,,/assets/app-icon.png"
         FontFamily="Microsoft YaHei UI" UseLayoutRounding="True">
@@ -52,8 +52,9 @@
         <StackPanel Orientation="Horizontal">
             <Image Width="52" Height="52" Source="pack://application:,,,/assets/app-icon.png" />
             <StackPanel Margin="14,1,0,0">
-                <TextBlock Text="欢迎带桌搭子回家" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
-                <TextBlock Text="先免费试用 5 分钟，满意后再激活" Margin="0,4,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Text="解锁桌搭子完整功能" FontSize="24" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                <TextBlock Text="基础陪伴永久免费；激活后解锁小剧场、提醒、互动词包和资源库导入"
+                           Margin="0,4,0,0" FontSize="12" TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" />
             </StackPanel>
         </StackPanel>
 
@@ -105,8 +106,9 @@
         </StackPanel>
 
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="退出" Click="Exit_Click" Margin="0,0,8,0" />
-            <Button x:Name="ActivateButton" Content="激活并继续" Width="112" Style="{StaticResource PrimaryButton}"
+            <Button Content="去官网看看" Click="Website_Click" Margin="0,0,8,0" />
+            <Button x:Name="ContinueButton" Content="继续使用免费版" Click="Continue_Click" Margin="0,0,8,0" />
+            <Button x:Name="ActivateButton" Content="立即激活" Width="100" Style="{StaticResource PrimaryButton}"
                     IsDefault="True" Click="ActivateButton_Click" />
         </StackPanel>
     </Grid>

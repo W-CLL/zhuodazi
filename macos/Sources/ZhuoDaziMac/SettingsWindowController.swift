@@ -75,6 +75,7 @@ final class SettingsWindowController: NSWindowController {
     private let reminderDatePicker = NSDatePicker()
     private let reminderMessage = NSTextField(string: "休息一下吧")
     private let reminderEmotionPopup = NSPopUpButton()
+    private let reminderExpressionPath = NSTextField(string: "")
     private let reminderEnabledCheckbox = NSButton(checkboxWithTitle: "启用提醒", target: nil, action: nil)
     private let reminderDailyCheckbox = NSButton(checkboxWithTitle: "每天重复", target: nil, action: nil)
 
@@ -295,6 +296,12 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(labeledRow("提醒内容", controls: [reminderMessage]))
         reminderEmotionPopup.addItems(withTitles: ["开心", "加油", "害羞", "惊讶", "生气", "疑惑", "难过", "困倦", "安静"])
         stack.addArrangedSubview(labeledRow("情绪", controls: [reminderEmotionPopup]))
+        reminderExpressionPath.isEditable = false
+        reminderExpressionPath.placeholderString = "不指定则保持当前桌宠"
+        reminderExpressionPath.widthAnchor.constraint(equalToConstant: 360).isActive = true
+        let chooseExpression = NSButton(title: "选择 GIF", target: self, action: #selector(chooseReminderExpression))
+        let clearExpression = NSButton(title: "清除", target: self, action: #selector(clearReminderExpression))
+        stack.addArrangedSubview(labeledRow("指定表情", controls: [reminderExpressionPath, chooseExpression, clearExpression]))
         reminderEnabledCheckbox.state = .on
         stack.addArrangedSubview(buttonRow([reminderEnabledCheckbox, reminderDailyCheckbox]))
         let save = NSButton(title: "保存提醒", target: self, action: #selector(saveReminder))
@@ -449,6 +456,7 @@ final class SettingsWindowController: NSWindowController {
         refreshing = true
         defer { refreshing = false }
         let settings = petController.currentSettings
+        let premium = licenses.hasPremiumAccess
         sizeSlider.integerValue = settings.size
         sizeValue.stringValue = "\(settings.size) px"
         opacitySlider.integerValue = settings.opacity
@@ -474,6 +482,10 @@ final class SettingsWindowController: NSWindowController {
         refreshContent(settings)
         refreshReminders(settings)
         refreshUpdateState()
+        if !premium {
+            interactionStatusLabel.stringValue = "激活后可使用随机互动、在线内容和互动词包"
+            libraryDetail.stringValue = "免费版正在使用内置资源库；激活可导入外部目录"
+        }
     }
 
     private func refreshPets(_ settings: AppSettings) {
@@ -494,7 +506,11 @@ final class SettingsWindowController: NSWindowController {
             librariesPopup.addItem(withTitle: library.name)
             librariesPopup.lastItem?.representedObject = library.id
         }
-        if let active = settings.activeLibraryId { select(popup: librariesPopup, id: active) } else { librariesPopup.selectItem(at: 0) }
+        if licenses.hasPremiumAccess, let active = settings.activeLibraryId {
+            select(popup: librariesPopup, id: active)
+        } else {
+            librariesPopup.selectItem(at: 0)
+        }
         if let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
             libraryDetail.stringValue = library.path
         } else {
@@ -512,7 +528,11 @@ final class SettingsWindowController: NSWindowController {
             wordPacksPopup.addItem(withTitle: pack.name)
             wordPacksPopup.lastItem?.representedObject = pack.id
         }
-        if let active = settings.activeInteractionWordPackId { select(popup: wordPacksPopup, id: active) } else { wordPacksPopup.selectItem(at: 0) }
+        if licenses.hasPremiumAccess, let active = settings.activeInteractionWordPackId {
+            select(popup: wordPacksPopup, id: active)
+        } else {
+            wordPacksPopup.selectItem(at: 0)
+        }
         if let pack = settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId }) {
             wordPackDetail.stringValue = "\(pack.wordCount) 句互动台词"
         } else {
@@ -548,7 +568,9 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func refreshUpdateState() {
-        activationLabel.stringValue = licenses.summary
+        activationLabel.stringValue = licenses.isActivated
+            ? licenses.summary
+            : licenses.hasPremiumAccess ? "五分钟完整功能体验中" : "免费版 - 激活可解锁完整功能"
         let status = updates.status
         updateLabel.stringValue = "当前版本 v\(AppVersion.current) - \(status.message)"
         updateProgress.doubleValue = Double(status.progress)
@@ -651,6 +673,22 @@ final class SettingsWindowController: NSWindowController {
         if let item = popup.itemArray.first(where: { ($0.representedObject as? String) == id }) { popup.select(item) }
     }
 
+    private func requirePremium(_ feature: String) -> Bool {
+        if licenses.hasPremiumAccess { return true }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if await ActivationPrompts.activate(
+                licenses: licenses,
+                required: true,
+                statusMessage: "\(feature)需要激活完整功能；基础陪伴仍可免费使用。"
+            ) {
+                petController.refreshPremiumAccess()
+                refresh()
+            }
+        }
+        return false
+    }
+
     @objc private func appearanceChanged(_ sender: NSSlider) {
         guard !refreshing else { return }
         petController.update {
@@ -663,6 +701,11 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func behaviorChanged(_ sender: Any) {
         guard !refreshing else { return }
+        let premiumControl = sender as AnyObject === randomInteractionCheckbox
+            || sender as AnyObject === interactionModePopup
+            || sender as AnyObject === theaterCheckbox
+            || sender as AnyObject === theaterIntervalPopup
+        if premiumControl, !requirePremium("互动与小剧场") { refresh(); return }
         interactionModePopup.isEnabled = randomInteractionCheckbox.state == .on
         if sender as AnyObject === startupCheckbox {
             do { try LoginItemService.setEnabled(startupCheckbox.state == .on) }
@@ -686,11 +729,18 @@ final class SettingsWindowController: NSWindowController {
         if previousDock != (dockCheckbox.state == .on) { dockVisibilityChanged(dockCheckbox.state == .on) }
     }
 
-    @objc private func startTheater() { _ = petController.startTheater() }
+    @objc private func startTheater() {
+        guard requirePremium("小剧场") else { return }
+        _ = petController.startTheater()
+    }
 
-    @objc private func startRandomInteraction() { petController.startRandomInteraction() }
+    @objc private func startRandomInteraction() {
+        guard requirePremium("互动内容") else { return }
+        petController.startRandomInteraction()
+    }
 
     @objc private func syncInteractionContent() {
+        guard requirePremium("在线互动内容") else { return }
         guard !interactionLoading else { return }
         setInteractionLoading(true, status: "正在同步互动设置与内容…")
         Task { @MainActor [weak self] in
@@ -708,6 +758,7 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func downloadInteractionPack() {
+        guard requirePremium("互动内容包") else { return }
         guard !interactionLoading else { return }
         setInteractionLoading(true, status: "正在下载并验证离线内容包…")
         Task { @MainActor [weak self] in
@@ -772,6 +823,7 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func addLibrary() {
+        guard requirePremium("外部 GIF 资源库") else { return }
         guard petController.currentSettings.libraries.count < 3 else { show(ContentImportError.limitReached("最多只能绑定 3 个 GIF 资源库")); return }
         let panel = NSOpenPanel()
         panel.title = "选择包含 GIF 的资源库目录"
@@ -788,6 +840,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func librarySelectionChanged(_ sender: NSPopUpButton) {
         guard !refreshing else { return }
         let id = sender.selectedItem?.representedObject as? String
+        if id != nil, !requirePremium("外部 GIF 资源库") { refresh(); return }
         petController.update { $0.activeLibraryId = id; $0.activePetId = nil }
         refresh()
     }
@@ -810,6 +863,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func randomizeNow() { _ = petController.randomizePet() }
 
     @objc private func importWordPack() {
+        guard requirePremium("互动词包导入") else { return }
         guard petController.currentSettings.interactionWordPacks.count < 5 else { show(ContentImportError.limitReached("最多只能导入 5 个互动词包")); return }
         let panel = NSOpenPanel()
         panel.title = "导入互动词包"
@@ -828,6 +882,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func wordPackSelectionChanged(_ sender: NSPopUpButton) {
         guard !refreshing else { return }
         let id = sender.selectedItem?.representedObject as? String
+        if id != nil, !requirePremium("互动词包") { refresh(); return }
         petController.update { $0.activeInteractionWordPackId = id }
         refresh()
     }
@@ -842,6 +897,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func showWordGuide() { showGuide(title: "互动词包格式", text: InteractionWordPackImporter.guide) }
 
     @objc private func importScriptFile() {
+        guard requirePremium("小剧场剧本导入") else { return }
         guard petController.currentSettings.theaterScripts.count < 10 else { show(ContentImportError.limitReached("最多只能导入 10 个小剧场剧本")); return }
         let panel = NSOpenPanel()
         panel.title = "导入小剧场剧本"
@@ -875,21 +931,25 @@ final class SettingsWindowController: NSWindowController {
         reminderDatePicker.dateValue = reminder.at
         reminderMessage.stringValue = reminder.message
         reminderEmotionPopup.selectItem(at: emotionValues.firstIndex(of: reminder.emotion) ?? 0)
+        reminderExpressionPath.stringValue = reminder.expressionPath ?? ""
         reminderEnabledCheckbox.state = reminder.enabled ? .on : .off
         reminderDailyCheckbox.state = reminder.repeatDaily ? .on : .off
     }
 
     @objc private func newReminder() {
+        guard requirePremium("提醒") else { return }
         editingReminderId = nil
         remindersPopup.selectItem(at: 0)
         reminderDatePicker.dateValue = Date().addingTimeInterval(600)
         reminderMessage.stringValue = "休息一下吧"
         reminderEmotionPopup.selectItem(at: 0)
+        reminderExpressionPath.stringValue = ""
         reminderEnabledCheckbox.state = .on
         reminderDailyCheckbox.state = .off
     }
 
     @objc private func saveReminder() {
+        guard requirePremium("提醒") else { return }
         let message = reminderMessage.stringValue.cleaned(limit: 40)
         guard !message.isEmpty else { show(ContentImportError.limitReached("请输入提醒内容")); return }
         if editingReminderId == nil, petController.currentSettings.reminders.count >= 20 { show(ContentImportError.limitReached("最多只能保存 20 条提醒")); return }
@@ -899,6 +959,7 @@ final class SettingsWindowController: NSWindowController {
             at: reminderDatePicker.dateValue,
             message: message,
             emotion: emotionValues[reminderEmotionPopup.indexOfSelectedItem],
+            expressionPath: reminderExpressionPath.stringValue.isEmpty ? nil : reminderExpressionPath.stringValue,
             repeatDaily: reminderDailyCheckbox.state == .on
         )
         petController.update {
@@ -915,6 +976,21 @@ final class SettingsWindowController: NSWindowController {
         petController.update { $0.reminders.removeAll { $0.id == id } }
         newReminder()
         refresh()
+    }
+
+    @objc private func chooseReminderExpression() {
+        guard requirePremium("提醒表情") else { return }
+        let panel = NSOpenPanel()
+        panel.title = "选择提醒出现时展示的 GIF"
+        panel.allowedFileTypes = ["gif"]
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            reminderExpressionPath.stringValue = url.path
+        }
+    }
+
+    @objc private func clearReminderExpression() {
+        reminderExpressionPath.stringValue = ""
     }
 
     @objc private func feedbackSelectionChanged(_ sender: NSPopUpButton) {
@@ -980,7 +1056,7 @@ final class SettingsWindowController: NSWindowController {
                 guard confirm.runModal() == .alertFirstButtonReturn else { return }
             }
             if await ActivationPrompts.activate(licenses: licenses, required: false, replacingExisting: licenses.isActivated) {
-                petController.startInteractionServices()
+                petController.refreshPremiumAccess()
             }
             refresh()
         }
@@ -1019,6 +1095,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc func checkForUpdatesFromMenu() { checkForUpdates() }
+
+    func refreshAccessState() { refresh() }
 
     private func gifCount(in directory: URL) -> Int {
         guard let enumerator = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return 0 }

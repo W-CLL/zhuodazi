@@ -343,6 +343,10 @@ public sealed class ReminderDefinition
     [JsonPropertyName("emotion")]
     public string Emotion { get; set; } = "happy";
 
+    [JsonPropertyName("expressionPath")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? ExpressionPath { get; set; }
+
     [JsonPropertyName("repeatDaily")]
     public bool RepeatDaily { get; set; }
 

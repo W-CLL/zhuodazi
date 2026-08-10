@@ -11,13 +11,13 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
 
     init(required: Bool, statusMessage: String? = nil) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 350),
+            contentRect: NSRect(x: 0, y: 0, width: 500, height: 395),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         super.init()
-        window.title = required ? "欢迎带桌搭子回家" : "更换激活码"
+        window.title = required ? "解锁桌搭子完整功能" : "更换激活码"
         window.isReleasedWhenClosed = false
         window.delegate = self
         buildInterface(required: required, statusMessage: statusMessage)
@@ -56,11 +56,15 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         ])
         window.contentView = root
 
-        let heading = NSTextField(labelWithString: required ? "欢迎带桌搭子回家" : "更换激活码")
+        let heading = NSTextField(labelWithString: required ? "解锁桌搭子完整功能" : "更换激活码")
         heading.font = .systemFont(ofSize: 23, weight: .bold)
         stack.addArrangedSubview(heading)
-        let subtitle = NSTextField(labelWithString: required ? "先免费试用 5 分钟，满意后再激活" : "输入新的激活码以更新此设备的绑定")
+        let subtitle = NSTextField(wrappingLabelWithString: required
+            ? "基础陪伴永久免费；激活后解锁小剧场、提醒、互动词包和资源库导入"
+            : "输入新的激活码以更新此设备的绑定")
         subtitle.textColor = .secondaryLabelColor
+        subtitle.maximumNumberOfLines = 2
+        subtitle.widthAnchor.constraint(equalToConstant: 444).isActive = true
         stack.addArrangedSubview(subtitle)
 
         let inputLabel = NSTextField(labelWithString: "6 位激活码")
@@ -91,11 +95,12 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.isHidden = true
         stack.addArrangedSubview(contactBox)
 
-        let cancel = NSButton(title: required ? "退出" : "取消", target: self, action: #selector(cancelPrompt))
-        let submit = NSButton(title: "激活并继续", target: self, action: #selector(submitPrompt))
+        let website = NSButton(title: "去官网看看", target: self, action: #selector(openWebsite))
+        let cancel = NSButton(title: required ? "继续使用免费版" : "取消", target: self, action: #selector(cancelPrompt))
+        let submit = NSButton(title: "立即激活", target: self, action: #selector(submitPrompt))
         submit.keyEquivalent = "\r"
         submit.bezelColor = .controlAccentColor
-        let buttons = NSStackView(views: [cancel, submit])
+        let buttons = NSStackView(views: [website, cancel, submit])
         buttons.orientation = .horizontal
         buttons.spacing = 8
         buttons.alignment = .centerY
@@ -165,7 +170,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         let show = contactBox.isHidden
         contactBox.isHidden = !show
         contactButton.title = show ? "收起联系方式  ‹" : "没有激活码？看看怎么支持作者  ›"
-        window.setContentSize(NSSize(width: 500, height: show ? 620 : 350))
+        window.setContentSize(NSSize(width: 500, height: show ? 665 : 395))
         window.center()
     }
 
@@ -185,6 +190,10 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     @objc private func cancelPrompt() {
         result = nil
         NSApp.stopModal()
+    }
+
+    @objc private func openWebsite() {
+        NSWorkspace.shared.open(URL(string: "https://desktoppet.online/")!)
     }
 
     private static func contactImage() -> NSImage? {

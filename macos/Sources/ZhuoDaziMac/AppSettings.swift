@@ -37,6 +37,7 @@ struct ReminderDefinition: Codable, Equatable, Identifiable {
     var at = Date().addingTimeInterval(600)
     var message = "休息一下吧"
     var emotion = "happy"
+    var expressionPath: String?
     var repeatDaily = false
 }
 

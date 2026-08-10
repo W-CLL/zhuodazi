@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using ZhuoDazi.Services;
@@ -20,6 +21,7 @@ public partial class ActivationWindow : Window
         _licenses = licenses;
         _replacingExisting = replacingExisting;
         InitializeComponent();
+        ContinueButton.Content = replacingExisting ? "取消" : "继续使用免费版";
         StatusText.Text = initialStatus ?? string.Empty;
         ContentRendered += (_, _) => CodeTextBox.Focus();
     }
@@ -85,8 +87,11 @@ public partial class ActivationWindow : Window
         var show = ContactPanel.Visibility != Visibility.Visible;
         ContactPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         ContactToggleButton.Content = show ? "收起联系方式  ‹" : "没有激活码？看看怎么支持作者  ›";
-        Height = show ? 735 : 500;
+        Height = show ? 785 : 550;
     }
 
-    private void Exit_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+    private void Website_Click(object sender, RoutedEventArgs e)
+        => Process.Start(new ProcessStartInfo("https://desktoppet.online/") { UseShellExecute = true });
+
+    private void Continue_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 }

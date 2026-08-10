@@ -712,6 +712,17 @@
                                     <ComboBoxItem Content="困倦" Tag="sleepy" />
                                     <ComboBoxItem Content="安静" Tag="calm" />
                                 </ComboBox>
+                                <TextBlock Text="指定表情 GIF（可选）" Style="{StaticResource FieldLabel}" />
+                                <Grid Margin="0,0,0,12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="ReminderExpressionPath" IsReadOnly="True" ToolTip="提醒触发时临时展示这张 GIF" />
+                                    <Button Grid.Column="1" Content="选择" Margin="8,0,0,0" Click="ChooseReminderExpression_Click" />
+                                    <Button Grid.Column="2" Content="清除" Margin="8,0,0,0" Click="ClearReminderExpression_Click" />
+                                </Grid>
                                 <WrapPanel>
                                     <CheckBox x:Name="ReminderEnabledCheck" Content="启用提醒" IsChecked="True" Margin="0,6,24,6" />
                                     <CheckBox x:Name="ReminderDailyCheck" Content="每天重复" />

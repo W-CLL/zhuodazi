@@ -26,6 +26,7 @@ public sealed class LicenseService : IDisposable
     private bool _trialActive;
 
     public bool IsActivated => Guid.TryParse(_record.LicenseId, out _);
+    public bool HasPremiumAccess => IsActivated || _trialActive;
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
     public string InstallationId => _record.InstallationId;
     public string Summary => IsActivated ? $"此设备已完成绑定 · {LicenseId[^8..]}" : "此设备尚未绑定";
@@ -135,6 +136,8 @@ public sealed class LicenseService : IDisposable
             return new TrialStatus(_trialActive, result.RemainingSeconds);
         }
     }
+
+    public void EndTrial() => _trialActive = false;
 
     public void Authorize(HttpRequestMessage request)
     {
