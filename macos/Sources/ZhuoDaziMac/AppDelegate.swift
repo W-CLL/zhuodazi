@@ -25,8 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var licenses: LicenseService!
     private var analytics: AnalyticsService!
     private var interactions: InteractionService!
+    private var companions: CompanionService!
     private var updates: UpdateService!
     private var settingsWindow: SettingsWindowController?
+    private var companionWindow: CompanionWindowController?
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
     private var mouseItem: NSMenuItem!
@@ -35,10 +37,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var randomPetItem: NSMenuItem!
     private var randomizeNowItem: NSMenuItem!
     private var theaterItem: NSMenuItem!
+    private var sendCompanionItem: NSMenuItem!
     private var topmostItem: NSMenuItem!
     private var clickThroughItem: NSMenuItem!
     private var reminderTimer: Timer?
     private var trialTimer: Timer?
+    private var companionTimer: Timer?
+    private var companionPolling = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
@@ -46,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             licenses = try LicenseService()
             analytics = AnalyticsService(licenses: licenses)
             interactions = InteractionService(licenses: licenses)
+            companions = CompanionService(licenses: licenses)
             updates = UpdateService(licenses: licenses)
             petController = PetWindowController(
                 settings: settings,
@@ -74,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 trialEnded: true
                             ) {
                                 petController.refreshPremiumAccess()
+                                startCompanionPolling()
                             }
                         }
                     } catch { }
@@ -102,6 +109,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startPet() {
         petController.show()
         petController.startInteractionServices()
+        startCompanionPolling()
         startReminderChecks()
         analytics.trackStartup()
         Task { @MainActor [weak self] in
@@ -139,6 +147,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 ) {
                     self.petController.refreshPremiumAccess()
                     self.settingsWindow?.refreshAccessState()
+                    self.startCompanionPolling()
                 }
                 self.refreshMenuState()
             }
@@ -153,6 +162,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         menu.addItem(withTitle: "打开设置", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(withTitle: "检查更新", action: #selector(checkUpdates), keyEquivalent: "")
+        menu.addItem(withTitle: "搭子联机…", action: #selector(openCompanion), keyEquivalent: "")
+        sendCompanionItem = menu.addItem(withTitle: "发送当前 GIF 给搭子", action: #selector(sendCompanionGIF), keyEquivalent: "")
         menu.addItem(.separator())
         visibilityItem = menu.addItem(withTitle: "隐藏桌搭子", action: #selector(toggleVisibility(_:)), keyEquivalent: "")
         mouseItem = menu.addItem(withTitle: "跟随鼠标", action: #selector(toggleMouseInteraction(_:)), keyEquivalent: "")
@@ -191,6 +202,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
         theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场（激活解锁）"
+        if let partner = companions?.profile?.partner {
+            sendCompanionItem.title = "发送当前 GIF 给 \(partner.displayName)"
+            sendCompanionItem.isEnabled = licenses.isActivated && petController.currentGIFURL != nil
+        } else {
+            sendCompanionItem.title = "发送当前 GIF 给搭子（先绑定）"
+            sendCompanionItem.isEnabled = false
+        }
         topmostItem.state = petController.alwaysOnTop ? .on : .off
         clickThroughItem.state = petController.clickThrough ? .on : .off
     }
@@ -220,6 +238,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func checkUpdates() {
         showSettings(checkForUpdates: true)
+    }
+
+    @objc private func openCompanion() {
+        guard licenses.isActivated else {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if await ActivationPrompts.activate(
+                    licenses: licenses,
+                    required: true,
+                    statusMessage: "激活完整版本后可以使用搭子联机。"
+                ) {
+                    petController.refreshPremiumAccess()
+                    startCompanionPolling()
+                    showCompanionWindow()
+                }
+            }
+            return
+        }
+        showCompanionWindow()
+    }
+
+    private func showCompanionWindow() {
+        if companionWindow == nil {
+            companionWindow = CompanionWindowController(
+                service: companions,
+                sendCurrentGIF: { [weak self] in
+                    guard let self else { return }
+                    try await self.sendCurrentGIF()
+                },
+                stateChanged: { [weak self] in self?.refreshMenuState() }
+            )
+        }
+        companionWindow?.showWindow(nil)
+    }
+
+    @objc private func sendCompanionGIF() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do { try await sendCurrentGIF() }
+            catch { presentFriendlyError(error, title: "发送失败") }
+        }
+    }
+
+    private func sendCurrentGIF() async throws {
+        guard licenses.isActivated else { throw LicenseError.inactive }
+        guard companions.profile?.partner != nil else { throw CompanionError.server("请先绑定搭子") }
+        guard let url = petController.currentGIFURL else { throw CompanionError.server("当前没有可发送的 GIF") }
+        let recipient = try await companions.sendCurrentGIF(url)
+        petController.showBubble("已经去找 \(recipient) 啦。")
     }
 
     @objc private func toggleVisibility(_ sender: NSMenuItem) {
@@ -283,6 +350,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 petController.refreshPremiumAccess()
                 settingsWindow?.refreshAccessState()
                 refreshMenuState()
+                startCompanionPolling()
                 action()
             }
         }
@@ -307,6 +375,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         RunLoop.main.add(timer, forMode: .common)
         reminderTimer = timer
+    }
+
+    private func startCompanionPolling() {
+        companionTimer?.invalidate()
+        companionTimer = nil
+        guard licenses.isActivated else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = try? await companions.refreshProfile()
+            refreshMenuState()
+            await pollCompanion()
+        }
+        let timer = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.pollCompanion() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        companionTimer = timer
+    }
+
+    private func pollCompanion() async {
+        guard !companionPolling, licenses.isActivated, petController.isVisible else { return }
+        companionPolling = true
+        defer { companionPolling = false }
+        do {
+            for visit in try await companions.receive() {
+                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName)
+                try? FileManager.default.removeItem(at: visit.fileURL)
+            }
+        } catch {
+            // Periodic polling retries without interrupting the desktop pet.
+        }
     }
 
     private func checkReminders() {

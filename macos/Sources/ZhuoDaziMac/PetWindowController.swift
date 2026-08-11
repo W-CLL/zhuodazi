@@ -29,6 +29,7 @@ final class PetWindowController {
     var currentSettings: AppSettings { settings }
     var interactionStatus: String { interactions.statusSummary }
     var hasPremiumAccess: Bool { premiumAccess() }
+    var currentGIFURL: URL? { currentPetURL }
 
     private let window: NSPanel
     private let petView: PetCanvasView
@@ -52,6 +53,7 @@ final class PetWindowController {
     private var settings: AppSettings
     private let settingsChanged: (AppSettings) -> Void
     private var companionWindow: NSPanel?
+    private var visitorWindow: NSPanel?
     private var theaterTask: Task<Void, Never>?
     private var reminderExpressionTask: Task<Void, Never>?
     private let interactionPanel: PetInteractionPanelController
@@ -120,6 +122,7 @@ final class PetWindowController {
         theaterTask?.cancel()
         reminderExpressionTask?.cancel()
         interactionSyncTask?.cancel()
+        visitorWindow?.orderOut(nil)
         if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
         if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
     }
@@ -130,6 +133,18 @@ final class PetWindowController {
         window.orderOut(nil)
     }
     func showBubble(_ text: String) { petView.showBubble(text) }
+
+    func showVisitor(at url: URL, senderName: String) async {
+        guard window.isVisible, theaterTask == nil, visitorWindow == nil else { return }
+        let visitor = makeCompanionWindow(petURL: url)
+        visitorWindow = visitor.window
+        positionCompanion(visitor.window)
+        visitor.window.orderFrontRegardless()
+        visitor.view.showBubble("\(senderName) 来串门啦", duration: 5)
+        try? await Task.sleep(for: .seconds(10))
+        visitor.window.orderOut(nil)
+        if visitorWindow === visitor.window { visitorWindow = nil }
+    }
 
     func startInteractionServices() {
         guard hasPremiumAccess else { return }
@@ -383,7 +398,7 @@ final class PetWindowController {
 
     @discardableResult
     func randomizePet() -> Bool {
-        guard theaterTask == nil, !interactionActive else { return false }
+        guard theaterTask == nil, visitorWindow == nil, !interactionActive else { return false }
         guard let selected = petBag.next(from: petURLs, excluding: currentPetURL) else { return false }
         currentPetURL = selected
         petView.showPet(at: selected)
@@ -394,7 +409,7 @@ final class PetWindowController {
     @discardableResult
     func startTheater() -> Bool {
         guard hasPremiumAccess else { return false }
-        guard theaterTask == nil, !interactionActive else { return false }
+        guard theaterTask == nil, visitorWindow == nil, !interactionActive else { return false }
         let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
         let originalOrigin = window.frame.origin
@@ -685,7 +700,7 @@ final class PetWindowController {
         interactionPanel.updateLevel(window.level)
     }
 
-    private func makeCompanionWindow() -> (window: NSPanel, view: PetCanvasView) {
+    private func makeCompanionWindow(petURL: URL? = nil) -> (window: NSPanel, view: PetCanvasView) {
         let size = window.frame.size
         let panel = NSPanel(contentRect: NSRect(origin: window.frame.origin, size: size), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         let view = PetCanvasView(frame: NSRect(origin: .zero, size: size))
@@ -697,7 +712,7 @@ final class PetWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.contentView = view
         view.setMirrored(!settings.mirrored)
-        let companionURL = petURLs.filter { $0 != currentPetURL }.randomElement() ?? currentPetURL
+        let companionURL = petURL ?? petURLs.filter { $0 != currentPetURL }.randomElement() ?? currentPetURL
         if let companionURL { view.showPet(at: companionURL) }
         return (panel, view)
     }

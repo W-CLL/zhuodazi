@@ -59,32 +59,12 @@ jobs:
           retention-days: 14
           path: macos/dist/ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}.zip
 
-      - name: Upload macOS package to draft release
+      - name: Upload macOS package to unified draft release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="macos-v${APP_VERSION}"
-          title="ZhuoDazi macOS ${APP_VERSION}"
-          notes="3.0.1：优化五分钟体验结束后的功能引导；基础陪伴仍可继续免费使用。"
+          tag="v${APP_VERSION}"
           asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
-
-          release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
-          if [[ "$release_state" == "false" ]]; then
-            echo "Release $tag is already published; leaving it unchanged."
-            exit 0
-          fi
-
-          if [[ -z "$release_state" ]]; then
-            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "$title" --notes "$notes" || true
-            release_state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
-          fi
-
-          if [[ "$release_state" != "true" ]]; then
-            echo "Unable to create or find draft release $tag." >&2
-            exit 1
-          fi
-
           gh release upload "$tag" "$asset" --clobber
-          gh release edit "$tag" --target "$GITHUB_SHA" --title "$title" --notes "$notes"

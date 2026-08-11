@@ -737,6 +737,61 @@
                 </Grid>
             </TabItem>
 
+            <TabItem x:Name="CompanionTab">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE8FA;" Width="30"/><TextBlock Text="搭子联机"/></StackPanel>
+                </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
+                    <StackPanel Margin="34,28,34,32" MaxWidth="780" HorizontalAlignment="Stretch">
+                        <Grid Margin="0,0,0,20">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="搭子联机" Style="{StaticResource PageTitle}" />
+                                <TextBlock x:Name="CompanionStatusText" Text="正在连接搭子服务…" Style="{StaticResource Hint}" />
+                            </StackPanel>
+                            <Button x:Name="RefreshCompanionButton" Grid.Column="1" Content="刷新" VerticalAlignment="Center" Click="RefreshCompanion_Click" />
+                        </Grid>
+
+                        <Border Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="我的信息" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="昵称" Style="{StaticResource FieldLabel}" />
+                                <Grid Margin="0,0,0,16">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="CompanionNameText" MaxLength="12" />
+                                    <Button x:Name="SaveCompanionNameButton" Grid.Column="1" Content="保存" Margin="8,0,0,0" Click="SaveCompanionName_Click" />
+                                </Grid>
+                                <TextBlock Text="我的搭子码" Style="{StaticResource FieldLabel}" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="CompanionCodeText" IsReadOnly="True" FontFamily="Consolas" FontSize="18" CharacterCasing="Upper" />
+                                    <Button x:Name="CopyCompanionCodeButton" Grid.Column="1" Content="复制" Margin="8,0,0,0" Click="CopyCompanionCode_Click" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource SurfacePanel}" Padding="20">
+                            <StackPanel>
+                                <TextBlock Text="我的搭子" Style="{StaticResource SectionTitle}" />
+                                <TextBlock x:Name="CompanionPartnerText" Text="尚未绑定" FontSize="14" Foreground="{StaticResource InkBrush}" Margin="0,0,0,14" />
+                                <Grid x:Name="PairCompanionPanel">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="PairCodeText" MaxLength="8" CharacterCasing="Upper" ToolTip="输入对方的 8 位搭子码" />
+                                    <Button x:Name="PairCompanionButton" Grid.Column="1" Content="绑定搭子" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="PairCompanion_Click" />
+                                </Grid>
+                                <WrapPanel x:Name="PairedCompanionActions" Visibility="Collapsed">
+                                    <Button x:Name="SendCompanionGifButton" Content="发送当前 GIF" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="SendCompanionGif_Click" />
+                                    <Button x:Name="UnpairCompanionButton" Content="解除绑定" Style="{StaticResource DangerButton}" Click="UnpairCompanion_Click" />
+                                </WrapPanel>
+                                <Button x:Name="CompanionActivateButton" Content="激活后使用" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Visibility="Collapsed" Click="CompanionActivate_Click" />
+                                <TextBlock x:Name="CompanionErrorText" Foreground="{StaticResource DangerBrush}" FontSize="12"
+                                           TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <TabItem x:Name="FeedbackTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal"><TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE939;" Width="30"/><TextBlock Text="反馈与建议"/></StackPanel>

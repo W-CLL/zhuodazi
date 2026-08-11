@@ -18,6 +18,7 @@ public partial class SettingsWindow : Window
     private bool _refreshing;
     private bool _feedbackLoading;
     private bool _interactionContentLoading;
+    private bool _companionLoading;
     private string? _editingReminderId;
 
     public SettingsWindow(AppController controller)
@@ -149,6 +150,36 @@ public partial class SettingsWindow : Window
             ? settings.Reminders.Count == 0 ? "暂无提醒" : $"共 {settings.Reminders.Count} 个提醒"
             : "激活后可创建提醒，并为提醒指定 GIF 表情";
         ReminderEmptyState.Visibility = settings.Reminders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        var companionProfile = _controller.Companions.Profile;
+        if (!_companionLoading && !CompanionNameText.IsKeyboardFocusWithin)
+            CompanionNameText.Text = companionProfile?.DisplayName ?? string.Empty;
+        CompanionCodeText.Text = companionProfile?.PairingCode ?? string.Empty;
+        CompanionStatusText.Text = !_controller.HasActivatedLicense
+            ? "激活完整版本后可以绑定一位搭子"
+            : companionProfile is null
+                ? "正在连接搭子服务…"
+                : companionProfile.Partner is { } partner
+                ? $"已和 {partner.DisplayName} 绑定"
+                : "分享搭子码，或输入对方的搭子码";
+        CompanionPartnerText.Text = companionProfile?.Partner is { } currentPartner
+            ? $"{currentPartner.DisplayName} · 收到的 GIF 会作为独立桌宠出现"
+            : "尚未绑定";
+        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading;
+        CompanionNameText.IsEnabled = companionEnabled;
+        SaveCompanionNameButton.IsEnabled = companionEnabled;
+        CompanionCodeText.IsEnabled = companionEnabled;
+        CopyCompanionCodeButton.IsEnabled = companionEnabled && companionProfile is not null;
+        RefreshCompanionButton.IsEnabled = companionEnabled;
+        PairCompanionPanel.Visibility = companionProfile?.Partner is null && _controller.HasActivatedLicense
+            ? Visibility.Visible : Visibility.Collapsed;
+        PairCompanionButton.IsEnabled = companionEnabled;
+        PairedCompanionActions.Visibility = companionProfile?.Partner is not null
+            ? Visibility.Visible : Visibility.Collapsed;
+        SendCompanionGifButton.IsEnabled = companionEnabled && File.Exists(_controller.CurrentPetPath());
+        UnpairCompanionButton.IsEnabled = companionEnabled;
+        CompanionActivateButton.Visibility = _controller.HasActivatedLicense
+            ? Visibility.Collapsed : Visibility.Visible;
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
@@ -552,8 +583,79 @@ public partial class SettingsWindow : Window
 
     private async void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (!ReferenceEquals(e.OriginalSource, MainTabs) || MainTabs.SelectedItem != FeedbackTab) return;
-        await LoadFeedbackAsync();
+        if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
+        if (MainTabs.SelectedItem == FeedbackTab) await LoadFeedbackAsync();
+        else if (MainTabs.SelectedItem == CompanionTab) await LoadCompanionAsync();
+    }
+
+    private async Task LoadCompanionAsync()
+    {
+        if (_companionLoading || !_controller.HasActivatedLicense) return;
+        _companionLoading = true;
+        CompanionErrorText.Visibility = Visibility.Collapsed;
+        RefreshAll();
+        try { await _controller.RefreshCompanionAsync(); }
+        catch (Exception error)
+        {
+            CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "暂时无法连接搭子服务。");
+            CompanionErrorText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _companionLoading = false;
+            RefreshAll();
+        }
+    }
+
+    private async void RefreshCompanion_Click(object sender, RoutedEventArgs e) => await LoadCompanionAsync();
+
+    private async void SaveCompanionName_Click(object sender, RoutedEventArgs e)
+        => await RunCompanionActionAsync(() => _controller.UpdateCompanionNameAsync(CompanionNameText.Text));
+
+    private void CopyCompanionCode_Click(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(CompanionCodeText.Text)) System.Windows.Clipboard.SetText(CompanionCodeText.Text);
+    }
+
+    private async void PairCompanion_Click(object sender, RoutedEventArgs e)
+        => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text));
+
+    private async void SendCompanionGif_Click(object sender, RoutedEventArgs e)
+        => await RunCompanionActionAsync(() => _controller.SendCurrentGifToCompanionAsync());
+
+    private async void UnpairCompanion_Click(object sender, RoutedEventArgs e)
+    {
+        if (WpfMessageBox.Show(this, "解除搭子绑定？双方之后都不能继续投递 GIF。", "解除绑定",
+            MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+        await RunCompanionActionAsync(() => _controller.UnpairCompanionAsync());
+    }
+
+    private void CompanionActivate_Click(object sender, RoutedEventArgs e)
+    {
+        if (_controller.ShowActivation(this, "激活完整版本后可以使用搭子联机。")) _ = LoadCompanionAsync();
+    }
+
+    private async Task RunCompanionActionAsync(Func<Task> action)
+    {
+        if (_companionLoading) return;
+        _companionLoading = true;
+        CompanionErrorText.Visibility = Visibility.Collapsed;
+        RefreshAll();
+        try
+        {
+            await action();
+            PairCodeText.Clear();
+        }
+        catch (Exception error)
+        {
+            CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "操作未完成，请稍后重试。");
+            CompanionErrorText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _companionLoading = false;
+            RefreshAll();
+        }
     }
 
     private async void FeedbackReload_Click(object sender, RoutedEventArgs e) => await LoadFeedbackAsync();

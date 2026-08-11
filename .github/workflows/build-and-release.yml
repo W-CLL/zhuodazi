@@ -29,6 +29,7 @@ jobs:
     outputs:
       windows_version: ${{ steps.version.outputs.windows }}
       macos_version: ${{ steps.version.outputs.macos }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -56,16 +57,78 @@ jobs:
               raise SystemExit(f"Windows file version must be {windows_version}.0, received {windows_file_version!r}.")
           if macos_build_version != macos_version:
               raise SystemExit(f"macOS build version must be {macos_version}, received {macos_build_version!r}.")
+          if windows_version != macos_version:
+              raise SystemExit(f"Windows and macOS versions must match: {windows_version} != {macos_version}.")
           print(f"windows={windows_version}")
           print(f"macos={macos_version}")
+          print(f"version={windows_version}")
           PY
+
+  prepare-release:
+    name: Prepare unified draft release
+    needs: metadata
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or update draft release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          APP_VERSION: ${{ needs.metadata.outputs.version }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          tag="v${APP_VERSION}"
+          title="桌搭子 ${APP_VERSION}"
+          notes="$(cat <<EOF
+          ${APP_VERSION}：新增搭子联机。绑定一位熟人后，可以像发表情一样发送当前 GIF；对方会看到独立来访，不会替换自己的桌宠。
+
+          本 Release 同时包含 Windows x64 安装包、Windows 便携包、macOS Apple 芯片包和 macOS Intel 芯片包。
+          EOF
+          )"
+          state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
+          if [[ "$state" == "false" ]]; then
+            echo "Release $tag is already published; bump the version before rebuilding." >&2
+            exit 1
+          fi
+          if [[ -z "$state" ]]; then
+            gh release create "$tag" --draft --target "$TARGET_SHA" --title "$title" --notes "$notes"
+          else
+            gh release edit "$tag" --target "$TARGET_SHA" --title "$title" --notes "$notes"
+          fi
 
   build-windows:
     name: Build Windows
-    needs: metadata
+    needs: [metadata, prepare-release]
     uses: ./.github/workflows/build-windows.yml
 
   build-macos:
     name: Build macOS
-    needs: metadata
+    needs: [metadata, prepare-release]
     uses: ./.github/workflows/build-macos.yml
+
+  verify-release:
+    name: Verify unified draft release
+    if: github.event_name != 'pull_request'
+    needs: [metadata, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all platform packages
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          APP_VERSION: ${{ needs.metadata.outputs.version }}
+        run: |
+          tag="v${APP_VERSION}"
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true"
+          assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
+          for expected in \
+            "ZhuoDazi-Desktop-Pet-${APP_VERSION}.exe" \
+            "ZhuoDazi-Desktop-Pet-${APP_VERSION}-portable.zip" \
+            "ZhuoDazi-macOS-${APP_VERSION}-arm64.zip" \
+            "ZhuoDazi-macOS-${APP_VERSION}-x86_64.zip"
+          do
+            grep -Fx "$expected" <<< "$assets" >/dev/null || {
+              echo "Missing release asset: $expected" >&2
+              exit 1
+            }
+          done
