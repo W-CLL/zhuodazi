@@ -180,9 +180,9 @@
 
   const speech = document.querySelector('[data-speech]');
   const speechLines = [
-    '认真工作的时候，我就在这里。',
-    '存个文件吧，今天已经做得很好。',
-    '休息一分钟，再慢慢继续。'
+    '搭子发来一张：下班了吗？',
+    '这张表情先替我去看看你。',
+    '你暂时离线，它会等你回来。'
   ];
   let speechIndex = 0;
 

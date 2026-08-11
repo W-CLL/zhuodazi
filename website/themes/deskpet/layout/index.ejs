@@ -2,20 +2,20 @@
 <section class="hero" id="top">
   <div class="site-shell hero-inner">
     <div class="hero-copy reveal">
-      <p class="eyebrow"><span></span> 桌面上的小小陪伴</p>
+      <p class="eyebrow"><span></span> 情侣 / 搭子的桌面小互动</p>
       <h1>桌搭子</h1>
-      <p class="hero-lead">住在你屏幕边角的桌宠。它会在你专注时安静陪伴，在你需要喘口气时，递来一句刚刚好的回应。</p>
+      <p class="hero-lead">想起对方时，就派此刻的 GIF 去桌面串个门。查岗、抱抱、催下班，不必一直聊天，也能一起玩一下。</p>
       <div class="hero-actions">
         <a class="button button-primary" href="<%= url_for('/download/') %>">免费下载体验 <span aria-hidden="true">↓</span></a>
-        <a class="button button-secondary" href="#features">查看完整功能</a>
+        <a class="button button-secondary" href="#companion">看看它怎么串门</a>
       </div>
       <div class="hero-notes" aria-label="产品特性">
-        <span>Windows / macOS</span>
-        <span>基础陪伴永久免费</span>
-        <span>搭子联机传 GIF</span>
+        <span>情侣 / 异地 / 上班搭子</span>
+        <span>不替换原桌宠</span>
+        <span>激活后解锁</span>
       </div>
     </div>
-    <div class="desktop-scene reveal" aria-label="桌搭子在桌面上陪伴工作的示意">
+    <div class="desktop-scene reveal" aria-label="原桌宠与搭子发来的 GIF 同时出现在桌面上的示意">
       <div class="scene-wallpaper"></div>
       <div class="scene-topbar"><span></span><span></span><span></span><b>今天，也做得很好</b></div>
       <div class="scene-note note-left">待办<br><strong>留一点时间给自己</strong></div>
@@ -24,9 +24,57 @@
         <div class="window-heading"><span></span><span></span><span></span><b>下午的工作清单</b></div>
         <div class="window-lines"><i></i><i></i><i></i><i></i></div>
       </div>
-      <div class="scene-message" data-speech>认真工作的时候，我就在这里。</div>
-      <img class="hero-pet" src="<%= url_for('/images/collection/peach-headphones.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="戴着耳机陪伴工作的蜜桃喵桌宠" decoding="async" fetchpriority="high">
+      <div class="scene-message" data-speech>搭子发来一张：下班了吗？</div>
+      <span class="scene-pet-label scene-pet-label-home">我的桌宠</span>
+      <img class="hero-pet hero-pet-home" src="<%= url_for('/images/collection/peach-headphones.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="接收方原本的蜜桃喵桌宠" decoding="async" fetchpriority="high">
+      <span class="scene-pet-label scene-pet-label-visitor">搭子送来的 GIF</span>
+      <img class="hero-pet-visitor" src="<%= url_for('/images/collection/line-dog-drive.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="搭子发送后独立来访的开车小狗 GIF" decoding="async" fetchpriority="high">
       <div class="scene-taskbar"><span></span><span></span><span></span><span></span><b>14:30</b></div>
+    </div>
+  </div>
+</section>
+
+<section class="companion-story" id="companion" aria-labelledby="companion-title">
+  <div class="site-shell companion-story-inner">
+    <div class="companion-story-heading reveal">
+      <div>
+        <p class="section-kicker">查岗、抱抱、催下班、斗图</p>
+        <h2 id="companion-title">不用一直聊天，也能在彼此桌面玩一下。</h2>
+      </div>
+      <p>忙的时候发一张 GIF，不催回复；异地没赶上同一个空闲时间，就让它晚一点去陪对方。玩久了，还会有只有你们看得懂的桌面暗号。</p>
+    </div>
+
+    <div class="companion-flow reveal" aria-label="搭子联机发送流程">
+      <article>
+        <span>01</span>
+        <img src="<%= url_for('/images/collection/pooh-wave.gif') %>" width="128" height="128" alt="挥手的桌宠 GIF" loading="lazy" decoding="async">
+        <h3>认出彼此</h3>
+        <p>交换搭子码，只和一个熟悉的人连接。</p>
+      </article>
+      <i aria-hidden="true">→</i>
+      <article>
+        <span>02</span>
+        <img src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>" width="128" height="128" alt="抱抱的桌宠 GIF" loading="lazy" decoding="async">
+        <h3>派表情出发</h3>
+        <p>起床了吗、抱一下、该下班了，都可以是一张 GIF。</p>
+      </article>
+      <i aria-hidden="true">→</i>
+      <article>
+        <span>03</span>
+        <div class="companion-pair">
+          <img src="<%= url_for('/images/collection/peach-headphones.gif') %>" width="128" height="128" alt="接收方原来的桌宠" loading="lazy" decoding="async">
+          <img src="<%= url_for('/images/collection/line-dog-drive.gif') %>" width="128" height="128" alt="搭子发来的访客 GIF" loading="lazy" decoding="async">
+        </div>
+        <h3>去 TA 的桌面陪一会儿</h3>
+        <p>访客不会顶掉原桌宠；TA 暂时不在线，它也可以等等。</p>
+      </article>
+    </div>
+
+    <div class="companion-facts reveal" aria-label="搭子联机使用说明">
+      <span>Windows / macOS 3.1.1</span>
+      <span>熟人一对一连接</span>
+      <span>不公开匹配、不开放陌生人消息</span>
+      <span>需激活完整版</span>
     </div>
   </div>
 </section>
@@ -47,44 +95,44 @@
     </div>
     <div class="feature-grid">
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">01</span><img src="<%= url_for('/images/collection/pooh-run.gif') %>" width="112" height="112" alt="跑动中的桌宠" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">01</span><img src="<%= url_for('/images/library/together.gif') %>" width="112" height="112" alt="两只桌搭子一起出现" loading="lazy" decoding="async"></div>
+        <h3>把当前 GIF 发给搭子</h3>
+        <p>绑定一位熟人后，像发表情一样发送正在出现的 GIF。它会独立去对方桌面串门，不会替换对方自己的桌宠。</p>
+      </article>
+      <article class="feature reveal">
+        <div class="feature-media"><span class="feature-index">02</span><img src="<%= url_for('/images/collection/pooh-run.gif') %>" width="112" height="112" alt="跑动中的桌宠" loading="lazy" decoding="async"></div>
         <h3>会动，也有自己的脾气</h3>
         <p>桌宠会游走、停靠、追逐或躲开鼠标。拖动后快速松手，它还会沿着屏幕边缘弹回来。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">02</span><img src="<%= url_for('/images/collection/kitty-hope.gif') %>" width="112" height="112" alt="期待回应的桌宠" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">03</span><img src="<%= url_for('/images/collection/kitty-hope.gif') %>" width="112" height="112" alt="期待回应的桌宠" loading="lazy" decoding="async"></div>
         <h3>有来有回的互动</h3>
         <p>心情问候、冷笑话、数学题、趣味知识和生活小贴士，安静、标准、活跃三档频率随你调。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">03</span><img src="<%= url_for('/images/collection/peach-headphones.gif') %>" width="112" height="112" alt="戴着耳机的自定义桌宠" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">04</span><img src="<%= url_for('/images/collection/peach-headphones.gif') %>" width="112" height="112" alt="戴着耳机的自定义桌宠" loading="lazy" decoding="async"></div>
         <h3>导入自己的 GIF</h3>
         <p>添加透明 GIF 作为专属桌宠，保留最多 3 个自定义角色，随时切换今天陪你的是谁。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">04</span><img src="<%= url_for('/images/collection/rilakkuma-car.gif') %>" width="112" height="112" alt="资源库里的轻松熊桌宠" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">05</span><img src="<%= url_for('/images/collection/rilakkuma-car.gif') %>" width="112" height="112" alt="资源库里的轻松熊桌宠" loading="lazy" decoding="async"></div>
         <h3>建立桌宠资源库</h3>
         <p>绑定最多 3 个外部 GIF 目录，选定资源库后自动随机换宠，也可以随时手动换一只。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">05</span><img src="<%= url_for('/images/collection/pooh-wave.gif') %>" width="112" height="112" alt="挥手说话的桌宠" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">06</span><img src="<%= url_for('/images/collection/pooh-wave.gif') %>" width="112" height="112" alt="挥手说话的桌宠" loading="lazy" decoding="async"></div>
         <h3>换上自己的台词</h3>
         <p>导入 JSON 或 TXT 互动词包，最多保留 5 套，让问候、夸夸和吐槽更像你的搭子。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">06</span><img src="<%= url_for('/images/collection/kitty-thanks.gif') %>" width="112" height="112" alt="两只桌宠同台演出" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">07</span><img src="<%= url_for('/images/collection/kitty-thanks.gif') %>" width="112" height="112" alt="两只桌宠同台演出" loading="lazy" decoding="async"></div>
         <h3>把日子演成小剧场</h3>
         <p>导入最多 10 个 JSON 剧本。两只桌宠会靠近、换位、跳舞，再把一段小故事演完。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">07</span><img src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>" width="112" height="112" alt="带着指定表情提醒的桌宠" loading="lazy" decoding="async"></div>
+        <div class="feature-media"><span class="feature-index">08</span><img src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>" width="112" height="112" alt="带着指定表情提醒的桌宠" loading="lazy" decoding="async"></div>
         <h3>提醒时，换个表情来找你</h3>
         <p>设定时间、内容和重复方式，还能指定一张 GIF。到点后桌宠会带着选好的表情出现。</p>
-      </article>
-      <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">08</span><img src="<%= url_for('/images/library/together.gif') %>" width="112" height="112" alt="两只桌搭子一起出现" loading="lazy" decoding="async"></div>
-        <h3>把当前 GIF 发给搭子</h3>
-        <p>绑定一位熟人后，像发表情一样发送正在出现的 GIF。它会独立去对方桌面串门，不会替换对方自己的桌宠。</p>
       </article>
     </div>
   </div>
