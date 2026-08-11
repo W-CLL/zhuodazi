@@ -50,15 +50,6 @@ jobs:
           file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
 
-      - name: Upload macOS build artifact
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}
-          if-no-files-found: error
-          retention-days: 14
-          path: macos/dist/ZhuoDazi-macOS-${{ env.APP_VERSION }}-${{ matrix.arch }}.zip
-
       - name: Upload macOS package to unified draft release
         if: github.event_name != 'pull_request'
         env:
