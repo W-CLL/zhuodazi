@@ -87,7 +87,7 @@ jobs:
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
           notes="$(cat <<EOF
-          ${APP_VERSION}：新增今日暗号和远程贴纸。双方设置同一张 GIF 后发送会触发特别动作，也可以把内置贴纸发到熟人的桌面；GIF 来访和贴纸都不会替换原桌宠。
+          ${APP_VERSION}：优化远程贴纸。贴纸更小巧，改用彩色图案，并会自动寻找空位避免重叠；今日暗号、GIF 来访和贴纸都不会替换原桌宠。
 
           本 Release 同时包含 Windows x64 安装包、Windows 便携包、macOS Apple 芯片包和 macOS Intel 芯片包。
           EOF
