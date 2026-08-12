@@ -87,22 +87,21 @@ jobs:
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
           notes="$(cat <<EOF
-          ${APP_VERSION}：优化远程贴纸。贴纸更小巧，改用彩色图案，并会自动寻找空位避免重叠；今日暗号、GIF 来访和贴纸都不会替换原桌宠。
+          ${APP_VERSION}：搭子 GIF 来访作为独立互动出现，不会替换原桌宠。
 
           本 Release 同时包含 Windows x64 安装包、Windows 便携包、macOS Apple 芯片包和 macOS Intel 芯片包。
           EOF
           )"
           state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
           if [[ "$state" == "false" ]]; then
-            changed="$(git diff --name-only "$tag" "$TARGET_SHA")"
-            non_workflow_changes="$(grep -Ev '^\.github/workflows/' <<< "$changed" || true)"
-            if [[ -n "$non_workflow_changes" ]]; then
+            application_changes="$(git diff --name-only "$tag" "$TARGET_SHA" -- windows macos)"
+            if [[ -n "$application_changes" ]]; then
               echo "Release $tag is already published and application files changed; bump the version before rebuilding." >&2
-              echo "$non_workflow_changes" >&2
+              echo "$application_changes" >&2
               exit 1
             fi
             echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "Release $tag is already published; skipping rebuild for workflow-only changes."
+            echo "Release $tag already contains the same application code; skipping duplicate packages."
             exit 0
           fi
           echo "published=false" >> "$GITHUB_OUTPUT"

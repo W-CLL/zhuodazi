@@ -26,8 +26,6 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly Queue<CompanionVisit> _companionVisits = new();
-    private readonly Queue<CompanionSticker> _companionStickers = new();
-    private readonly List<StickerWindow> _stickerWindows = [];
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
     private PetWindow? _petWindow;
@@ -324,42 +322,8 @@ public sealed class AppController : IDisposable
         var path = CurrentPetPath();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             throw new InvalidOperationException("当前桌宠没有可发送的 GIF。");
-        var result = await Companions.SendCurrentGifAsync(path, cancellationToken);
-        if (result.SecretMatch)
-        {
-            _petWindow?.PlaySecretAnimation();
-            _petWindow?.ShowReaction("暗号对上啦！");
-        }
-        else
-        {
-            _petWindow?.ShowReaction($"已经去找 {result.RecipientName} 啦。");
-        }
-    }
-
-    public async Task SetTodaySecretAsync(CancellationToken cancellationToken = default)
-    {
-        if (!_licenses.IsActivated)
-        {
-            ShowActivation(_settingsWindow, "激活完整版本后可以使用搭子联机。");
-            return;
-        }
-        var path = CurrentPetPath();
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            throw new InvalidOperationException("当前桌宠没有可设置的 GIF。");
-        await Companions.SetTodaySecretAsync(path, cancellationToken);
-        _petWindow?.ShowReaction("今天的暗号设好啦。");
-        StateChanged?.Invoke();
-    }
-
-    public async Task SendCompanionStickerAsync(string stickerId, CancellationToken cancellationToken = default)
-    {
-        if (!_licenses.IsActivated)
-        {
-            ShowActivation(_settingsWindow, "激活完整版本后可以使用搭子联机。");
-            return;
-        }
-        var recipient = await Companions.SendStickerAsync(stickerId, cancellationToken);
-        _petWindow?.ShowReaction($"贴给 {recipient} 啦。");
+        var recipient = await Companions.SendCurrentGifAsync(path, cancellationToken);
+        _petWindow?.ShowReaction($"已经去找 {recipient} 啦。");
     }
 
     public async Task<int> SyncInteractionContentAsync(CancellationToken cancellationToken = default)
@@ -1283,11 +1247,9 @@ public sealed class AppController : IDisposable
         _companionSyncing = true;
         try
         {
-            var result = await Companions.ReceiveAsync();
-            foreach (var visit in result.Visits) _companionVisits.Enqueue(visit);
-            foreach (var sticker in result.Stickers) _companionStickers.Enqueue(sticker);
+            var visits = await Companions.ReceiveAsync();
+            foreach (var visit in visits) _companionVisits.Enqueue(visit);
             if (!_visitorShowing && _companionVisits.Count > 0) _ = ShowQueuedVisitorsAsync();
-            ShowQueuedStickers();
         }
         catch { }
         finally
@@ -1322,12 +1284,6 @@ public sealed class AppController : IDisposable
                 visitor.Place(new Point(left, top));
                 visitor.Show();
                 visitor.ShowReaction($"{visit.SenderName} 来串门啦");
-                if (visit.SecretMatch)
-                {
-                    main.PlaySecretAnimation();
-                    visitor.PlaySecretAnimation();
-                    main.ShowReaction("暗号对上啦！");
-                }
                 try { await Task.Delay(TimeSpan.FromSeconds(10)); }
                 finally
                 {
@@ -1341,55 +1297,6 @@ public sealed class AppController : IDisposable
         {
             _visitorShowing = false;
         }
-    }
-
-    private void ShowQueuedStickers()
-    {
-        if (_petWindow is not { IsVisible: true } main) return;
-        while (_companionStickers.TryDequeue(out var sticker))
-        {
-            var window = new StickerWindow(sticker.StickerId, sticker.SenderName);
-            var area = main.GetWorkingArea();
-            var slot = FindStickerSlot(main, area, window.Width, window.Height);
-            if (slot is null && _stickerWindows.Count > 0)
-            {
-                _stickerWindows[0].Close();
-                slot = FindStickerSlot(main, area, window.Width, window.Height);
-            }
-            var position = slot ?? new Point(
-                Math.Clamp(main.Left + main.Width + 12, area.Left, Math.Max(area.Left, area.Right - window.Width)),
-                Math.Clamp(main.Top, area.Top, Math.Max(area.Top, area.Bottom - window.Height)));
-            var left = position.X;
-            var top = position.Y;
-            window.Left = left;
-            window.Top = top;
-            window.Closed += (_, _) => _stickerWindows.Remove(window);
-            _stickerWindows.Add(window);
-            window.Show();
-        }
-    }
-
-    private Point? FindStickerSlot(PetWindow main, Rect area, double width, double height)
-    {
-        var rightSide = main.Left + main.Width + 12;
-        var leftSide = main.Left - width - 12;
-        for (var index = 0; index < 12; index++)
-        {
-            var column = index / 4;
-            var row = index % 4;
-            var x = column % 2 == 0 ? rightSide + column / 2 * (width + 8) : leftSide - column / 2 * (width + 8);
-            var y = main.Top + row * (height + 8);
-            var candidate = new System.Drawing.RectangleF((float)x, (float)y, (float)width, (float)height);
-            if (candidate.Left < area.Left || candidate.Right > area.Right || candidate.Top < area.Top || candidate.Bottom > area.Bottom)
-            {
-                continue;
-            }
-            if (_stickerWindows.All(item => !item.IsVisible || !candidate.IntersectsWith(new System.Drawing.RectangleF((float)item.Left, (float)item.Top, (float)item.Width, (float)item.Height))))
-            {
-                return new Point(x, y);
-            }
-        }
-        return null;
     }
 
     public void Dispose()
@@ -1409,8 +1316,6 @@ public sealed class AppController : IDisposable
         Feedback.Dispose();
         Interactions.Dispose();
         Companions.Dispose();
-        foreach (var stickerWindow in _stickerWindows.ToArray()) stickerWindow.Close();
-        _stickerWindows.Clear();
         _analytics.Dispose();
         if (_tray is not null) _tray.Visible = false;
         _tray?.Dispose();

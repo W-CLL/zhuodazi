@@ -54,7 +54,6 @@ final class PetWindowController {
     private let settingsChanged: (AppSettings) -> Void
     private var companionWindow: NSPanel?
     private var visitorWindow: NSPanel?
-    private var stickerWindows: [StickerWindowController] = []
     private var theaterTask: Task<Void, Never>?
     private var reminderExpressionTask: Task<Void, Never>?
     private let interactionPanel: PetInteractionPanelController
@@ -124,8 +123,6 @@ final class PetWindowController {
         reminderExpressionTask?.cancel()
         interactionSyncTask?.cancel()
         visitorWindow?.orderOut(nil)
-        stickerWindows.forEach { $0.close() }
-        stickerWindows.removeAll()
         if let localKeyMonitor { NSEvent.removeMonitor(localKeyMonitor) }
         if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
     }
@@ -136,68 +133,17 @@ final class PetWindowController {
         window.orderOut(nil)
     }
     func showBubble(_ text: String) { petView.showBubble(text) }
-    func playSecretAnimation() { petView.playSecretAnimation() }
 
-    func showVisitor(at url: URL, senderName: String, secretMatch: Bool = false) async {
+    func showVisitor(at url: URL, senderName: String) async {
         guard window.isVisible, theaterTask == nil, visitorWindow == nil else { return }
         let visitor = makeCompanionWindow(petURL: url)
         visitorWindow = visitor.window
         positionCompanion(visitor.window)
         visitor.window.orderFrontRegardless()
         visitor.view.showBubble("\(senderName) 来串门啦", duration: 5)
-        if secretMatch {
-            petView.playSecretAnimation()
-            visitor.view.playSecretAnimation()
-            showBubble("暗号对上啦！")
-        }
         try? await Task.sleep(for: .seconds(10))
         visitor.window.orderOut(nil)
         if visitorWindow === visitor.window { visitorWindow = nil }
-    }
-
-    func showSticker(stickerID: String, senderName: String) {
-        guard window.isVisible else { return }
-        let sticker = StickerWindowController(stickerID: stickerID, senderName: senderName)
-        let bounds = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
-            ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let size = sticker.window!.frame.size
-        var origin = findStickerOrigin(bounds: bounds, size: size)
-        if origin == nil, let oldest = stickerWindows.first {
-            oldest.close()
-            stickerWindows.removeFirst()
-            origin = findStickerOrigin(bounds: bounds, size: size)
-        }
-        let rightSide = window.frame.maxX + 12
-        origin = origin ?? NSPoint(
-            x: max(bounds.minX, min(rightSide, bounds.maxX - size.width)),
-            y: max(bounds.minY, min(window.frame.maxY - size.height, bounds.maxY - size.height))
-        )
-        sticker.window?.setFrameOrigin(origin!)
-        sticker.onDismiss = { [weak self, weak sticker] in
-            guard let self, let sticker else { return }
-            self.stickerWindows.removeAll { $0 === sticker }
-        }
-        stickerWindows.append(sticker)
-        sticker.showWindow(nil)
-    }
-
-    private func findStickerOrigin(bounds: NSRect, size: NSSize) -> NSPoint? {
-        let rightSide = window.frame.maxX + 12
-        let leftSide = window.frame.minX - size.width - 12
-        for index in 0..<12 {
-            let column = index / 4
-            let row = index % 4
-            let x = column % 2 == 0
-                ? rightSide + CGFloat(column / 2) * (size.width + 8)
-                : leftSide - CGFloat(column / 2) * (size.width + 8)
-            let y = window.frame.maxY - size.height - CGFloat(row) * (size.height + 8)
-            let candidate = NSRect(origin: NSPoint(x: x, y: y), size: size)
-            guard bounds.contains(candidate) else { continue }
-            if stickerWindows.allSatisfy({ $0.window?.frame.intersects(candidate) != true }) {
-                return candidate.origin
-            }
-        }
-        return nil
     }
 
     func startInteractionServices() {

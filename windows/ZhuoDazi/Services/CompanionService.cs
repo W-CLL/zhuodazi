@@ -15,26 +15,15 @@ public sealed record CompanionPartner(
 public sealed record CompanionProfile(
     [property: JsonPropertyName("displayName")] string DisplayName,
     [property: JsonPropertyName("pairingCode")] string PairingCode,
-    [property: JsonPropertyName("todaySecretSet")] bool TodaySecretSet,
     [property: JsonPropertyName("partner")] CompanionPartner? Partner);
 
-public sealed record CompanionVisit(string Id, string SenderName, string FilePath, bool SecretMatch);
-
-public sealed record CompanionSticker(string Id, string SenderName, string StickerId);
-
-public sealed record CompanionReceiveResult(
-    IReadOnlyList<CompanionVisit> Visits,
-    IReadOnlyList<CompanionSticker> Stickers);
-
-public sealed record CompanionSendResult(string RecipientName, bool SecretMatch);
+public sealed record CompanionVisit(string Id, string SenderName, string FilePath);
 
 public sealed class CompanionService : IDisposable
 {
     private const string CompanionUrl = LicenseService.ServiceBaseUrl + "/api/companion";
     private const string PairUrl = CompanionUrl + "/pair";
     private const string DeliveriesUrl = CompanionUrl + "/deliveries";
-    private const string SecretUrl = CompanionUrl + "/secret";
-    private const string StickersUrl = CompanionUrl + "/stickers";
     private const int MaximumGifBytes = 8 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -93,34 +82,31 @@ public sealed class CompanionService : IDisposable
         return Profile;
     }
 
-    public async Task<CompanionSendResult> SendCurrentGifAsync(string gifPath, CancellationToken cancellationToken = default)
+    public async Task<string> SendCurrentGifAsync(string gifPath, CancellationToken cancellationToken = default)
     {
-        using var request = CreateGifRequest(HttpMethod.Post, DeliveriesUrl, gifPath);
+        if (!File.Exists(gifPath)) throw new InvalidOperationException("当前 GIF 文件不存在。");
+        var info = new FileInfo(gifPath);
+        if (!gifPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)
+            || info.Length < 10 || info.Length > MaximumGifBytes)
+            throw new InvalidOperationException("只能发送不超过 8 MB 的 GIF。");
+
+        using var request = CreateRequest(HttpMethod.Post, DeliveriesUrl);
+        await using var stream = File.OpenRead(gifPath);
+        request.Content = new StreamContent(stream);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("image/gif");
+        request.Content.Headers.ContentLength = info.Length;
         var response = await SendJsonAsync<SendResponse>(request, cancellationToken);
-        return new CompanionSendResult(response.RecipientName, response.SecretMatch);
-    }
-
-    public async Task<bool> SetTodaySecretAsync(string gifPath, CancellationToken cancellationToken = default)
-    {
-        using var request = CreateGifRequest(HttpMethod.Post, SecretUrl, gifPath);
-        var response = await SendJsonAsync<SecretResponse>(request, cancellationToken);
-        if (response.Set) await RefreshProfileAsync(cancellationToken);
-        return response.Set;
-    }
-
-    public async Task<string> SendStickerAsync(string stickerId, CancellationToken cancellationToken = default)
-    {
-        using var request = CreateJsonRequest(HttpMethod.Post, StickersUrl, new { stickerId });
-        var response = await SendJsonAsync<StickerSendResponse>(request, cancellationToken);
         return response.RecipientName;
     }
 
-    public async Task<CompanionReceiveResult> ReceiveAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CompanionVisit>> ReceiveAsync(CancellationToken cancellationToken = default)
     {
         using var listRequest = CreateRequest(HttpMethod.Get, DeliveriesUrl);
         var pending = await SendJsonAsync<DeliveryListResponse>(listRequest, cancellationToken);
+        if (pending.Deliveries.Count == 0) return [];
+
+        Directory.CreateDirectory(_inboxDirectory);
         var visits = new List<CompanionVisit>();
-        if (pending.Deliveries.Count > 0) Directory.CreateDirectory(_inboxDirectory);
         foreach (var item in pending.Deliveries)
         {
             var filePath = Path.Combine(_inboxDirectory, $"{item.Id}.gif");
@@ -145,38 +131,9 @@ public sealed class CompanionService : IDisposable
             using var acknowledgeResponse = await _httpClient.SendAsync(acknowledgeRequest, cancellationToken);
             if (!acknowledgeResponse.IsSuccessStatusCode)
                 throw new InvalidOperationException(await ReadErrorAsync(acknowledgeResponse, cancellationToken));
-            visits.Add(new CompanionVisit(item.Id, item.SenderName, filePath, item.SecretMatch));
+            visits.Add(new CompanionVisit(item.Id, item.SenderName, filePath));
         }
-        var stickers = new List<CompanionSticker>();
-        foreach (var item in pending.Stickers)
-        {
-            using var acknowledgeRequest = CreateRequest(
-                HttpMethod.Post,
-                $"{StickersUrl}/{Uri.EscapeDataString(item.Id)}/acknowledge");
-            using var acknowledgeResponse = await _httpClient.SendAsync(acknowledgeRequest, cancellationToken);
-            if (!acknowledgeResponse.IsSuccessStatusCode)
-                throw new InvalidOperationException(await ReadErrorAsync(acknowledgeResponse, cancellationToken));
-            stickers.Add(new CompanionSticker(item.Id, item.SenderName, item.StickerId));
-        }
-        return new CompanionReceiveResult(visits, stickers);
-    }
-
-    private HttpRequestMessage CreateGifRequest(
-        HttpMethod method,
-        string url,
-        string gifPath)
-    {
-        if (!File.Exists(gifPath)) throw new InvalidOperationException("当前 GIF 文件不存在。");
-        var info = new FileInfo(gifPath);
-        if (!gifPath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase)
-            || info.Length < 10 || info.Length > MaximumGifBytes)
-            throw new InvalidOperationException("只能发送不超过 8 MB 的 GIF。");
-        var request = CreateRequest(method, url);
-        var stream = File.OpenRead(gifPath);
-        request.Content = new StreamContent(stream);
-        request.Content.Headers.ContentType = new MediaTypeHeaderValue("image/gif");
-        request.Content.Headers.ContentLength = info.Length;
-        return request;
+        return visits;
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string url)
@@ -241,30 +198,16 @@ public sealed class CompanionService : IDisposable
     public void Dispose() => _httpClient.Dispose();
 
     private sealed record SendResponse(
-        [property: JsonPropertyName("recipientName")] string RecipientName,
-        [property: JsonPropertyName("secretMatch")] bool SecretMatch);
-
-    private sealed record StickerSendResponse(
         [property: JsonPropertyName("recipientName")] string RecipientName);
 
-    private sealed record SecretResponse(
-        [property: JsonPropertyName("set")] bool Set);
-
     private sealed record DeliveryListResponse(
-        [property: JsonPropertyName("deliveries")] List<DeliveryItem> Deliveries,
-        [property: JsonPropertyName("stickers")] List<StickerItem> Stickers);
+        [property: JsonPropertyName("deliveries")] List<DeliveryItem> Deliveries);
 
     private sealed record DeliveryItem(
         [property: JsonPropertyName("id")] string Id,
         [property: JsonPropertyName("senderName")] string SenderName,
         [property: JsonPropertyName("sha256")] string Sha256,
-        [property: JsonPropertyName("downloadPath")] string DownloadPath,
-        [property: JsonPropertyName("secretMatch")] bool SecretMatch);
-
-    private sealed record StickerItem(
-        [property: JsonPropertyName("id")] string Id,
-        [property: JsonPropertyName("senderName")] string SenderName,
-        [property: JsonPropertyName("stickerId")] string StickerId);
+        [property: JsonPropertyName("downloadPath")] string DownloadPath);
 
     private sealed record ErrorResponse([property: JsonPropertyName("error")] string Error);
 }

@@ -9,8 +9,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>ZhuoDazi</AssemblyName>
     <RootNamespace>ZhuoDazi</RootNamespace>
-    <Version>3.2.1</Version>
-    <FileVersion>3.2.1.0</FileVersion>
+    <Version>3.1.1</Version>
+    <FileVersion>3.1.1.0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <ApplicationIcon>..\build\app-icon.ico</ApplicationIcon>
@@ -25,14 +25,6 @@
     <Resource Include="..\assets\contact-author-wechat.png">
       <Link>assets\contact-author-wechat.png</Link>
       <LogicalName>assets/contact-author-wechat.png</LogicalName>
-    </Resource>
-    <Resource Include="..\assets\stickers\*.png">
-      <Link>assets\stickers\%(Filename)%(Extension)</Link>
-      <LogicalName>assets/stickers/%(Filename)%(Extension)</LogicalName>
-    </Resource>
-    <Resource Include="..\assets\stickers\LICENSE.txt">
-      <Link>assets\stickers\LICENSE.txt</Link>
-      <LogicalName>assets/stickers/LICENSE.txt</LogicalName>
     </Resource>
     <Content Include="..\assets\pet-libraries\**\*" Link="resources\pet-libraries\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\assets\templates\**\*" Link="resources\templates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

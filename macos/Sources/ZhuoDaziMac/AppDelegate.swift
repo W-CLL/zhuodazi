@@ -267,14 +267,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { return }
                     try await self.sendCurrentGIF()
                 },
-                setTodaySecret: { [weak self] in
-                    guard let self else { return }
-                    try await self.setTodaySecret()
-                },
-                sendSticker: { [weak self] stickerID in
-                    guard let self else { return }
-                    try await self.sendSticker(stickerID)
-                },
                 stateChanged: { [weak self] in self?.refreshMenuState() }
             )
         }
@@ -293,28 +285,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard licenses.isActivated else { throw LicenseError.inactive }
         guard companions.profile?.partner != nil else { throw CompanionError.server("请先绑定搭子") }
         guard let url = petController.currentGIFURL else { throw CompanionError.server("当前没有可发送的 GIF") }
-        let result = try await companions.sendCurrentGIF(url)
-        if result.secretMatch {
-            petController.playSecretAnimation()
-            petController.showBubble("暗号对上啦！")
-        } else {
-            petController.showBubble("已经去找 \(result.recipientName) 啦。")
-        }
-    }
-
-    private func setTodaySecret() async throws {
-        guard licenses.isActivated else { throw LicenseError.inactive }
-        guard companions.profile?.partner != nil else { throw CompanionError.server("请先绑定搭子") }
-        guard let url = petController.currentGIFURL else { throw CompanionError.server("当前没有可设置的 GIF") }
-        _ = try await companions.setTodaySecret(url)
-        petController.showBubble("今天的暗号设好啦。")
-    }
-
-    private func sendSticker(_ stickerID: String) async throws {
-        guard licenses.isActivated else { throw LicenseError.inactive }
-        guard companions.profile?.partner != nil else { throw CompanionError.server("请先绑定搭子") }
-        let recipient = try await companions.sendSticker(stickerID)
-        petController.showBubble("贴给 \(recipient) 啦。")
+        let recipient = try await companions.sendCurrentGIF(url)
+        petController.showBubble("已经去找 \(recipient) 啦。")
     }
 
     @objc private func toggleVisibility(_ sender: NSMenuItem) {
@@ -427,17 +399,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         companionPolling = true
         defer { companionPolling = false }
         do {
-            let result = try await companions.receive()
-            for visit in result.visits {
-                await petController.showVisitor(
-                    at: visit.fileURL,
-                    senderName: visit.senderName,
-                    secretMatch: visit.secretMatch
-                )
+            for visit in try await companions.receive() {
+                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName)
                 try? FileManager.default.removeItem(at: visit.fileURL)
-            }
-            for sticker in result.stickers {
-                petController.showSticker(stickerID: sticker.stickerID, senderName: sticker.senderName)
             }
         } catch {
             // Periodic polling retries without interrupting the desktop pet.

@@ -773,8 +773,7 @@
                         <Border Style="{StaticResource SurfacePanel}" Padding="20">
                             <StackPanel>
                                 <TextBlock Text="我的搭子" Style="{StaticResource SectionTitle}" />
-                                <TextBlock x:Name="CompanionPartnerText" Text="尚未绑定" FontSize="14" Foreground="{StaticResource InkBrush}" Margin="0,0,0,6" />
-                                <TextBlock x:Name="CompanionSecretStatusText" Text="今天还没有设置暗号" Style="{StaticResource Hint}" Margin="0,0,0,14" />
+                                <TextBlock x:Name="CompanionPartnerText" Text="尚未绑定" FontSize="14" Foreground="{StaticResource InkBrush}" Margin="0,0,0,14" />
                                 <Grid x:Name="PairCompanionPanel">
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                     <TextBox x:Name="PairCodeText" MaxLength="8" CharacterCasing="Upper" ToolTip="输入对方的 8 位搭子码" />
@@ -782,16 +781,6 @@
                                 </Grid>
                                 <WrapPanel x:Name="PairedCompanionActions" Visibility="Collapsed">
                                     <Button x:Name="SendCompanionGifButton" Content="发送当前 GIF" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="SendCompanionGif_Click" />
-                                    <Button x:Name="SetCompanionSecretButton" Content="设置今日暗号" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="SetCompanionSecret_Click" />
-                                    <ComboBox x:Name="CompanionStickerPicker" Width="118" Height="32" Margin="0,0,8,0" SelectedIndex="0">
-                                        <ComboBoxItem Tag="heart" Content="心心" />
-                                        <ComboBoxItem Tag="coffee" Content="咖啡" />
-                                        <ComboBoxItem Tag="catPaw" Content="猫爪" />
-                                        <ComboBoxItem Tag="star" Content="星星" />
-                                        <ComboBoxItem Tag="cheer" Content="加油" />
-                                        <ComboBoxItem Tag="goodnight" Content="晚安" />
-                                    </ComboBox>
-                                    <Button x:Name="SendCompanionStickerButton" Content="贴给搭子" Style="{StaticResource PrimaryButton}" Margin="0,0,8,0" Click="SendCompanionSticker_Click" />
                                     <Button x:Name="UnpairCompanionButton" Content="解除绑定" Style="{StaticResource DangerButton}" Click="UnpairCompanion_Click" />
                                 </WrapPanel>
                                 <Button x:Name="CompanionActivateButton" Content="激活后使用" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Visibility="Collapsed" Click="CompanionActivate_Click" />
