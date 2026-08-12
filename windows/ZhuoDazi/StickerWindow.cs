@@ -49,7 +49,7 @@ public sealed class StickerWindow : Window
                 Opacity = 0.18,
                 Color = System.Windows.Media.Colors.Black
             },
-            Child = new Image
+            Child = new System.Windows.Controls.Image
             {
                 Source = new System.Windows.Media.Imaging.BitmapImage(
                     new Uri($"pack://application:,,,/assets/stickers/{sticker.Asset}.png")),
