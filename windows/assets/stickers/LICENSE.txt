@@ -1,0 +1,3 @@
+Sticker images are from Twemoji by Twitter, Inc. and other contributors.
+Source: https://github.com/jdecked/twemoji
+License: CC-BY 4.0 https://creativecommons.org/licenses/by/4.0/

@@ -160,20 +160,44 @@ final class PetWindowController {
         let sticker = StickerWindowController(stickerID: stickerID, senderName: senderName)
         let bounds = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1200, height: 800)
-        let offset = CGFloat(12 + (stickerWindows.count % 3) * 104)
-        var origin = NSPoint(x: window.frame.maxX + offset, y: window.frame.maxY - sticker.window!.frame.height - CGFloat(stickerWindows.count % 3) * 104)
-        if origin.x + sticker.window!.frame.width > bounds.maxX {
-            origin.x = window.frame.minX - sticker.window!.frame.width - offset
+        let size = sticker.window!.frame.size
+        var origin = findStickerOrigin(bounds: bounds, size: size)
+        if origin == nil, let oldest = stickerWindows.first {
+            oldest.close()
+            stickerWindows.removeFirst()
+            origin = findStickerOrigin(bounds: bounds, size: size)
         }
-        origin.x = max(bounds.minX, min(origin.x, bounds.maxX - sticker.window!.frame.width))
-        origin.y = max(bounds.minY, min(origin.y, bounds.maxY - sticker.window!.frame.height))
-        sticker.window?.setFrameOrigin(origin)
+        let rightSide = window.frame.maxX + 12
+        origin = origin ?? NSPoint(
+            x: max(bounds.minX, min(rightSide, bounds.maxX - size.width)),
+            y: max(bounds.minY, min(window.frame.maxY - size.height, bounds.maxY - size.height))
+        )
+        sticker.window?.setFrameOrigin(origin!)
         sticker.onDismiss = { [weak self, weak sticker] in
             guard let self, let sticker else { return }
             self.stickerWindows.removeAll { $0 === sticker }
         }
         stickerWindows.append(sticker)
         sticker.showWindow(nil)
+    }
+
+    private func findStickerOrigin(bounds: NSRect, size: NSSize) -> NSPoint? {
+        let rightSide = window.frame.maxX + 12
+        let leftSide = window.frame.minX - size.width - 12
+        for index in 0..<12 {
+            let column = index / 4
+            let row = index % 4
+            let x = column % 2 == 0
+                ? rightSide + CGFloat(column / 2) * (size.width + 8)
+                : leftSide - CGFloat(column / 2) * (size.width + 8)
+            let y = window.frame.maxY - size.height - CGFloat(row) * (size.height + 8)
+            let candidate = NSRect(origin: NSPoint(x: x, y: y), size: size)
+            guard bounds.contains(candidate) else { continue }
+            if stickerWindows.allSatisfy({ $0.window?.frame.intersects(candidate) != true }) {
+                return candidate.origin
+            }
+        }
+        return nil
     }
 
     func startInteractionServices() {

@@ -26,6 +26,14 @@
       <Link>assets\contact-author-wechat.png</Link>
       <LogicalName>assets/contact-author-wechat.png</LogicalName>
     </Resource>
+    <Resource Include="..\assets\stickers\*.png">
+      <Link>assets\stickers\%(Filename)%(Extension)</Link>
+      <LogicalName>assets/stickers/%(Filename)%(Extension)</LogicalName>
+    </Resource>
+    <Resource Include="..\assets\stickers\LICENSE.txt">
+      <Link>assets\stickers\LICENSE.txt</Link>
+      <LogicalName>assets/stickers/LICENSE.txt</LogicalName>
+    </Resource>
     <Content Include="..\assets\pet-libraries\**\*" Link="resources\pet-libraries\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\assets\templates\**\*" Link="resources\templates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -1350,18 +1350,46 @@ public sealed class AppController : IDisposable
         {
             var window = new StickerWindow(sticker.StickerId, sticker.SenderName);
             var area = main.GetWorkingArea();
-            var offset = 12 + (_stickerWindows.Count % 3) * 104;
-            var left = main.Left + main.Width + offset;
-            if (left + window.Width > area.Right) left = main.Left - window.Width - offset;
-            left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - window.Width));
-            var top = Math.Clamp(main.Top + (_stickerWindows.Count % 3) * 104, area.Top,
-                Math.Max(area.Top, area.Bottom - window.Height));
+            var slot = FindStickerSlot(main, area, window.Width, window.Height);
+            if (slot is null && _stickerWindows.Count > 0)
+            {
+                _stickerWindows[0].Close();
+                slot = FindStickerSlot(main, area, window.Width, window.Height);
+            }
+            var position = slot ?? new Point(
+                Math.Clamp(main.Left + main.Width + 12, area.Left, Math.Max(area.Left, area.Right - window.Width)),
+                Math.Clamp(main.Top, area.Top, Math.Max(area.Top, area.Bottom - window.Height)));
+            var left = position.X;
+            var top = position.Y;
             window.Left = left;
             window.Top = top;
             window.Closed += (_, _) => _stickerWindows.Remove(window);
             _stickerWindows.Add(window);
             window.Show();
         }
+    }
+
+    private Point? FindStickerSlot(PetWindow main, Rect area, double width, double height)
+    {
+        var rightSide = main.Left + main.Width + 12;
+        var leftSide = main.Left - width - 12;
+        for (var index = 0; index < 12; index++)
+        {
+            var column = index / 4;
+            var row = index % 4;
+            var x = column % 2 == 0 ? rightSide + column / 2 * (width + 8) : leftSide - column / 2 * (width + 8);
+            var y = main.Top + row * (height + 8);
+            var candidate = new System.Drawing.RectangleF((float)x, (float)y, (float)width, (float)height);
+            if (candidate.Left < area.Left || candidate.Right > area.Right || candidate.Top < area.Top || candidate.Bottom > area.Bottom)
+            {
+                continue;
+            }
+            if (_stickerWindows.All(item => !item.IsVisible || !candidate.IntersectsWith(new System.Drawing.RectangleF((float)item.Left, (float)item.Top, (float)item.Width, (float)item.Height))))
+            {
+                return new Point(x, y);
+            }
+        }
+        return null;
     }
 
     public void Dispose()
