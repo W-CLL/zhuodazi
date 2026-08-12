@@ -4,6 +4,8 @@ import AppKit
 final class CompanionWindowController: NSWindowController {
     private let service: CompanionService
     private let sendCurrentGIF: () async throws -> Void
+    private let setTodaySecret: () async throws -> Void
+    private let sendSticker: (String) async throws -> Void
     private let stateChanged: () -> Void
     private let status = NSTextField(wrappingLabelWithString: "正在连接搭子服务…")
     private let nameField = NSTextField(string: "")
@@ -11,15 +13,26 @@ final class CompanionWindowController: NSWindowController {
     private let pairField = NSTextField(string: "")
     private let pairButton = NSButton(title: "绑定搭子", target: nil, action: nil)
     private let sendButton = NSButton(title: "发送当前 GIF", target: nil, action: nil)
+    private let secretButton = NSButton(title: "设置今日暗号", target: nil, action: nil)
+    private let stickerPopup = NSPopUpButton()
+    private let stickerButton = NSButton(title: "贴给搭子", target: nil, action: nil)
     private let unpairButton = NSButton(title: "解除绑定", target: nil, action: nil)
     private var loading = false
 
-    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, stateChanged: @escaping () -> Void) {
+    init(
+        service: CompanionService,
+        sendCurrentGIF: @escaping () async throws -> Void,
+        setTodaySecret: @escaping () async throws -> Void,
+        sendSticker: @escaping (String) async throws -> Void,
+        stateChanged: @escaping () -> Void
+    ) {
         self.service = service
         self.sendCurrentGIF = sendCurrentGIF
+        self.setTodaySecret = setTodaySecret
+        self.sendSticker = sendSticker
         self.stateChanged = stateChanged
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 390),
+            contentRect: NSRect(x: 0, y: 0, width: 520, height: 450),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -82,9 +95,19 @@ final class CompanionWindowController: NSWindowController {
 
         sendButton.target = self
         sendButton.action = #selector(sendAction)
+        secretButton.target = self
+        secretButton.action = #selector(secretAction)
+        stickerPopup.addItems(withTitles: ["心心", "咖啡", "猫爪", "星星", "加油", "晚安"])
+        let stickerIDs = ["heart", "coffee", "catPaw", "star", "cheer", "goodnight"]
+        for (index, stickerID) in stickerIDs.enumerated() {
+            stickerPopup.item(at: index)?.representedObject = stickerID
+        }
+        stickerPopup.widthAnchor.constraint(equalToConstant: 120).isActive = true
+        stickerButton.target = self
+        stickerButton.action = #selector(stickerAction)
         unpairButton.target = self
         unpairButton.action = #selector(unpairAction)
-        let actions = NSStackView(views: [sendButton, unpairButton])
+        let actions = NSStackView(views: [sendButton, secretButton, stickerPopup, stickerButton, unpairButton])
         actions.orientation = .horizontal
         actions.spacing = 9
         stack.addArrangedSubview(actions)
@@ -110,19 +133,27 @@ final class CompanionWindowController: NSWindowController {
         nameField.stringValue = profile?.displayName ?? nameField.stringValue
         codeField.stringValue = profile?.pairingCode ?? ""
         if let partner = profile?.partner {
-            status.stringValue = "已和 \(partner.displayName) 绑定"
+            status.stringValue = profile?.todaySecretSet == true
+                ? "已和 \(partner.displayName) 绑定 · 今天的暗号已设置"
+                : "已和 \(partner.displayName) 绑定 · 今天还没有设置暗号"
             pairField.isHidden = true
             pairButton.isHidden = true
             sendButton.isHidden = false
+            secretButton.isHidden = false
+            stickerPopup.isHidden = false
+            stickerButton.isHidden = false
             unpairButton.isHidden = false
         } else {
             status.stringValue = profile == nil ? "正在连接搭子服务…" : "分享搭子码，或输入对方的搭子码"
             pairField.isHidden = false
             pairButton.isHidden = false
             sendButton.isHidden = true
+            secretButton.isHidden = true
+            stickerPopup.isHidden = true
+            stickerButton.isHidden = true
             unpairButton.isHidden = true
         }
-        for control in [nameField, codeField, pairField, pairButton, sendButton, unpairButton] {
+        for control in [nameField, codeField, pairField, pairButton, sendButton, secretButton, stickerPopup, stickerButton, unpairButton] {
             control.isEnabled = !loading
         }
     }
@@ -160,6 +191,15 @@ final class CompanionWindowController: NSWindowController {
 
     @objc private func sendAction() {
         run { try await self.sendCurrentGIF() }
+    }
+
+    @objc private func secretAction() {
+        run { try await self.setTodaySecret() }
+    }
+
+    @objc private func stickerAction() {
+        guard let stickerID = stickerPopup.selectedItem?.representedObject as? String else { return }
+        run { try await self.sendSticker(stickerID) }
     }
 
     @objc private func unpairAction() {

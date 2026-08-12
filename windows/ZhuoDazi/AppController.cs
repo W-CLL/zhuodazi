@@ -26,6 +26,8 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly Queue<CompanionVisit> _companionVisits = new();
+    private readonly Queue<CompanionSticker> _companionStickers = new();
+    private readonly List<StickerWindow> _stickerWindows = [];
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
     private PetWindow? _petWindow;
@@ -322,8 +324,42 @@ public sealed class AppController : IDisposable
         var path = CurrentPetPath();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
             throw new InvalidOperationException("当前桌宠没有可发送的 GIF。");
-        var recipient = await Companions.SendCurrentGifAsync(path, cancellationToken);
-        _petWindow?.ShowReaction($"已经去找 {recipient} 啦。");
+        var result = await Companions.SendCurrentGifAsync(path, cancellationToken);
+        if (result.SecretMatch)
+        {
+            _petWindow?.PlaySecretAnimation();
+            _petWindow?.ShowReaction("暗号对上啦！");
+        }
+        else
+        {
+            _petWindow?.ShowReaction($"已经去找 {result.RecipientName} 啦。");
+        }
+    }
+
+    public async Task SetTodaySecretAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_licenses.IsActivated)
+        {
+            ShowActivation(_settingsWindow, "激活完整版本后可以使用搭子联机。");
+            return;
+        }
+        var path = CurrentPetPath();
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            throw new InvalidOperationException("当前桌宠没有可设置的 GIF。");
+        await Companions.SetTodaySecretAsync(path, cancellationToken);
+        _petWindow?.ShowReaction("今天的暗号设好啦。");
+        StateChanged?.Invoke();
+    }
+
+    public async Task SendCompanionStickerAsync(string stickerId, CancellationToken cancellationToken = default)
+    {
+        if (!_licenses.IsActivated)
+        {
+            ShowActivation(_settingsWindow, "激活完整版本后可以使用搭子联机。");
+            return;
+        }
+        var recipient = await Companions.SendStickerAsync(stickerId, cancellationToken);
+        _petWindow?.ShowReaction($"贴给 {recipient} 啦。");
     }
 
     public async Task<int> SyncInteractionContentAsync(CancellationToken cancellationToken = default)
@@ -1247,9 +1283,11 @@ public sealed class AppController : IDisposable
         _companionSyncing = true;
         try
         {
-            var visits = await Companions.ReceiveAsync();
-            foreach (var visit in visits) _companionVisits.Enqueue(visit);
+            var result = await Companions.ReceiveAsync();
+            foreach (var visit in result.Visits) _companionVisits.Enqueue(visit);
+            foreach (var sticker in result.Stickers) _companionStickers.Enqueue(sticker);
             if (!_visitorShowing && _companionVisits.Count > 0) _ = ShowQueuedVisitorsAsync();
+            ShowQueuedStickers();
         }
         catch { }
         finally
@@ -1284,6 +1322,12 @@ public sealed class AppController : IDisposable
                 visitor.Place(new Point(left, top));
                 visitor.Show();
                 visitor.ShowReaction($"{visit.SenderName} 来串门啦");
+                if (visit.SecretMatch)
+                {
+                    main.PlaySecretAnimation();
+                    visitor.PlaySecretAnimation();
+                    main.ShowReaction("暗号对上啦！");
+                }
                 try { await Task.Delay(TimeSpan.FromSeconds(10)); }
                 finally
                 {
@@ -1296,6 +1340,27 @@ public sealed class AppController : IDisposable
         finally
         {
             _visitorShowing = false;
+        }
+    }
+
+    private void ShowQueuedStickers()
+    {
+        if (_petWindow is not { IsVisible: true } main) return;
+        while (_companionStickers.TryDequeue(out var sticker))
+        {
+            var window = new StickerWindow(sticker.StickerId, sticker.SenderName);
+            var area = main.GetWorkingArea();
+            var offset = 12 + (_stickerWindows.Count % 3) * 104;
+            var left = main.Left + main.Width + offset;
+            if (left + window.Width > area.Right) left = main.Left - window.Width - offset;
+            left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - window.Width));
+            var top = Math.Clamp(main.Top + (_stickerWindows.Count % 3) * 104, area.Top,
+                Math.Max(area.Top, area.Bottom - window.Height));
+            window.Left = left;
+            window.Top = top;
+            window.Closed += (_, _) => _stickerWindows.Remove(window);
+            _stickerWindows.Add(window);
+            window.Show();
         }
     }
 
@@ -1316,6 +1381,8 @@ public sealed class AppController : IDisposable
         Feedback.Dispose();
         Interactions.Dispose();
         Companions.Dispose();
+        foreach (var stickerWindow in _stickerWindows.ToArray()) stickerWindow.Close();
+        _stickerWindows.Clear();
         _analytics.Dispose();
         if (_tray is not null) _tray.Visible = false;
         _tray?.Dispose();

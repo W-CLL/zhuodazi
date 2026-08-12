@@ -94,6 +94,13 @@ final class PetCanvasView: NSView {
         imageView.layer?.setAffineTransform(mirrored ? CGAffineTransform(scaleX: -1, y: 1) : .identity)
     }
 
+    func playSecretAnimation() {
+        let animation = CAKeyframeAnimation(keyPath: "transform.rotation.z")
+        animation.values = [0, 0.18, -0.18, 0.12, -0.12, 0]
+        animation.duration = 0.72
+        imageView.layer?.add(animation, forKey: "companion-secret")
+    }
+
     private func layoutContent() {
         let bubbleHeight: CGFloat = 48
         imageView.frame = NSRect(x: 8, y: 0, width: max(1, bounds.width - 16), height: max(1, bounds.height - bubbleHeight + 4))

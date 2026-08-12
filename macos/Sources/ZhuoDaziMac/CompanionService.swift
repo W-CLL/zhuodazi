@@ -9,6 +9,7 @@ struct CompanionPartner: Decodable {
 struct CompanionProfile: Decodable {
     let displayName: String
     let pairingCode: String
+    let todaySecretSet: Bool
     let partner: CompanionPartner?
 }
 
@@ -16,6 +17,23 @@ struct CompanionVisit {
     let id: String
     let senderName: String
     let fileURL: URL
+    let secretMatch: Bool
+}
+
+struct CompanionSticker {
+    let id: String
+    let senderName: String
+    let stickerID: String
+}
+
+struct CompanionReceiveResult {
+    let visits: [CompanionVisit]
+    let stickers: [CompanionSticker]
+}
+
+struct CompanionSendResult {
+    let recipientName: String
+    let secretMatch: Bool
 }
 
 enum CompanionError: LocalizedError {
@@ -37,6 +55,8 @@ final class CompanionService {
     private static let companionURL = LicenseService.serviceBaseURL.appendingPathComponent("api/companion")
     private static let pairURL = companionURL.appendingPathComponent("pair")
     private static let deliveriesURL = companionURL.appendingPathComponent("deliveries")
+    private static let secretURL = companionURL.appendingPathComponent("secret")
+    private static let stickersURL = companionURL.appendingPathComponent("stickers")
     private static let maximumGIFBytes = 8 * 1024 * 1024
 
     private let licenses: LicenseService
@@ -87,26 +107,34 @@ final class CompanionService {
         return result
     }
 
-    func sendCurrentGIF(_ fileURL: URL) async throws -> String {
-        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
-        guard values.isRegularFile == true, let fileSize = values.fileSize,
-              fileSize >= 10, fileSize <= Self.maximumGIFBytes else {
-            throw CompanionError.invalidGIF
-        }
-        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
-        try validateGIF(data)
-        var upload = request(method: "POST", url: Self.deliveriesURL)
-        upload.setValue("image/gif", forHTTPHeaderField: "Content-Type")
-        upload.httpBody = data
+    func sendCurrentGIF(_ fileURL: URL) async throws -> CompanionSendResult {
+        let upload = try gifUpload(url: Self.deliveriesURL, fileURL: fileURL)
         let result: SendResponse = try await sendJSON(upload)
+        return CompanionSendResult(recipientName: result.recipientName, secretMatch: result.secretMatch ?? false)
+    }
+
+    func setTodaySecret(_ fileURL: URL) async throws -> Bool {
+        let upload = try gifUpload(url: Self.secretURL, fileURL: fileURL)
+        let result: SecretResponse = try await sendJSON(upload)
+        if result.set { _ = try await refreshProfile() }
+        return result.set
+    }
+
+    func sendSticker(_ stickerID: String) async throws -> String {
+        let result: StickerSendResponse = try await sendJSON(jsonRequest(
+            method: "POST",
+            url: Self.stickersURL,
+            body: ["stickerId": stickerID]
+        ))
         return result.recipientName
     }
 
-    func receive() async throws -> [CompanionVisit] {
+    func receive() async throws -> CompanionReceiveResult {
         let pending: DeliveryList = try await sendJSON(request(method: "GET", url: Self.deliveriesURL))
-        guard !pending.deliveries.isEmpty else { return [] }
-        try FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
         var visits: [CompanionVisit] = []
+        if !pending.deliveries.isEmpty {
+            try FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
+        }
         for item in pending.deliveries {
             guard let downloadURL = URL(string: item.downloadPath, relativeTo: LicenseService.serviceBaseURL) else {
                 throw CompanionError.invalidResponse
@@ -125,9 +153,37 @@ final class CompanionService {
                 .appendingPathComponent("acknowledge")
             let (_, acknowledgeResponse) = try await session.data(for: request(method: "POST", url: acknowledgeURL))
             try check(response: acknowledgeResponse, data: Data())
-            visits.append(CompanionVisit(id: item.id, senderName: item.senderName, fileURL: fileURL))
+            visits.append(CompanionVisit(
+                id: item.id,
+                senderName: item.senderName,
+                fileURL: fileURL,
+                secretMatch: item.secretMatch
+            ))
         }
-        return visits
+        var stickers: [CompanionSticker] = []
+        for item in pending.stickers {
+            let acknowledgeURL = Self.stickersURL
+                .appendingPathComponent(item.id)
+                .appendingPathComponent("acknowledge")
+            let (_, acknowledgeResponse) = try await session.data(for: request(method: "POST", url: acknowledgeURL))
+            try check(response: acknowledgeResponse, data: Data())
+            stickers.append(CompanionSticker(id: item.id, senderName: item.senderName, stickerID: item.stickerID))
+        }
+        return CompanionReceiveResult(visits: visits, stickers: stickers)
+    }
+
+    private func gifUpload(url: URL, fileURL: URL) throws -> URLRequest {
+        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        guard values.isRegularFile == true, let fileSize = values.fileSize,
+              fileSize >= 10, fileSize <= Self.maximumGIFBytes else {
+            throw CompanionError.invalidGIF
+        }
+        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        try validateGIF(data)
+        var upload = request(method: "POST", url: url)
+        upload.setValue("image/gif", forHTTPHeaderField: "Content-Type")
+        upload.httpBody = data
+        return upload
     }
 
     private func request(method: String, url: URL) -> URLRequest {
@@ -176,13 +232,33 @@ final class CompanionService {
         }
     }
 
-    private struct SendResponse: Decodable { let recipientName: String }
-    private struct DeliveryList: Decodable { let deliveries: [DeliveryItem] }
+    private struct SendResponse: Decodable {
+        let recipientName: String
+        let secretMatch: Bool?
+    }
+    private struct StickerSendResponse: Decodable { let recipientName: String }
+    private struct SecretResponse: Decodable { let set: Bool }
+    private struct DeliveryList: Decodable {
+        let deliveries: [DeliveryItem]
+        let stickers: [StickerItem]
+    }
     private struct DeliveryItem: Decodable {
         let id: String
         let senderName: String
         let sha256: String
         let downloadPath: String
+        let secretMatch: Bool
+    }
+    private struct StickerItem: Decodable {
+        let id: String
+        let senderName: String
+        let stickerID: String
+
+        private enum CodingKeys: String, CodingKey {
+            case id
+            case senderName
+            case stickerID = "stickerId"
+        }
     }
     private struct ErrorResponse: Decodable { let error: String }
 }

@@ -165,6 +165,9 @@ public partial class SettingsWindow : Window
         CompanionPartnerText.Text = companionProfile?.Partner is { } currentPartner
             ? $"{currentPartner.DisplayName} · 收到的 GIF 会作为独立桌宠出现"
             : "尚未绑定";
+        CompanionSecretStatusText.Text = companionProfile?.TodaySecretSet == true
+            ? "今天的暗号已设置，发送同一 GIF 时会触发特别动作"
+            : "今天还没有设置暗号";
         var companionEnabled = _controller.HasActivatedLicense && !_companionLoading;
         CompanionNameText.IsEnabled = companionEnabled;
         SaveCompanionNameButton.IsEnabled = companionEnabled;
@@ -177,6 +180,9 @@ public partial class SettingsWindow : Window
         PairedCompanionActions.Visibility = companionProfile?.Partner is not null
             ? Visibility.Visible : Visibility.Collapsed;
         SendCompanionGifButton.IsEnabled = companionEnabled && File.Exists(_controller.CurrentPetPath());
+        SetCompanionSecretButton.IsEnabled = companionEnabled && File.Exists(_controller.CurrentPetPath());
+        CompanionStickerPicker.IsEnabled = companionEnabled;
+        SendCompanionStickerButton.IsEnabled = companionEnabled;
         UnpairCompanionButton.IsEnabled = companionEnabled;
         CompanionActivateButton.Visibility = _controller.HasActivatedLicense
             ? Visibility.Collapsed : Visibility.Visible;
@@ -622,6 +628,15 @@ public partial class SettingsWindow : Window
 
     private async void SendCompanionGif_Click(object sender, RoutedEventArgs e)
         => await RunCompanionActionAsync(() => _controller.SendCurrentGifToCompanionAsync());
+
+    private async void SetCompanionSecret_Click(object sender, RoutedEventArgs e)
+        => await RunCompanionActionAsync(() => _controller.SetTodaySecretAsync());
+
+    private async void SendCompanionSticker_Click(object sender, RoutedEventArgs e)
+    {
+        if (CompanionStickerPicker.SelectedItem is not ComboBoxItem item || item.Tag is not string stickerId) return;
+        await RunCompanionActionAsync(() => _controller.SendCompanionStickerAsync(stickerId));
+    }
 
     private async void UnpairCompanion_Click(object sender, RoutedEventArgs e)
     {
