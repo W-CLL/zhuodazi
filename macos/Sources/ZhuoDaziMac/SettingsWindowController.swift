@@ -34,6 +34,7 @@ final class SettingsWindowController: NSWindowController {
     private let updates: UpdateService
     private let feedbackService: FeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
+    private let openCompanion: () -> Void
     private var refreshing = false
     private var editingReminderId: String?
     private var feedbackLoading = false
@@ -71,6 +72,7 @@ final class SettingsWindowController: NSWindowController {
     private let interactionStatusLabel = NSTextField(wrappingLabelWithString: "")
     private let syncInteractionButton = NSButton(title: "在线补充", target: nil, action: nil)
     private let downloadInteractionButton = NSButton(title: "下载离线包", target: nil, action: nil)
+    private let companionButton = NSButton(title: "", target: nil, action: nil)
 
     private let remindersPopup = NSPopUpButton()
     private let reminderDatePicker = NSDatePicker()
@@ -108,13 +110,15 @@ final class SettingsWindowController: NSWindowController {
         petController: PetWindowController,
         licenses: LicenseService,
         updates: UpdateService,
-        dockVisibilityChanged: @escaping (Bool) -> Void
+        dockVisibilityChanged: @escaping (Bool) -> Void,
+        openCompanion: @escaping () -> Void
     ) {
         self.petController = petController
         self.licenses = licenses
         self.updates = updates
         self.feedbackService = FeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
+        self.openCompanion = openCompanion
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 780, height: 650),
             styleMask: [.titled, .closable, .miniaturizable],
@@ -149,10 +153,21 @@ final class SettingsWindowController: NSWindowController {
         tabs.addChild(buildPetsPage())
         tabs.addChild(buildLibrariesPage())
         tabs.addChild(buildContentPage())
+        tabs.addChild(buildCompanionPage())
         tabs.addChild(buildRemindersPage())
         tabs.addChild(buildFeedbackPage())
         tabs.addChild(buildUpdatePage())
         window.contentViewController = tabs
+    }
+
+    private func buildCompanionPage() -> NSViewController {
+        let (page, stack) = makePage("搭子联机")
+        addTitle("搭子联机", to: stack)
+        stack.addArrangedSubview(hint("绑定一位搭子，发送当前 GIF；收到的 GIF 会作为独立来访展示。"))
+        companionButton.target = self
+        companionButton.action = #selector(openCompanionAction)
+        stack.addArrangedSubview(companionButton)
+        return page
     }
 
     private func buildBehaviorPage() -> NSViewController {
@@ -458,6 +473,7 @@ final class SettingsWindowController: NSWindowController {
         defer { refreshing = false }
         let settings = petController.currentSettings
         let premium = licenses.hasPremiumAccess
+        companionButton.title = licenses.isActivated ? "打开搭子联机" : "激活后使用"
         sizeSlider.integerValue = settings.size
         sizeValue.stringValue = "\(settings.size) px"
         opacitySlider.integerValue = settings.opacity
@@ -1096,6 +1112,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc func checkForUpdatesFromMenu() { checkForUpdates() }
+
+    @objc private func openCompanionAction() { openCompanion() }
 
     func refreshAccessState() { refresh() }
 

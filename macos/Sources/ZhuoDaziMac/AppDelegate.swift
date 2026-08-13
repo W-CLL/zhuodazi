@@ -223,7 +223,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 petController: petController,
                 licenses: licenses,
                 updates: updates,
-                dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) }
+                dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) },
+                openCompanion: { [weak self] in self?.openCompanion() }
             )
         }
         settingsWindow?.showWindow(nil)
@@ -250,6 +251,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     statusMessage: "激活完整版本后可以使用搭子联机。"
                 ) {
                     petController.refreshPremiumAccess()
+                    settingsWindow?.refreshAccessState()
                     startCompanionPolling()
                     showCompanionWindow()
                 }
