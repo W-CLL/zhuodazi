@@ -335,6 +335,7 @@ private enum MacUpdateInstaller {
         let updatesDirectory = archive.deletingLastPathComponent()
         let stagingDirectory = updatesDirectory.appendingPathComponent("install-\(UUID().uuidString)", isDirectory: true)
         let scriptURL = updatesDirectory.appendingPathComponent("install-\(UUID().uuidString).sh")
+        let logURL = updatesDirectory.appendingPathComponent("install.log")
         let script = """
         #!/bin/sh
         set -eu
@@ -342,15 +343,21 @@ private enum MacUpdateInstaller {
         archive="$2"
         pid="$3"
         staging="$4"
+        log="$5"
+        exec >>"$log" 2>&1
         while kill -0 "$pid" 2>/dev/null; do sleep 1; done
         /bin/mkdir -p "$staging"
         /usr/bin/ditto -x -k "$archive" "$staging"
-        replacement="$(/usr/bin/find "$staging" -maxdepth 1 -type d -name '*.app' -print -quit)"
-        if [ -z "$replacement" ]; then exit 1; fi
+        set -- "$staging"/*.app
+        if [ "$1" = "$staging/*.app" ] || [ ! -d "$1" ]; then exit 1; fi
+        replacement="$1"
         backup="${app}.previous"
         /bin/rm -rf "$backup"
         /bin/mv "$app" "$backup"
-        /bin/mv "$replacement" "$app"
+        if ! /bin/mv "$replacement" "$app"; then
+            /bin/mv "$backup" "$app"
+            exit 1
+        fi
         /usr/bin/open "$app"
         /bin/rm -rf "$staging" "$archive" "$0"
         """
@@ -365,7 +372,8 @@ private enum MacUpdateInstaller {
             appURL.path,
             archive.path,
             String(ProcessInfo.processInfo.processIdentifier),
-            stagingDirectory.path
+            stagingDirectory.path,
+            logURL.path
         ]
         try process.run()
     }
