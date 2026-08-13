@@ -34,16 +34,16 @@ def main():
     if not re.fullmatch(r"\d+\.\d+\.\d+", macos + ""):
         raise SystemExit(f"Invalid macOS version: {macos!r}")
 
-    download = (ROOT / "website" / "themes" / "deskpet" / "layout" / "download.ejs").read_text(encoding="utf-8")
-    index = (ROOT / "website" / "themes" / "deskpet" / "layout" / "index.ejs").read_text(encoding="utf-8")
-    expected = {
-        "Windows": windows,
-        "macOS": macos,
+    layouts = {
+        "download": (ROOT / "website" / "themes" / "deskpet" / "layout" / "download.ejs").read_text(encoding="utf-8"),
+        "index": (ROOT / "website" / "themes" / "deskpet" / "layout" / "index.ejs").read_text(encoding="utf-8"),
     }
-    for label, version in expected.items():
-        if version not in download or version not in index:
-            raise SystemExit(f"Website does not contain current {label} version {version}")
-    print(f"release consistency ok: Windows {windows}, macOS {macos}")
+    for name, layout in layouts.items():
+        for target in ("windows/x64", "macos/arm64"):
+            marker = f'data-release-version="{target}"'
+            if marker not in layout:
+                raise SystemExit(f"Website {name} layout is missing dynamic release marker {target}")
+    print(f"release consistency ok: Windows {windows}, macOS {macos}; website versions are dynamic")
 
 
 if __name__ == "__main__":

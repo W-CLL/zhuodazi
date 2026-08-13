@@ -376,7 +376,7 @@
       for (const release of payload?.downloads || []) {
         const target = `${release.platform}/${release.architecture}`;
         document.querySelectorAll(`[data-release-version="${target}"]`).forEach((element) => {
-          element.textContent = element.textContent.replace(/\d+(?:\.\d+){1,3}(?:-[\w.-]+)?$/, release.version);
+          element.textContent = element.textContent.replace(/(?:\d+(?:\.\d+){1,3}(?:-[\w.-]+)?|最新版)$/, release.version);
         });
         const size = formatBytes(release.size);
         if (size) document.querySelectorAll(`[data-release-size="${target}"]`).forEach((element) => {
