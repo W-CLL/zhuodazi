@@ -198,7 +198,7 @@ public sealed class UpdateService : IDisposable
         Process.Start(new ProcessStartInfo
         {
             FileName = _downloadedPath,
-            Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS",
+            Arguments = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS",
             UseShellExecute = true
         });
     }

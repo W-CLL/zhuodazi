@@ -55,7 +55,12 @@ jobs:
             throw "Installer failed with exit code $($installProcess.ExitCode)"
           }
 
-          Get-Process -Name "ZhuoDazi" -ErrorAction SilentlyContinue | Stop-Process -Force
+          Start-Sleep -Seconds 3
+          $launchedApplication = Get-Process -Name "ZhuoDazi" -ErrorAction SilentlyContinue
+          if (-not $launchedApplication) {
+            throw "Silent installer did not restart the application"
+          }
+          $launchedApplication | Stop-Process -Force
 
           $application = Join-Path $installDirectory "app/ZhuoDazi.exe"
           if (-not (Test-Path -LiteralPath $application)) {

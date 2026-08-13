@@ -74,7 +74,7 @@ Name: "{autoprograms}\桌搭子"; Filename: "{app}\app\ZhuoDazi.exe"; WorkingDir
 Name: "{autodesktop}\桌搭子"; Filename: "{app}\app\ZhuoDazi.exe"; WorkingDir: "{app}\app"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\app\ZhuoDazi.exe"; Description: "启动桌搭子"; WorkingDir: "{app}\app"; Flags: nowait skipifsilent
+Filename: "{app}\app\ZhuoDazi.exe"; Description: "启动桌搭子"; WorkingDir: "{app}\app"; Flags: nowait
 
 [Code]
 const
