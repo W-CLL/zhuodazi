@@ -17,7 +17,7 @@ $target = "$UserName@$HostName"
 
 try {
     New-Item -ItemType Directory -Path $sourceRoot -Force | Out-Null
-    git -C $repoRoot archive --format=tar -o $sourceArchive HEAD
+    git -C $repoRoot archive --format=tar -o $sourceArchive HEAD -- website scripts/check-release-consistency.py windows/ZhuoDazi/ZhuoDazi.csproj macos/Info.plist
     if ($LASTEXITCODE -ne 0) { throw "Unable to archive HEAD." }
     tar -xf $sourceArchive -C $sourceRoot
     if ($LASTEXITCODE -ne 0) { throw "Unable to extract source archive." }
