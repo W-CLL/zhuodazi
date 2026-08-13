@@ -48,8 +48,8 @@ jobs:
           $installProcess = Start-Process `
             -FilePath $installer `
             -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDirectory", "/MERGETASKS=!desktopicon" `
-            -PassThru `
-            -Wait
+            -PassThru
+          $installProcess.WaitForExit()
 
           if ($installProcess.ExitCode -ne 0) {
             throw "Installer failed with exit code $($installProcess.ExitCode)"
