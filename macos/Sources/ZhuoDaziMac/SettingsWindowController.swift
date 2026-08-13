@@ -107,17 +107,6 @@ final class SettingsWindowController: NSWindowController {
     private let theaterIntervals = [60, 180, 300, 600, 1800]
     private let randomIntervals = [30, 60, 300, 600, 1800]
     private let emotionValues = ["happy", "cheer", "shy", "surprised", "angry", "confused", "sad", "sleepy", "calm"]
-    private static let tabSymbols = [
-        "外观与行为": "paintbrush",
-        "我的桌宠": "photo",
-        "资源库": "folder",
-        "互动内容": "quote.bubble",
-        "搭子联机": "person.2",
-        "提醒": "bell",
-        "反馈与建议": "text.bubble",
-        "更新": "arrow.triangle.2.circlepath"
-    ]
-
     init(
         petController: PetWindowController,
         licenses: LicenseService,
@@ -434,9 +423,6 @@ final class SettingsWindowController: NSWindowController {
     private func makePage(_ title: String) -> (NSViewController, NSStackView) {
         let controller = NSViewController()
         controller.title = title
-        if let symbol = Self.tabSymbols[title] {
-            controller.tabViewItem.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        }
         let view = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 620))
         let stack = NSStackView()
         stack.orientation = .vertical
