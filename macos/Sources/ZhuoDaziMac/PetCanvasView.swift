@@ -63,6 +63,14 @@ final class PetCanvasView: NSView {
         if !didDrag { clicked?() }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        guard let menu else {
+            super.rightMouseDown(with: event)
+            return
+        }
+        NSMenu.popUpContextMenu(menu, with: event, for: self)
+    }
+
     override func layout() {
         super.layout()
         layoutContent()

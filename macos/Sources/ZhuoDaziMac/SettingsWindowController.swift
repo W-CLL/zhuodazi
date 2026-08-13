@@ -73,6 +73,8 @@ final class SettingsWindowController: NSWindowController {
     private let syncInteractionButton = NSButton(title: "在线补充", target: nil, action: nil)
     private let downloadInteractionButton = NSButton(title: "下载离线包", target: nil, action: nil)
     private let companionButton = NSButton(title: "", target: nil, action: nil)
+    private let companionStatusIcon = NSImageView()
+    private let companionStatusLabel = NSTextField(labelWithString: "")
 
     private let remindersPopup = NSPopUpButton()
     private let reminderDatePicker = NSDatePicker()
@@ -105,6 +107,16 @@ final class SettingsWindowController: NSWindowController {
     private let theaterIntervals = [60, 180, 300, 600, 1800]
     private let randomIntervals = [30, 60, 300, 600, 1800]
     private let emotionValues = ["happy", "cheer", "shy", "surprised", "angry", "confused", "sad", "sleepy", "calm"]
+    private static let tabSymbols = [
+        "外观与行为": "paintbrush",
+        "我的桌宠": "photo",
+        "资源库": "folder",
+        "互动内容": "quote.bubble",
+        "搭子联机": "person.2",
+        "提醒": "bell",
+        "反馈与建议": "text.bubble",
+        "更新": "arrow.triangle.2.circlepath"
+    ]
 
     init(
         petController: PetWindowController,
@@ -120,13 +132,16 @@ final class SettingsWindowController: NSWindowController {
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 780, height: 650),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         window.title = "桌搭子设置"
         window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 820, height: 620)
+        window.toolbarStyle = .preference
+        window.tabbingMode = .disallowed
         window.center()
         super.init(window: window)
         buildInterface(in: window)
@@ -163,9 +178,18 @@ final class SettingsWindowController: NSWindowController {
     private func buildCompanionPage() -> NSViewController {
         let (page, stack) = makePage("搭子联机")
         addTitle("搭子联机", to: stack)
-        stack.addArrangedSubview(hint("绑定一位搭子，发送当前 GIF；收到的 GIF 会作为独立来访展示。"))
+        companionStatusIcon.image = NSImage(systemSymbolName: "person.2.fill", accessibilityDescription: "搭子联机状态")
+        companionStatusIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
+        companionStatusLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        stack.addArrangedSubview(buttonRow([companionStatusIcon, companionStatusLabel]))
+        stack.addArrangedSubview(separator())
+        addSection("搭子管理", to: stack)
+        stack.addArrangedSubview(hint("绑定一位搭子后，可以发送当前 GIF；收到的 GIF 会作为独立来访展示。"))
         companionButton.target = self
         companionButton.action = #selector(openCompanionAction)
+        companionButton.image = NSImage(systemSymbolName: "person.crop.circle.badge.plus", accessibilityDescription: nil)
+        companionButton.imagePosition = .imageLeading
+        companionButton.controlSize = .large
         stack.addArrangedSubview(companionButton)
         return page
     }
@@ -410,17 +434,20 @@ final class SettingsWindowController: NSWindowController {
     private func makePage(_ title: String) -> (NSViewController, NSStackView) {
         let controller = NSViewController()
         controller.title = title
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 590))
+        if let symbol = Self.tabSymbols[title] {
+            controller.tabViewItem.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        }
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 620))
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
-        stack.spacing = 11
+        stack.spacing = 13
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 34),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -34),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 26)
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 42),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -42),
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 32)
         ])
         controller.view = view
         return (controller, stack)
@@ -429,6 +456,7 @@ final class SettingsWindowController: NSWindowController {
     private func addTitle(_ text: String, to stack: NSStackView) {
         let label = NSTextField(labelWithString: text)
         label.font = .systemFont(ofSize: 22, weight: .bold)
+        label.textColor = .labelColor
         stack.addArrangedSubview(label)
     }
 
@@ -474,6 +502,8 @@ final class SettingsWindowController: NSWindowController {
         let settings = petController.currentSettings
         let premium = licenses.hasPremiumAccess
         companionButton.title = licenses.isActivated ? "打开搭子联机" : "激活后使用"
+        companionStatusLabel.stringValue = licenses.isActivated ? "搭子联机已可用" : "激活完整版本后可使用搭子联机"
+        companionStatusIcon.contentTintColor = licenses.isActivated ? .systemGreen : .secondaryLabelColor
         sizeSlider.integerValue = settings.size
         sizeValue.stringValue = "\(settings.size) px"
         opacitySlider.integerValue = settings.opacity

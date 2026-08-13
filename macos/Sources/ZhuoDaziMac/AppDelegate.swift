@@ -160,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.toolTip = "桌搭子"
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "打开设置", action: #selector(openSettings), keyEquivalent: ",")
+        menu.addItem(withTitle: "功能设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(withTitle: "检查更新", action: #selector(checkUpdates), keyEquivalent: "")
         menu.addItem(withTitle: "搭子联机…", action: #selector(openCompanion), keyEquivalent: "")
         sendCompanionItem = menu.addItem(withTitle: "发送当前 GIF 给搭子", action: #selector(sendCompanionGIF), keyEquivalent: "")
@@ -187,6 +187,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             item.target = self
         }
         statusItem.menu = menu
+        petController.contextMenu = menu
         refreshMenuState()
     }
 

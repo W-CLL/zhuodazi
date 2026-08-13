@@ -30,6 +30,10 @@ final class PetWindowController {
     var interactionStatus: String { interactions.statusSummary }
     var hasPremiumAccess: Bool { premiumAccess() }
     var currentGIFURL: URL? { currentPetURL }
+    var contextMenu: NSMenu? {
+        get { petView.menu }
+        set { petView.menu = newValue }
+    }
 
     private let window: NSPanel
     private let petView: PetCanvasView
