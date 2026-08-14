@@ -49,18 +49,39 @@ jobs:
             "build-tools;36.0.0" \
             "platform-tools"
 
-      - name: Lint and build debug APK
-        run: gradle --project-dir android :app:lintDebug :app:assembleDebug --stacktrace
+      - name: Prepare stable Android signing
+        if: github.event_name != 'pull_request'
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/zhuodazi-release.jks"
+          echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/zhuodazi-release.jks" >> "$GITHUB_ENV"
+
+      - name: Lint and build APK
+        env:
+          ANDROID_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gradle --project-dir android :app:lintDebug :app:assembleDebug --stacktrace
+            echo "APK_PATH=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
+          else
+            gradle --project-dir android :app:lintRelease :app:assembleRelease --stacktrace
+            echo "APK_PATH=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
+          fi
 
       - name: Verify APK signature
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
             --verbose \
             --print-certs \
-            android/app/build/outputs/apk/debug/app-debug.apk
+            "$APK_PATH"
 
       - name: Prepare package
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk ZhuoDazi-Android-1.1.0-debug.apk
+        if: github.event_name != 'pull_request'
+        run: cp "$APK_PATH" ZhuoDazi-Android-1.1.0.apk
 
       - name: Upload APK to Android draft release
         if: github.event_name != 'pull_request'
@@ -69,12 +90,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           tag="android-v1.1.0"
-          asset="ZhuoDazi-Android-1.1.0-debug.apk"
+          asset="ZhuoDazi-Android-1.1.0.apk"
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --draft \
               --target "$GITHUB_SHA" \
               --title "桌搭子 Android v1.1.0" \
-              --notes "Android 功能预览版：五栏应用界面、悬浮桌宠快捷菜单、真实触摸穿透、隐藏保活、独立设备激活与体验、搭子配对和桌宠互发。安装后需授予显示在其他应用上层权限。"
+              --notes "Android 功能预览版：五栏应用界面、悬浮桌宠快捷菜单、真实触摸穿透、隐藏保活、独立设备激活与体验、搭子配对和桌宠互发。安装后需授予显示在其他应用上层权限。v1.0 测试包使用了临时证书，升级此版前需先卸载 v1.0；从 v1.1.0 起使用稳定发布签名。"
           fi
           gh release upload "$tag" "$asset" --clobber
+          gh release delete-asset "$tag" "ZhuoDazi-Android-1.1.0-debug.apk" --yes || true
