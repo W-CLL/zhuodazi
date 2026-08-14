@@ -18,9 +18,9 @@ Android 不支持 Windows 托盘、全局鼠标追逐和 WPF 窗口模型。PC �
 
 ### GitHub Actions
 
-推送 Android 相关文件到 `main`、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。构建通过后，在该次运行页面底部的 **Artifacts** 下载 `ZhuoDazi-Android-1.0.0-debug`，解压后即可得到 APK。
+推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会把 `ZhuoDazi-Android-1.0.0-debug.apk` 上传到 `android-v1.0.0` Draft Release。
 
-工作流会执行 Android Lint 和 APK 编译，定义位于 `.github/workflows/build-android.yml`。
+工作流会执行 Android Lint 和 APK 编译，定义位于 `.github/workflows/build-android.yml`。仓库当前的 Actions Artifact 存储额度已满，因此和 Windows/macOS 构建一样直接使用 GitHub Release 保存安装包。
 
 ### 本地构建
 

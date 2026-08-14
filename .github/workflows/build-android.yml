@@ -16,7 +16,7 @@ on:
       - ".github/workflows/build-android.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-${{ github.workflow }}-${{ github.ref }}
@@ -55,10 +55,19 @@ jobs:
       - name: Prepare package
         run: cp android/app/build/outputs/apk/debug/app-debug.apk ZhuoDazi-Android-1.0.0-debug.apk
 
-      - name: Upload installable APK
-        uses: actions/upload-artifact@v6
-        with:
-          name: ZhuoDazi-Android-1.0.0-debug
-          path: ZhuoDazi-Android-1.0.0-debug.apk
-          if-no-files-found: error
-          retention-days: 14
+      - name: Upload APK to Android draft release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag="android-v1.0.0"
+          asset="ZhuoDazi-Android-1.0.0-debug.apk"
+          if ! gh release view "$tag" >/dev/null 2>&1; then
+            gh release create "$tag" \
+              --draft \
+              --target "$GITHUB_SHA" \
+              --title "桌搭子 Android v1.0.0" \
+              --notes "Android 首个可安装预览版。安装后需授予显示在其他应用上层权限。"
+          fi
+          gh release upload "$tag" "$asset" --clobber
