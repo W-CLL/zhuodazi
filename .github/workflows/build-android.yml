@@ -52,6 +52,13 @@ jobs:
       - name: Lint and build debug APK
         run: gradle --project-dir android :app:lintDebug :app:assembleDebug --stacktrace
 
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+            --verbose \
+            --print-certs \
+            android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Prepare package
         run: cp android/app/build/outputs/apk/debug/app-debug.apk ZhuoDazi-Android-1.0.0-debug.apk
 
