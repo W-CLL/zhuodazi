@@ -26,3 +26,8 @@ xcuserdata/
 website/node_modules/
 website/public/
 website/.capture-*/
+
+# Local Android SDK/JDK and generated Android build state
+.toolchains/
+android/.gradle/
+android/local.properties
