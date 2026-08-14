@@ -42,7 +42,11 @@ final class WordRepository {
     }
 
     String reaction(String action, String fallback) {
-        try (InputStream input = context.getAssets().open(settings.wordPack());
+        return reaction(settings.wordPack(), action, fallback);
+    }
+
+    String reaction(String pack, String action, String fallback) {
+        try (InputStream input = context.getAssets().open(pack);
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[4096];
             int count;

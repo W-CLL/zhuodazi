@@ -18,9 +18,12 @@ final class SettingsStore {
     static final String WORD_PACK = "word_pack";
     static final String START_ON_BOOT = "start_on_boot";
     static final String RUNNING = "service_running";
+    static final String PET_HIDDEN = "pet_hidden";
+    static final String CLICK_THROUGH = "click_through";
     static final String POSITION_X = "position_x";
     static final String POSITION_Y = "position_y";
-    static final String IMPORTED_PET = "imported_pet";
+    static final String TRIAL_EXPIRES_AT = "trial_expires_at";
+    static final String SELECTED_TAB = "selected_tab";
 
     private final SharedPreferences values;
 
@@ -36,18 +39,30 @@ final class SettingsStore {
     boolean randomPet() { return values.getBoolean(RANDOM_PET, true); }
     boolean startOnBoot() { return values.getBoolean(START_ON_BOOT, false); }
     boolean running() { return values.getBoolean(RUNNING, false); }
+    boolean petHidden() { return values.getBoolean(PET_HIDDEN, false); }
+    boolean clickThrough() { return values.getBoolean(CLICK_THROUGH, false); }
+    boolean trialActive() { return trialExpiresAt() > System.currentTimeMillis(); }
     String personality() { return values.getString(PERSONALITY, "lively"); }
     String interactionMode() { return values.getString(INTERACTION_MODE, "standard"); }
     String activePet() { return values.getString(ACTIVE_PET, ""); }
     String wordPack() { return values.getString(WORD_PACK, "元气夸夸.json"); }
-    int randomPetInterval() { return values.getInt(RANDOM_PET_INTERVAL, 60); }
+    int randomPetInterval() { return values.getInt(RANDOM_PET_INTERVAL, 300); }
     int positionX(int fallback) { return values.getInt(POSITION_X, fallback); }
     int positionY(int fallback) { return values.getInt(POSITION_Y, fallback); }
+    int selectedTab() { return clamp(values.getInt(SELECTED_TAB, 0), 0, 4); }
+    long trialExpiresAt() { return values.getLong(TRIAL_EXPIRES_AT, 0L); }
 
     void putInt(String key, int value) { values.edit().putInt(key, value).apply(); }
+    void putLong(String key, long value) { values.edit().putLong(key, value).apply(); }
     void putBoolean(String key, boolean value) { values.edit().putBoolean(key, value).apply(); }
     void putString(String key, String value) { values.edit().putString(key, value).apply(); }
-    void setRunning(boolean running) { values.edit().putBoolean(RUNNING, running).apply(); }
+    void setRunning(boolean running) { putBoolean(RUNNING, running); }
+    void setPetHidden(boolean hidden) { putBoolean(PET_HIDDEN, hidden); }
+    void setClickThrough(boolean clickThrough) { putBoolean(CLICK_THROUGH, clickThrough); }
+    void setTrialRemaining(int seconds) {
+        long expiresAt = seconds <= 0 ? 0L : System.currentTimeMillis() + seconds * 1000L;
+        putLong(TRIAL_EXPIRES_AT, expiresAt);
+    }
     void savePosition(int x, int y) {
         values.edit().putInt(POSITION_X, x).putInt(POSITION_Y, y).apply();
     }
