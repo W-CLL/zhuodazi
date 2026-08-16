@@ -1,0 +1,166 @@
+{
+  "items": [
+    {
+      "id": "local:joke:01",
+      "type": "joke",
+      "revision": 1,
+      "prompt": "为什么电脑有时候会觉得冷？",
+      "answer": "因为它开了太多窗口。",
+      "explanation": "今天的冷笑话温度已成功下降。",
+      "choices": []
+    },
+    {
+      "id": "local:joke:02",
+      "type": "joke",
+      "revision": 1,
+      "prompt": "什么东西越洗越脏？",
+      "answer": "水。",
+      "explanation": "它把别的东西洗干净，自己却带走了污渍。",
+      "choices": []
+    },
+    {
+      "id": "local:joke:03",
+      "type": "joke",
+      "revision": 1,
+      "prompt": "程序员最怕哪一种天气？",
+      "answer": "有很多 Bug 的天气。",
+      "explanation": "这只是一句冷笑话，真正的 Bug 不看天气。",
+      "choices": []
+    },
+    {
+      "id": "local:math:01",
+      "type": "math",
+      "revision": 1,
+      "prompt": "一杯奶茶 12 元，两杯一共多少钱？",
+      "answer": "24 元",
+      "explanation": "12 × 2 = 24。算完可以休息三秒。",
+      "choices": ["18 元", "20 元", "24 元", "26 元"]
+    },
+    {
+      "id": "local:math:02",
+      "type": "math",
+      "revision": 1,
+      "prompt": "25 加 17 等于多少？",
+      "answer": "42",
+      "explanation": "25 + 17 = 42。",
+      "choices": ["40", "41", "42", "43"]
+    },
+    {
+      "id": "local:math:03",
+      "type": "math",
+      "revision": 1,
+      "prompt": "3 只猫各有 4 个小玩具，一共有多少个？",
+      "answer": "12 个",
+      "explanation": "3 × 4 = 12。玩具够分，但纸箱永远不够。",
+      "choices": ["7 个", "10 个", "12 个", "14 个"]
+    },
+    {
+      "id": "local:trivia:01",
+      "type": "trivia",
+      "revision": 1,
+      "prompt": "猫咪缓慢眨眼通常在表达什么？",
+      "answer": "放松和信任",
+      "explanation": "在放松环境中，缓慢眨眼通常代表友好和信任。",
+      "choices": ["准备攻击", "放松和信任", "看不清东西", "正在生气"]
+    },
+    {
+      "id": "local:trivia:02",
+      "type": "trivia",
+      "revision": 1,
+      "prompt": "地球上面积最大的海洋是哪一个？",
+      "answer": "太平洋",
+      "explanation": "太平洋也是地球上最深的海洋。",
+      "choices": ["大西洋", "印度洋", "太平洋", "北冰洋"]
+    },
+    {
+      "id": "local:trivia:03",
+      "type": "trivia",
+      "revision": 1,
+      "prompt": "二维码缺损一小部分后仍可能识别，主要依靠什么？",
+      "answer": "纠错机制",
+      "explanation": "二维码包含纠错数据，在一定损坏范围内仍有机会恢复信息。",
+      "choices": ["屏幕亮度", "蓝牙连接", "纠错机制", "自动美颜"]
+    },
+    {
+      "id": "local:riddle:01",
+      "type": "riddle",
+      "revision": 1,
+      "prompt": "一公斤棉花和一公斤铁，哪一个更重？",
+      "answer": "一样重",
+      "explanation": "它们都是一公斤，只是体积和密度不同。",
+      "choices": ["棉花", "铁", "一样重", "看心情"]
+    },
+    {
+      "id": "local:riddle:02",
+      "type": "riddle",
+      "revision": 1,
+      "prompt": "什么门永远关不上？",
+      "answer": "球门",
+      "explanation": "球门没有门板，自然关不上。",
+      "choices": ["房门", "校门", "球门", "车门"]
+    },
+    {
+      "id": "local:riddle:03",
+      "type": "riddle",
+      "revision": 1,
+      "prompt": "什么东西有头有尾，却没有身体？",
+      "answer": "硬币",
+      "explanation": "硬币有正反两面，常被说成头像面和字面。",
+      "choices": ["硬币", "铅笔", "枕头", "桌子"]
+    },
+    {
+      "id": "local:tip:01",
+      "type": "tip",
+      "revision": 1,
+      "prompt": "连续看屏幕一段时间后，可以把目光移向远处。",
+      "answer": "短暂远眺和眨眼能让眼睛换个焦点，也提醒自己休息一下。",
+      "explanation": "",
+      "choices": []
+    },
+    {
+      "id": "local:tip:02",
+      "type": "tip",
+      "revision": 1,
+      "prompt": "需要记住临时任务时，别只靠脑内待办。",
+      "answer": "用一句话写下任务、负责人和截止时间，会比反复回想更省力。",
+      "explanation": "",
+      "choices": []
+    },
+    {
+      "id": "local:tip:03",
+      "type": "tip",
+      "revision": 1,
+      "prompt": "坐得太久了，可以先做一个很小的动作。",
+      "answer": "站起来喝口水、伸展肩颈，短暂活动也比一直不动更好。",
+      "explanation": "",
+      "choices": []
+    },
+    {
+      "id": "local:care:01",
+      "type": "care",
+      "revision": 1,
+      "prompt": "今天已经处理不少事情了。",
+      "answer": "没完成的可以继续排队，你不需要一次把所有事情都扛完。",
+      "explanation": "",
+      "choices": []
+    },
+    {
+      "id": "local:care:02",
+      "type": "care",
+      "revision": 1,
+      "prompt": "如果现在状态不太好，也不用急着证明什么。",
+      "answer": "先照顾好当下的自己，慢一点并不等于停下。",
+      "explanation": "",
+      "choices": []
+    },
+    {
+      "id": "local:care:03",
+      "type": "care",
+      "revision": 1,
+      "prompt": "来检查一下：今天有好好喝水吗？",
+      "answer": "先喝几口吧，我会替你看着桌面。",
+      "explanation": "",
+      "choices": []
+    }
+  ]
+}

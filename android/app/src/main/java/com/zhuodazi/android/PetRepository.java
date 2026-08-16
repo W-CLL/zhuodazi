@@ -18,6 +18,7 @@ import java.util.List;
 
 final class PetRepository {
     static final int MAX_CUSTOM_PETS = 3;
+    static final long MAX_GIF_BYTES = 8L * 1024 * 1024;
     private static final String CUSTOM_PREFIX = "@custom:";
     private final Context context;
     private final SettingsStore settings;
@@ -31,7 +32,7 @@ final class PetRepository {
     List<String> pets() {
         List<String> result = new ArrayList<>();
         for (int slot = 1; slot <= MAX_CUSTOM_PETS; slot++) {
-            if (customFile(slot).isFile()) result.add(customId(slot));
+            if (isValidCustomFile(customFile(slot))) result.add(customId(slot));
         }
         try {
             String[] names = context.getAssets().list("");
@@ -88,7 +89,7 @@ final class PetRepository {
     File nextImportFile() {
         for (int slot = 1; slot <= MAX_CUSTOM_PETS; slot++) {
             File file = customFile(slot);
-            if (!file.exists()) return file;
+            if (!isValidCustomFile(file)) return file;
         }
         return null;
     }
@@ -106,7 +107,9 @@ final class PetRepository {
 
     int customPetCount() {
         int count = 0;
-        for (int slot = 1; slot <= MAX_CUSTOM_PETS; slot++) if (customFile(slot).isFile()) count++;
+        for (int slot = 1; slot <= MAX_CUSTOM_PETS; slot++) {
+            if (isValidCustomFile(customFile(slot))) count++;
+        }
         return count;
     }
 
@@ -135,6 +138,18 @@ final class PetRepository {
         }
     }
 
+    static void validateGifFile(File file) throws IOException {
+        if (!file.isFile() || file.length() <= 0) throw new IOException("GIF 文件为空");
+        if (file.length() > MAX_GIF_BYTES) throw new IOException("GIF 不能超过 8 MB");
+        byte[] header = new byte[6];
+        try (FileInputStream input = new FileInputStream(file)) {
+            if (input.read(header) != header.length) throw new IOException("当前文件不是有效的 GIF");
+        }
+        boolean valid = header[0] == 'G' && header[1] == 'I' && header[2] == 'F'
+            && header[3] == '8' && (header[4] == '7' || header[4] == '9') && header[5] == 'a';
+        if (!valid) throw new IOException("当前文件不是有效的 GIF");
+    }
+
     File saveInboxGif(String id, byte[] bytes) throws IOException {
         File directory = new File(context.getFilesDir(), "companion");
         if (!directory.exists() && !directory.mkdirs()) throw new IOException("无法创建搭子收件目录");
@@ -148,6 +163,10 @@ final class PetRepository {
 
     private File customFile(int slot) {
         return new File(context.getFilesDir(), "pets/custom_" + slot + ".gif");
+    }
+
+    private boolean isValidCustomFile(File file) {
+        return file.isFile() && file.length() > 0 && file.length() <= MAX_GIF_BYTES;
     }
 
     private void migrateLegacyImport() {

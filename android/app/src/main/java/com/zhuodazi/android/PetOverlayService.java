@@ -26,10 +26,13 @@ import android.view.WindowManager;
 import android.view.animation.DecelerateInterpolator;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 public final class PetOverlayService extends Service {
     static final String ACTION_START = "com.zhuodazi.android.START";
@@ -37,10 +40,14 @@ public final class PetOverlayService extends Service {
     static final String ACTION_REFRESH = "com.zhuodazi.android.REFRESH";
     static final String ACTION_NEXT = "com.zhuodazi.android.NEXT";
     static final String ACTION_INTERACT = "com.zhuodazi.android.INTERACT";
+    static final String ACTION_REACT = "com.zhuodazi.android.REACT";
     static final String ACTION_SEND_COMPANION = "com.zhuodazi.android.SEND_COMPANION";
     static final String ACTION_SHOW = "com.zhuodazi.android.SHOW";
     static final String ACTION_HIDE = "com.zhuodazi.android.HIDE";
     static final String ACTION_CLICK_THROUGH = "com.zhuodazi.android.CLICK_THROUGH";
+    static final String EXTRA_REACTION = "reaction";
+
+    private static final int BOTTOM_GUARD_DP = 48;
 
     private static final String CHANNEL_ID = "pet_overlay";
     private static final String VISITOR_CHANNEL_ID = "companion_visits";
@@ -65,6 +72,7 @@ public final class PetOverlayService extends Service {
     private PetRepository pets;
     private WordRepository words;
     private LicenseService licenses;
+    private InteractionContentService interactionContent;
     private CompanionService companions;
     private ValueAnimator movementAnimator;
     private VelocityTracker velocityTracker;
@@ -74,6 +82,11 @@ public final class PetOverlayService extends Service {
     private int windowDownY;
     private boolean dragging;
     private boolean companionBusy;
+    private boolean interactionBusy;
+    private boolean interactionSyncBusy;
+    private boolean interactionExpanded;
+    private int baseWindowWidth;
+    private int baseWindowHeight;
     private int facing = 1;
     private String currentPet = "";
     private int touchSlop;
@@ -92,9 +105,10 @@ public final class PetOverlayService extends Service {
     private final Runnable interactionTask = new Runnable() {
         @Override public void run() {
             if (overlay != null && settings.interactions() && licenses.hasPremiumAccess() && !dragging) {
-                say("idle", "我在这里陪你。", 5000);
+                startRandomInteraction(false);
+            } else {
+                scheduleInteraction();
             }
-            scheduleInteraction();
         }
     };
 
@@ -134,6 +148,7 @@ public final class PetOverlayService extends Service {
         pets = new PetRepository(this, settings);
         words = new WordRepository(this, settings);
         licenses = new LicenseService(this);
+        interactionContent = new InteractionContentService(this, licenses);
         companions = new CompanionService(this, licenses, pets);
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
@@ -163,6 +178,18 @@ public final class PetOverlayService extends Service {
                 pendingVisit = null;
                 showVisitor(visit);
             }
+        } else if (ACTION_REACT.equals(action)) {
+            settings.setPetHidden(false);
+            settings.setClickThrough(false);
+            if (overlay == null) createOverlay(false);
+            else applyTouchMode();
+            react(intent.getStringExtra(EXTRA_REACTION));
+        } else if (ACTION_INTERACT.equals(action)) {
+            settings.setPetHidden(false);
+            settings.setClickThrough(false);
+            if (overlay == null) createOverlay(false);
+            else applyTouchMode();
+            startRandomInteraction(true);
         } else if (ACTION_HIDE.equals(action)) {
             hidePet();
         } else if (ACTION_CLICK_THROUGH.equals(action)) {
@@ -170,13 +197,13 @@ public final class PetOverlayService extends Service {
         } else {
             if (overlay == null && !settings.petHidden()) createOverlay(false);
             if (ACTION_NEXT.equals(action)) nextPet();
-            else if (ACTION_INTERACT.equals(action)) say("happy", "碰到我啦！", 4800);
             else if (ACTION_SEND_COMPANION.equals(action)) sendToCompanion();
             else if (ACTION_REFRESH.equals(action)) refreshOverlay();
         }
         settings.setRunning(true);
         updateNotification();
         scheduleCompanionPoll();
+        warmInteractionContent();
         return START_STICKY;
     }
 
@@ -195,8 +222,11 @@ public final class PetOverlayService extends Service {
     private void createOverlay(boolean announce) {
         if (settings.petHidden() || overlay != null) return;
         int petSize = dp(settings.sizeDp());
-        int width = Math.max(petSize + dp(24), dp(304));
-        int height = petSize + dp(96);
+        int width = Math.max(petSize + dp(12), dp(128));
+        int height = petSize + dp(64);
+        baseWindowWidth = width;
+        baseWindowHeight = height;
+        interactionExpanded = false;
         overlay = new PetOverlayView(this, petSize, width, height);
         int touchFlag = settings.clickThrough() ? WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE : 0;
         windowParams = new WindowManager.LayoutParams(
@@ -210,7 +240,7 @@ public final class PetOverlayService extends Service {
         windowParams.gravity = Gravity.TOP | Gravity.START;
         Point bounds = screenBounds();
         windowParams.x = SettingsStore.clamp(settings.positionX(bounds.x - width), 0, Math.max(0, bounds.x - width));
-        windowParams.y = SettingsStore.clamp(settings.positionY(bounds.y / 2), 0, Math.max(0, bounds.y - height));
+        windowParams.y = SettingsStore.clamp(settings.positionY(bounds.y / 2), 0, maxWindowY(bounds, height));
         overlay.setOnTouchListener((view, event) -> handleTouch(event));
         overlay.setMenuListener(this::handleMenuAction);
         windowManager.addView(overlay, windowParams);
@@ -239,6 +269,8 @@ public final class PetOverlayService extends Service {
         handler.removeCallbacks(interactionTask);
         handler.removeCallbacks(petSwitchTask);
         cancelMovement();
+        interactionBusy = false;
+        interactionExpanded = false;
     }
 
     private void loadCurrentPet() {
@@ -263,13 +295,258 @@ public final class PetOverlayService extends Service {
 
     private void handleMenuAction(String action) {
         switch (action) {
-            case PetOverlayView.MENU_INTERACT -> say("happy", "今天也一起加油。", 4800);
+            case PetOverlayView.MENU_INTERACT -> startRandomInteraction(true);
             case PetOverlayView.MENU_SEND -> sendToCompanion();
             case PetOverlayView.MENU_NEXT -> nextPet();
             case PetOverlayView.MENU_CLICK_THROUGH -> enableClickThrough();
             case PetOverlayView.MENU_HIDE -> hidePet();
             default -> { }
         }
+    }
+
+    private void react(String reaction) {
+        String action = switch (reaction == null ? "" : reaction) {
+            case "cheer", "calm", "sleepy", "surprised", "sad", "happy" -> reaction;
+            default -> "happy";
+        };
+        String fallback = switch (action) {
+            case "cheer" -> "再坚持一下，我在旁边给你加油！";
+            case "calm" -> "先慢慢呼吸，我们把节奏找回来。";
+            case "sleepy" -> "眼睛休息一下，我替你守着桌面。";
+            case "surprised" -> "今天会不会突然有一件小好事？";
+            case "sad" -> "不开心也没关系，我先陪你待一会儿。";
+            default -> "碰到我啦，今天也一起加油。";
+        };
+        say(action, fallback, 5200);
+    }
+
+    private void startRandomInteraction(boolean manual) {
+        handler.removeCallbacks(interactionTask);
+        if (!licenses.hasPremiumAccess()) {
+            if (manual) sayText("体验或正式激活后可以使用随机趣味互动。", 5200);
+            scheduleInteraction();
+            return;
+        }
+        if (overlay == null || dragging || (!manual && (settings.clickThrough() || !settings.interactions()))) {
+            scheduleInteraction();
+            return;
+        }
+        if (interactionBusy) {
+            if (manual) sayText("先把眼前这个互动完成吧。", 3600);
+            return;
+        }
+        interactionBusy = true;
+        cancelMovement();
+        boolean moodDue = interactionContent.isMoodPromptDue();
+        if (moodDue && (interactionContent.cachedCount() == 0 || random.nextInt(4) == 0)) {
+            showMoodInteraction();
+            return;
+        }
+        InteractionContentService.Item item = interactionContent.takeNextContent();
+        if (item != null) {
+            showContentInteraction(item);
+            warmInteractionContent();
+            return;
+        }
+        sayText("正在找点有趣的内容…", 5000);
+        networkExecutor.execute(() -> {
+            Exception failure = null;
+            try { interactionContent.refillOnline(); }
+            catch (Exception error) { failure = error; }
+            InteractionContentService.Item loaded = interactionContent.takeNextContent();
+            Exception finalFailure = failure;
+            handler.post(() -> {
+                if (overlay == null) {
+                    finishInteraction();
+                } else if (loaded != null) {
+                    showContentInteraction(loaded);
+                } else if (moodDue) {
+                    showMoodInteraction();
+                } else {
+                    if (manual) sayText(finalFailure == null
+                        ? "趣味内容正在补货，稍后再来找我吧。"
+                        : "线上内容暂时不可用，稍后再试。", 5200);
+                    finishInteraction();
+                }
+            });
+        });
+    }
+
+    private void showMoodInteraction() {
+        interactionContent.markMoodPrompted();
+        showOverlayInteraction("随手问候", "今天心情怎么样？", Arrays.asList(
+            new PetOverlayView.InteractionChoice("开心", "happy"),
+            new PetOverlayView.InteractionChoice("还可以", "okay"),
+            new PetOverlayView.InteractionChoice("不咋地", "low")
+        ), mood -> {
+            if (mood == null) {
+                finishInteraction();
+                return;
+            }
+            interactionContent.recordMood(mood);
+            String response = switch (mood) {
+                case "happy" -> "那就把这份开心多留一会儿。";
+                case "low" -> "先不用硬撑，我在这儿陪你一会儿。";
+                default -> "平平稳稳也很好，慢慢来。";
+            };
+            finishInteraction();
+            sayText(response, 5600);
+        });
+    }
+
+    private void showContentInteraction(InteractionContentService.Item item) {
+        if ("joke".equals(item.type)) {
+            showOverlayInteraction("冷笑话时间", item.prompt,
+                Arrays.asList(new PetOverlayView.InteractionChoice("看答案", "reveal", true)), choice -> {
+                    if (choice == null) {
+                        finishInteraction();
+                        return;
+                    }
+                    interactionContent.recordJoke(item);
+                    showAnswerInteraction("答案", formatContentAnswer(item), null);
+                });
+            return;
+        }
+        if ("tip".equals(item.type) || "care".equals(item.type)) {
+            String title = "tip".equals(item.type) ? "生活小贴士" : "关心你一下";
+            String button = "tip".equals(item.type) ? "记下了" : "我知道了";
+            showOverlayInteraction(title, item.prompt + "\n\n" + formatContentAnswer(item),
+                Arrays.asList(new PetOverlayView.InteractionChoice(button, "done", true)),
+                choice -> finishInteraction());
+            return;
+        }
+        String title = switch (item.type) {
+            case "math" -> "来道数学题";
+            case "riddle" -> "脑筋急转弯";
+            default -> "趣味知识";
+        };
+        if (!item.choices.isEmpty()) {
+            List<PetOverlayView.InteractionChoice> choices = new ArrayList<>();
+            for (String choice : item.choices)
+                choices.add(new PetOverlayView.InteractionChoice(choice, choice));
+            showOverlayInteraction(title, item.prompt, choices, selected -> {
+                if (selected == null) {
+                    finishInteraction();
+                    return;
+                }
+                boolean correct = answersMatch(selected, item.answer);
+                interactionContent.recordQuiz(item, correct);
+                showAnswerInteraction(correct ? "答对了" : "答案揭晓",
+                    formatContentAnswer(item), correct);
+            });
+            return;
+        }
+        showOverlayInteraction(title, item.prompt,
+            Arrays.asList(new PetOverlayView.InteractionChoice("查看答案", "reveal", true)), choice -> {
+                if (choice == null) {
+                    finishInteraction();
+                    return;
+                }
+                showOverlayInteraction("答案", formatContentAnswer(item), Arrays.asList(
+                    new PetOverlayView.InteractionChoice("答对了", "correct", true),
+                    new PetOverlayView.InteractionChoice("没答对", "wrong")
+                ), result -> {
+                    if (result != null) interactionContent.recordQuiz(item, "correct".equals(result));
+                    finishInteraction();
+                });
+            });
+    }
+
+    private void showAnswerInteraction(String title, String message, Boolean correct) {
+        String button = Boolean.TRUE.equals(correct) ? "收下这分" : "知道了";
+        showOverlayInteraction(title, message,
+            Arrays.asList(new PetOverlayView.InteractionChoice(button, "done", true)),
+            choice -> finishInteraction());
+    }
+
+    private void showOverlayInteraction(String title, String message,
+                                        List<PetOverlayView.InteractionChoice> choices,
+                                        Consumer<String> callback) {
+        if (overlay == null) {
+            finishInteraction();
+            return;
+        }
+        expandInteractionWindow();
+        overlay.showInteraction(title, message, choices, callback::accept);
+        overlay.post(this::fitInteractionWindowToContent);
+    }
+
+    private void finishInteraction() {
+        if (overlay != null) overlay.hideInteraction();
+        collapseInteractionWindow();
+        interactionBusy = false;
+        scheduleInteraction();
+        warmInteractionContent();
+        if (interactionContent.shouldFlush() && !interactionSyncBusy) {
+            interactionSyncBusy = true;
+            networkExecutor.execute(() -> {
+                try { interactionContent.flushEvents(); } catch (Exception ignored) { }
+                finally { interactionSyncBusy = false; }
+            });
+        }
+    }
+
+    private void warmInteractionContent() {
+        if (!interactionContent.needsRefill() || interactionSyncBusy) return;
+        interactionSyncBusy = true;
+        networkExecutor.execute(() -> {
+            try { interactionContent.refillOnline(); } catch (Exception ignored) { }
+            finally { interactionSyncBusy = false; }
+        });
+    }
+
+    private String formatContentAnswer(InteractionContentService.Item item) {
+        String answer = item.answer.trim().isEmpty() ? "答案暂缺" : item.answer.trim();
+        String explanation = item.explanation.trim();
+        return explanation.isEmpty() || explanation.equals(answer)
+            ? answer : answer + "\n" + explanation;
+    }
+
+    private boolean answersMatch(String selected, String answer) {
+        return selected.trim().equalsIgnoreCase(answer.trim());
+    }
+
+    private void expandInteractionWindow() {
+        if (interactionExpanded || overlay == null || windowParams == null) return;
+        Point bounds = screenBounds();
+        int width = Math.max(baseWindowWidth, Math.min(dp(196), bounds.x - dp(12)));
+        int height = Math.min(baseWindowHeight + dp(300),
+            Math.max(baseWindowHeight, bounds.y - dp(BOTTOM_GUARD_DP)));
+        interactionExpanded = true;
+        resizeWindowAnchored(width, height);
+    }
+
+    private void fitInteractionWindowToContent() {
+        if (!interactionExpanded || overlay == null || windowParams == null
+            || !overlay.isInteractionVisible()) return;
+        Point bounds = screenBounds();
+        int petSize = Math.max(0, baseWindowHeight - dp(64));
+        // Pull the pet slightly into the card's lower edge so both read as one interaction unit.
+        int desiredHeight = overlay.interactionCardHeight() + petSize - dp(16);
+        int height = SettingsStore.clamp(desiredHeight, baseWindowHeight,
+            Math.max(baseWindowHeight, bounds.y - dp(BOTTOM_GUARD_DP)));
+        resizeWindowAnchored(windowParams.width, height);
+    }
+
+    private void collapseInteractionWindow() {
+        if (!interactionExpanded || overlay == null || windowParams == null) return;
+        interactionExpanded = false;
+        resizeWindowAnchored(baseWindowWidth, baseWindowHeight);
+    }
+
+    private void resizeWindowAnchored(int width, int height) {
+        if (overlay == null || windowParams == null) return;
+        int centerX = windowParams.x + windowParams.width / 2;
+        int bottom = windowParams.y + windowParams.height;
+        Point bounds = screenBounds();
+        windowParams.width = width;
+        windowParams.height = height;
+        windowParams.x = SettingsStore.clamp(centerX - width / 2, 0, Math.max(0, bounds.x - width));
+        windowParams.y = SettingsStore.clamp(bottom - height, 0, maxWindowY(bounds, height));
+        try {
+            windowManager.updateViewLayout(overlay, windowParams);
+            overlay.requestLayout();
+        } catch (Exception ignored) { }
     }
 
     private void hidePet() {
@@ -296,6 +573,7 @@ public final class PetOverlayService extends Service {
 
     private boolean handleTouch(MotionEvent event) {
         if (overlay == null) return false;
+        if (overlay.isInteractionVisible()) return true;
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN -> {
                 cancelMovement();
@@ -352,7 +630,7 @@ public final class PetOverlayService extends Service {
         if (windowParams == null) return;
         Point bounds = screenBounds();
         int maxX = Math.max(0, bounds.x - windowParams.width);
-        int maxY = Math.max(0, bounds.y - windowParams.height);
+        int maxY = maxWindowY(bounds, windowParams.height);
         int targetX = random.nextInt(maxX + 1);
         int verticalBand = Math.max(dp(80), maxY / 3);
         int targetY = SettingsStore.clamp(windowParams.y + random.nextInt(verticalBand * 2 + 1) - verticalBand, 0, maxY);
@@ -390,7 +668,7 @@ public final class PetOverlayService extends Service {
                 velocity[1] *= Math.pow(0.984, dt * 60);
                 Point bounds = screenBounds();
                 int maxX = Math.max(0, bounds.x - windowParams.width);
-                int maxY = Math.max(0, bounds.y - windowParams.height);
+                int maxY = maxWindowY(bounds, windowParams.height);
                 float nextX = windowParams.x + velocity[0] * dt;
                 float nextY = windowParams.y + velocity[1] * dt;
                 if (nextX <= 0 || nextX >= maxX) {
@@ -419,7 +697,7 @@ public final class PetOverlayService extends Service {
         if (overlay == null || windowParams == null) return;
         Point bounds = screenBounds();
         windowParams.x = SettingsStore.clamp(x, 0, Math.max(0, bounds.x - windowParams.width));
-        windowParams.y = SettingsStore.clamp(y, 0, Math.max(0, bounds.y - windowParams.height));
+        windowParams.y = SettingsStore.clamp(y, 0, maxWindowY(bounds, windowParams.height));
         try { windowManager.updateViewLayout(overlay, windowParams); } catch (Exception ignored) { }
     }
 
@@ -581,6 +859,10 @@ public final class PetOverlayService extends Service {
         Point bounds = new Point();
         windowManager.getDefaultDisplay().getRealSize(bounds);
         return bounds;
+    }
+
+    private int maxWindowY(Point bounds, int windowHeight) {
+        return Math.max(0, bounds.y - windowHeight - dp(BOTTOM_GUARD_DP));
     }
 
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

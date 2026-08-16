@@ -39,7 +39,9 @@ final class CompanionService {
     Profile pair(String pairingCode) throws Exception {
         String code = pairingCode == null ? "" : pairingCode.replaceAll("[^A-Za-z0-9]", "")
             .toUpperCase(Locale.ROOT);
-        if (code.length() != 6) throw new IllegalArgumentException("请输入搭子的 6 位配对码");
+        if (code.length() != 6 && code.length() != 8) {
+            throw new IllegalArgumentException("请输入搭子的 8 位配对码");
+        }
         return parseProfile(NetworkClient.json(context, "POST", "/api/companion/pair",
             new JSONObject().put("code", code), licenses, NetworkClient.Auth.ACTIVATED));
     }
@@ -86,12 +88,18 @@ final class CompanionService {
     }
 
     private static Profile parseProfile(JSONObject json) throws Exception {
-        JSONObject partnerJson = json.optJSONObject("partner");
+        JSONObject payload = json.optJSONObject("profile");
+        if (payload == null) payload = json;
+        JSONObject partnerJson = payload.optJSONObject("partner");
         Partner partner = partnerJson == null ? null
             : new Partner(partnerJson.optString("displayName", "搭子"), partnerJson.optString("pairedAt"));
-        String displayName = json.optString("displayName");
-        String pairingCode = json.optString("pairingCode");
-        if (displayName.trim().isEmpty() || pairingCode.length() != 6) throw new IOException("搭子服务返回的数据无效");
+        String displayName = payload.optString("displayName").trim();
+        if (displayName.isEmpty()) displayName = "桌搭子";
+        String pairingCode = payload.optString("pairingCode").replaceAll("[^A-Za-z0-9]", "")
+            .toUpperCase(Locale.ROOT);
+        if (pairingCode.length() != 6 && pairingCode.length() != 8) {
+            throw new IOException("搭子服务未返回有效配对码，请稍后重试");
+        }
         return new Profile(displayName, pairingCode, partner);
     }
 

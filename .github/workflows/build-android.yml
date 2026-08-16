@@ -5,12 +5,14 @@ on:
   push:
     paths:
       - "android/**"
+      - "mobile_ui/**"
       - "macos/Resources/Pets/**"
       - "content-packs/互动词包/**"
       - ".github/workflows/build-android.yml"
   pull_request:
     paths:
       - "android/**"
+      - "mobile_ui/**"
       - "macos/Resources/Pets/**"
       - "content-packs/互动词包/**"
       - ".github/workflows/build-android.yml"
@@ -36,10 +38,21 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.0"
+          channel: stable
+          cache: true
+
+      - name: Prepare Flutter module
+        working-directory: mobile_ui
+        run: flutter pub get
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
-          gradle-version: "9.4.1"
+          gradle-version: "8.14.4"
           cache-provider: basic
 
       - name: Install Android SDK packages
@@ -47,6 +60,9 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
             "platforms;android-36" \
             "build-tools;36.0.0" \
+            "build-tools;35.0.0" \
+            "ndk;28.2.13676358" \
+            "cmake;3.22.1" \
             "platform-tools"
 
       - name: Prepare stable Android signing
@@ -66,22 +82,28 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             gradle --project-dir android :app:lintDebug :app:assembleDebug --stacktrace
-            echo "APK_PATH=android/app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_ENV"
+            echo "APK_DIR=android/app/build/outputs/apk/debug" >> "$GITHUB_ENV"
           else
             gradle --project-dir android :app:lintRelease :app:assembleRelease --stacktrace
-            echo "APK_PATH=android/app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_ENV"
+            echo "APK_DIR=android/app/build/outputs/apk/release" >> "$GITHUB_ENV"
           fi
 
       - name: Verify APK signature
         run: |
-          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
-            --verbose \
-            --print-certs \
-            "$APK_PATH"
+          mapfile -t apks < <(find "$APK_DIR" -maxdepth 1 -type f -name '*.apk' | sort)
+          test "${#apks[@]}" -gt 0
+          for apk in "${apks[@]}"; do
+            "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify \
+              --verbose \
+              --print-certs \
+              "$apk"
+          done
 
       - name: Prepare package
         if: github.event_name != 'pull_request'
-        run: cp "$APK_PATH" ZhuoDazi-Android-1.1.0.apk
+        run: |
+          cp "$APK_DIR/app-arm64-v8a-release.apk" ZhuoDazi-Android-1.1.0-arm64.apk
+          cp "$APK_DIR/app-armeabi-v7a-release.apk" ZhuoDazi-Android-1.1.0-armv7.apk
 
       - name: Upload APK to Android draft release
         if: github.event_name != 'pull_request'
@@ -90,13 +112,15 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           tag="android-v1.1.0"
-          asset="ZhuoDazi-Android-1.1.0.apk"
+          asset_arm64="ZhuoDazi-Android-1.1.0-arm64.apk"
+          asset_armv7="ZhuoDazi-Android-1.1.0-armv7.apk"
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --draft \
               --target "$GITHUB_SHA" \
               --title "桌搭子 Android v1.1.0" \
-              --notes "Android 功能预览版：五栏应用界面、悬浮桌宠快捷菜单、真实触摸穿透、隐藏保活、独立设备激活与体验、搭子配对和桌宠互发。安装后需授予显示在其他应用上层权限。v1.0 测试包使用了临时证书，升级此版前需先卸载 v1.0；从 v1.1.0 起使用稳定发布签名。"
+              --notes "Android 功能预览版：五栏应用界面、趣味互动、悬浮桌宠中央菜单、触摸穿透、搭子配对和桌宠互发。ARM64 适用于绝大多数手机，ARMv7 仅用于较旧的 32 位设备。安装后需授予显示在其他应用上层权限。"
           fi
-          gh release upload "$tag" "$asset" --clobber
+          gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
+          gh release delete-asset "$tag" "ZhuoDazi-Android-1.1.0.apk" --yes || true
           gh release delete-asset "$tag" "ZhuoDazi-Android-1.1.0-debug.apk" --yes || true

@@ -54,7 +54,6 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_OVERLAY = 301;
     private static final int REQUEST_GIF = 302;
     private static final int REQUEST_NOTIFICATIONS = 303;
-    private static final long MAX_GIF_BYTES = 20L * 1024 * 1024;
     private static final int PAGE = 0xfff4f7f6;
     private static final int SURFACE = 0xffffffff;
     private static final int TEXT = 0xff17201e;
@@ -303,8 +302,11 @@ public final class MainActivity extends Activity {
         content.addView(petSpinner, matchMargins(0, 0, 0, 9));
 
         LinearLayout resourceActions = horizontal();
-        Button importButton = button("导入 GIF（" + petRepository.customPetCount() + "/3）", false);
-        importButton.setEnabled(petRepository.customPetCount() < PetRepository.MAX_CUSTOM_PETS);
+        Button importButton = button(licenseService.isActivated()
+            ? "导入 GIF（" + petRepository.customPetCount() + "/3）"
+            : "激活后可导入 GIF", false);
+        importButton.setEnabled(licenseService.isActivated()
+            && petRepository.customPetCount() < PetRepository.MAX_CUSTOM_PETS);
         importButton.setOnClickListener(view -> chooseGif());
         resourceActions.addView(importButton, weighted());
         if (petRepository.isCustom(selected)) {
@@ -343,8 +345,8 @@ public final class MainActivity extends Activity {
                 settingsStore.putString(SettingsStore.PERSONALITY, value);
                 sendService(PetOverlayService.ACTION_REFRESH);
             });
-        addChoice(content, "随机换宠间隔", new String[]{"5 分钟", "10 分钟", "30 分钟", "1 小时"},
-            new String[]{"300", "600", "1800", "3600"}, String.valueOf(settingsStore.randomPetInterval()), true, value -> {
+        addChoice(content, "随机换宠间隔", new String[]{"30 秒", "1 分钟", "5 分钟", "10 分钟", "30 分钟"},
+            new String[]{"30", "60", "300", "600", "1800"}, String.valueOf(settingsStore.randomPetInterval()), true, value -> {
                 settingsStore.putInt(SettingsStore.RANDOM_PET_INTERVAL, Integer.parseInt(value));
                 sendService(PetOverlayService.ACTION_REFRESH);
             });
@@ -467,7 +469,7 @@ public final class MainActivity extends Activity {
 
         section(content, "当前搭子");
         if (companionProfile.partner() == null) {
-            EditText pairCode = input("输入搭子的 6 位配对码", "");
+            EditText pairCode = input("输入搭子的 8 位配对码", "");
             pairCode.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS);
             pairCode.setFilters(new InputFilter[]{new InputFilter.LengthFilter(8)});
             content.addView(pairCode, matchMargins(0, 0, 0, 9));
@@ -585,6 +587,10 @@ public final class MainActivity extends Activity {
     }
 
     private void chooseGif() {
+        if (!licenseService.isActivated()) {
+            Toast.makeText(this, "正式激活后才能导入自己的桌宠", Toast.LENGTH_LONG).show();
+            return;
+        }
         if (petRepository.nextImportFile() == null) {
             Toast.makeText(this, "最多可以导入 3 个自定义 GIF", Toast.LENGTH_LONG).show();
             return;
@@ -616,10 +622,13 @@ public final class MainActivity extends Activity {
                 int count;
                 while ((count = input.read(buffer)) >= 0) {
                     copied += count;
-                    if (copied > MAX_GIF_BYTES) throw new IllegalArgumentException("GIF 不能超过 20 MB");
+                    if (copied > PetRepository.MAX_GIF_BYTES) {
+                        throw new IllegalArgumentException("GIF 不能超过 8 MB");
+                    }
                     output.write(buffer, 0, count);
                 }
             }
+            PetRepository.validateGifFile(pending);
             Drawable decoded = ImageDecoder.decodeDrawable(ImageDecoder.createSource(pending));
             if (decoded instanceof AnimatedImageDrawable animated) animated.stop();
             Files.move(pending.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING);

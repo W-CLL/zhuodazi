@@ -31,7 +31,7 @@ final class SettingsStore {
         values = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
-    int sizeDp() { return clamp(values.getInt(SIZE, 180), 96, 280); }
+    int sizeDp() { return clamp(values.getInt(SIZE, 96), 96, 280); }
     int opacity() { return clamp(values.getInt(OPACITY, 100), 20, 100); }
     boolean mirrored() { return values.getBoolean(MIRRORED, false); }
     boolean movement() { return values.getBoolean(MOVEMENT, true); }
@@ -46,7 +46,7 @@ final class SettingsStore {
     String interactionMode() { return values.getString(INTERACTION_MODE, "standard"); }
     String activePet() { return values.getString(ACTIVE_PET, ""); }
     String wordPack() { return values.getString(WORD_PACK, "元气夸夸.json"); }
-    int randomPetInterval() { return values.getInt(RANDOM_PET_INTERVAL, 300); }
+    int randomPetInterval() { return clamp(values.getInt(RANDOM_PET_INTERVAL, 300), 30, 3600); }
     int positionX(int fallback) { return values.getInt(POSITION_X, fallback); }
     int positionY(int fallback) { return values.getInt(POSITION_Y, fallback); }
     int selectedTab() { return clamp(values.getInt(SELECTED_TAB, 0), 0, 4); }

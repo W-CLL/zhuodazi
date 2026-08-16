@@ -30,4 +30,6 @@ website/.capture-*/
 # Local Android SDK/JDK and generated Android build state
 .toolchains/
 android/.gradle/
+android/build/
+android/app/build/
 android/local.properties
