@@ -14,6 +14,7 @@
     <Compile Include="..\..\ZhuoDazi\Services\ContentEnvelopeVerifier.cs" Link="ContentEnvelopeVerifier.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\InteractionCacheStore.cs" Link="InteractionCacheStore.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\InteractionScheduler.cs" Link="InteractionScheduler.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DeskPetApi.cs" Link="DeskPetApi.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\ServerSignatureTrust.cs" Link="ServerSignatureTrust.cs" />
     <Compile Include="..\..\ZhuoDazi\Controls\GifFrameCompositor.cs" Link="GifFrameCompositor.cs" />
     <None Include="..\..\assets\pet-libraries\yuexinmiao\017-90d741d6.gif" Link="assets\partial-frame.gif" CopyToOutputDirectory="PreserveNewest" />
