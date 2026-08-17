@@ -30,11 +30,16 @@ final class WordRepository {
             if (names != null) {
                 Arrays.sort(names);
                 for (String name : names) {
-                    if (name.endsWith(".json")) result.add(name);
+                    if (isWordPackAsset(name)) result.add(name);
                 }
             }
         } catch (Exception ignored) { }
         return result;
+    }
+
+    private static boolean isWordPackAsset(String name) {
+        if (!name.endsWith(".json") || name.equals("interaction_fallback.json")) return false;
+        return !name.contains("/") && !name.contains("\\");
     }
 
     String displayName(String file) {

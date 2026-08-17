@@ -8,10 +8,10 @@ namespace ZhuoDazi.Services;
 
 public sealed class InteractionService : IDisposable
 {
-    private const string ProfileUrl = LicenseService.ServiceBaseUrl + "/api/interactions/profile";
-    private const string EventsUrl = LicenseService.ServiceBaseUrl + "/api/interactions/events";
-    private const string BatchUrl = LicenseService.ServiceBaseUrl + "/api/content/batch";
-    private const string OfflinePackUrl = LicenseService.ServiceBaseUrl + "/api/content/offline-pack";
+    private const string ProfileUrl = DeskPetApi.InteractionProfile;
+    private const string EventsUrl = DeskPetApi.InteractionEvents;
+    private const string BatchUrl = DeskPetApi.ContentBatch;
+    private const string OfflinePackUrl = DeskPetApi.ContentOfflinePack;
     private const int MaximumResponseBytes = 20 * 1024 * 1024;
     private const int TargetCacheSize = 60;
     private const int EventBatchSize = 50;
@@ -30,11 +30,7 @@ public sealed class InteractionService : IDisposable
     private bool _disposed;
 
     public InteractionService(SettingsStore store, LicenseService licenses)
-        : this(store, licenses, new SocketsHttpHandler
-        {
-            UseProxy = false,
-            ConnectTimeout = TimeSpan.FromSeconds(20)
-        })
+        : this(store, licenses, DeskPetHttp.CreateHandler())
     {
     }
 

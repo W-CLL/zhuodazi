@@ -25,14 +25,14 @@ final class CompanionService {
     }
 
     Profile refreshProfile() throws Exception {
-        return parseProfile(NetworkClient.json(context, "GET", "/api/companion", null,
+        return parseProfile(NetworkClient.json(context, "GET", DeskPetApi.COMPANION, null,
             licenses, NetworkClient.Auth.ACTIVATED));
     }
 
     Profile updateName(String displayName) throws Exception {
         String name = displayName == null ? "" : displayName.trim();
         if (name.length() < 1 || name.length() > 20) throw new IllegalArgumentException("昵称需为 1 至 20 个字符");
-        return parseProfile(NetworkClient.json(context, "PATCH", "/api/companion",
+        return parseProfile(NetworkClient.json(context, "PATCH", DeskPetApi.COMPANION,
             new JSONObject().put("displayName", name), licenses, NetworkClient.Auth.ACTIVATED));
     }
 
@@ -42,18 +42,18 @@ final class CompanionService {
         if (code.length() != 6 && code.length() != 8) {
             throw new IllegalArgumentException("请输入搭子的 8 位配对码");
         }
-        return parseProfile(NetworkClient.json(context, "POST", "/api/companion/pair",
+        return parseProfile(NetworkClient.json(context, "POST", DeskPetApi.COMPANION_PAIR,
             new JSONObject().put("code", code), licenses, NetworkClient.Auth.ACTIVATED));
     }
 
     Profile unpair() throws Exception {
-        return parseProfile(NetworkClient.json(context, "DELETE", "/api/companion/pair", null,
+        return parseProfile(NetworkClient.json(context, "DELETE", DeskPetApi.COMPANION_PAIR, null,
             licenses, NetworkClient.Auth.ACTIVATED));
     }
 
     String sendCurrentGif() throws Exception {
         byte[] gif = pets.readGif(pets.selectedPet(), MAXIMUM_GIF_BYTES);
-        byte[] response = NetworkClient.request(context, "POST", "/api/companion/deliveries", gif,
+        byte[] response = NetworkClient.request(context, "POST", DeskPetApi.COMPANION_DELIVERIES, gif,
             "image/gif", licenses, NetworkClient.Auth.ACTIVATED, NetworkClient.DEFAULT_MAX_RESPONSE);
         JSONObject json = new JSONObject(new String(response, java.nio.charset.StandardCharsets.UTF_8));
         String recipient = json.optString("recipientName");
@@ -62,7 +62,7 @@ final class CompanionService {
     }
 
     List<Visit> receive() throws Exception {
-        JSONObject response = NetworkClient.json(context, "GET", "/api/companion/deliveries", null,
+        JSONObject response = NetworkClient.json(context, "GET", DeskPetApi.COMPANION_DELIVERIES, null,
             licenses, NetworkClient.Auth.ACTIVATED);
         JSONArray deliveries = response.optJSONArray("deliveries");
         List<Visit> visits = new ArrayList<>();
@@ -75,12 +75,12 @@ final class CompanionService {
             String hash = item.optString("sha256");
             String downloadPath = item.optString("downloadPath");
             if (!id.matches("[A-Za-z0-9._:-]{1,128}") || !hash.matches("(?i)[0-9a-f]{64}")
-                || !downloadPath.startsWith("/api/companion/")) continue;
+                || !downloadPath.startsWith(DeskPetApi.COMPANION_DOWNLOAD_PREFIX)) continue;
             byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
                 licenses, NetworkClient.Auth.ACTIVATED, MAXIMUM_GIF_BYTES);
             validateGif(gif, hash);
             File file = pets.saveInboxGif(id, gif);
-            NetworkClient.json(context, "POST", "/api/companion/deliveries/" + id + "/acknowledge",
+            NetworkClient.json(context, "POST", DeskPetApi.COMPANION_DELIVERIES + "/" + id + "/acknowledge",
                 null, licenses, NetworkClient.Auth.ACTIVATED);
             visits.add(new Visit(id, sender, file));
         }

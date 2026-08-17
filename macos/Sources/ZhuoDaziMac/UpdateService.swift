@@ -47,9 +47,8 @@ enum UpdateError: LocalizedError {
 }
 
 final class UpdateService {
-    private static let manifestURL = LicenseService.serviceBaseURL
-        .appendingPathComponent("api/update/latest")
-    private static let publicKeySPKI = "MCowBQYDK2VwAyEANjBEMMQ5TY+0ECNoRqQy9780eoVOzkKpzFDq2TwLytU="
+    private static let manifestURL = DeskPetApi.updateLatest
+    private static let publicKeySPKI = DeskPetApi.signingPublicKeySPKI
     private let licenses: LicenseService
     private(set) var status = UpdateStatus.idle {
         didSet { statusChanged?(status) }
@@ -160,8 +159,8 @@ final class UpdateService {
         guard manifest.version.range(of: "^\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?$", options: .regularExpression) != nil,
               manifest.sha256.range(of: "^[0-9a-fA-F]{64}$", options: .regularExpression) != nil,
                manifest.url.scheme == "https",
-               manifest.url.host?.lowercased() == "in.desktoppet.online",
-               manifest.url.path.hasPrefix("/downloads/"),
+               manifest.url.host?.lowercased() == DeskPetApi.host,
+               manifest.url.path.hasPrefix(DeskPetApi.downloadPathPrefix),
               manifest.signatureAlgorithm.lowercased() == "ed25519",
               let signature = Data(base64Encoded: manifest.signature) else {
             throw UpdateError.invalidManifest("更新清单格式无效")

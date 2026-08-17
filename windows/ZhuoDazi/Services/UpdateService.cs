@@ -45,8 +45,7 @@ public sealed class UpdateManifest
 
 public sealed class UpdateService : IDisposable
 {
-    private const string ManifestUrl = LicenseService.ServiceBaseUrl
-        + "/api/update/latest?platform=windows&architecture=x64";
+    private const string ManifestUrl = DeskPetApi.UpdateLatest;
     private const int MaxManifestBytes = 512 * 1024;
     private const long MaxDownloadBytes = 300L * 1024 * 1024;
     private const int DownloadBufferSize = 1024 * 1024;
@@ -57,17 +56,7 @@ public sealed class UpdateService : IDisposable
 
     private readonly SettingsStore _store;
     private readonly LicenseService _licenses;
-    private readonly HttpClient _httpClient = new(new SocketsHttpHandler
-    {
-        UseProxy = false,
-        ConnectTimeout = TimeSpan.FromSeconds(20),
-        PooledConnectionLifetime = TimeSpan.FromMinutes(5)
-    })
-    {
-        Timeout = TimeSpan.FromMinutes(10),
-        DefaultRequestVersion = HttpVersion.Version20,
-        DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-    };
+    private readonly HttpClient _httpClient = DeskPetHttp.CreateClient(TimeSpan.FromMinutes(10));
     private string? _downloadedPath;
 
     public UpdateState State { get; private set; } = new(UpdatePhase.Idle, "可以检查更新");
@@ -203,7 +192,7 @@ public sealed class UpdateService : IDisposable
         });
     }
 
-    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "3.1.3";
+    public static string CurrentVersion => typeof(UpdateService).Assembly.GetName().Version?.ToString(3) ?? "3.1.4";
 
     internal static int CompareVersions(string left, string right)
     {
@@ -225,8 +214,8 @@ public sealed class UpdateService : IDisposable
             throw new InvalidOperationException("更新清单版本号无效。");
         if (!Uri.TryCreate(manifest.Url, UriKind.Absolute, out var uri)
             || uri.Scheme != Uri.UriSchemeHttps
-            || !uri.Host.Equals("in.desktoppet.online", StringComparison.OrdinalIgnoreCase)
-            || !uri.AbsolutePath.StartsWith("/downloads/", StringComparison.Ordinal))
+            || !uri.Host.Equals(DeskPetApi.Host, StringComparison.OrdinalIgnoreCase)
+            || !uri.AbsolutePath.StartsWith(DeskPetApi.DownloadPathPrefix, StringComparison.Ordinal))
             throw new InvalidOperationException("更新下载地址无效。");
         if (manifest.Sha256.Length != 64 || !manifest.Sha256.All(Uri.IsHexDigit))
             throw new InvalidOperationException("更新清单缺少有效的 SHA-256。");

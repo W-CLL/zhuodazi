@@ -38,7 +38,7 @@ final class LicenseService {
         JSONObject body = new JSONObject().put("code", code)
             .put("installationId", record.installationId).put("credential", record.credential)
             .put("appVersion", NetworkClient.appVersion(context));
-        JSONObject response = NetworkClient.json(context, "POST", "/api/activate", body,
+        JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.ACTIVATE, body,
             this, NetworkClient.Auth.NONE);
         String licenseId = response.optString("licenseId");
         try { UUID.fromString(licenseId); }
@@ -55,7 +55,7 @@ final class LicenseService {
         SecureLicenseStore.LicenseRecord record = secureStore.record();
         JSONObject body = new JSONObject().put("installationId", record.installationId)
             .put("credential", record.credential).put("appVersion", NetworkClient.appVersion(context));
-        JSONObject response = NetworkClient.json(context, "POST", "/api/trial", body,
+        JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.TRIAL, body,
             this, NetworkClient.Auth.NONE);
         int seconds = response.optInt("remainingSeconds", -1);
         if (seconds < 0 || seconds > 300) throw new IllegalStateException("体验服务返回的数据无效");

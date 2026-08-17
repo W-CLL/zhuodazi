@@ -6,7 +6,7 @@ namespace ZhuoDazi.Services;
 
 public sealed class FeedbackService : IDisposable
 {
-    private const string FeedbackUrl = LicenseService.ServiceBaseUrl + "/api/feedback";
+    private const string FeedbackUrl = DeskPetApi.Feedback;
     private const int MaxResponseBytes = 256 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -14,7 +14,7 @@ public sealed class FeedbackService : IDisposable
     };
 
     private readonly LicenseService _licenses;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(25) };
+    private readonly HttpClient _httpClient = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(25));
 
     public FeedbackService(LicenseService licenses) => _licenses = licenses;
 

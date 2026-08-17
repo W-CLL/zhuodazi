@@ -1,7 +1,7 @@
 import Foundation
 
 final class AnalyticsService {
-    private static let eventsURL = LicenseService.serviceBaseURL.appendingPathComponent("api/analytics/events")
+    private static let eventsURL = DeskPetApi.analyticsEvents
     private let installationId: String
     private let architecture: String
     private let firstLaunchMarkerURL: URL

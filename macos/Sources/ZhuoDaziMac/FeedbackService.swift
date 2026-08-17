@@ -48,7 +48,7 @@ enum FeedbackError: LocalizedError {
 }
 
 final class FeedbackService {
-    private static let feedbackURL = LicenseService.serviceBaseURL.appendingPathComponent("api/feedback")
+    private static let feedbackURL = DeskPetApi.feedback
     private static let maximumResponseBytes = 256 * 1024
     private let licenses: LicenseService
     private let decoder = JSONDecoder()

@@ -1,6 +1,5 @@
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -21,9 +20,9 @@ public sealed record CompanionVisit(string Id, string SenderName, string FilePat
 
 public sealed class CompanionService : IDisposable
 {
-    private const string CompanionUrl = LicenseService.ServiceBaseUrl + "/api/companion";
-    private const string PairUrl = CompanionUrl + "/pair";
-    private const string DeliveriesUrl = CompanionUrl + "/deliveries";
+    private const string CompanionUrl = DeskPetApi.Companion;
+    private const string PairUrl = DeskPetApi.CompanionPair;
+    private const string DeliveriesUrl = DeskPetApi.CompanionDeliveries;
     private const int MaximumGifBytes = 8 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -37,16 +36,7 @@ public sealed class CompanionService : IDisposable
     {
         _licenses = licenses;
         _inboxDirectory = store.CompanionDirectory;
-        _httpClient = new HttpClient(new SocketsHttpHandler
-        {
-            UseProxy = false,
-            ConnectTimeout = TimeSpan.FromSeconds(20)
-        })
-        {
-            Timeout = TimeSpan.FromSeconds(35),
-            DefaultRequestVersion = HttpVersion.Version20,
-            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-        };
+        _httpClient = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(35));
         try
         {
             if (Directory.Exists(_inboxDirectory)) Directory.Delete(_inboxDirectory, true);
@@ -110,7 +100,10 @@ public sealed class CompanionService : IDisposable
         foreach (var item in pending.Deliveries)
         {
             var filePath = Path.Combine(_inboxDirectory, $"{item.Id}.gif");
-            using var downloadRequest = CreateRequest(HttpMethod.Get, LicenseService.ServiceBaseUrl + item.DownloadPath);
+            if (!DeskPetHttp.TryCreateCompanionFileUrl(item.DownloadPath, out var downloadUri)
+                || downloadUri is null)
+                throw new InvalidOperationException("来访下载地址无效。");
+            using var downloadRequest = CreateRequest(HttpMethod.Get, downloadUri.AbsoluteUri);
             using var response = await _httpClient.SendAsync(
                 downloadRequest,
                 HttpCompletionOption.ResponseHeadersRead,

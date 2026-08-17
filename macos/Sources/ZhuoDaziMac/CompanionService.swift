@@ -34,9 +34,9 @@ enum CompanionError: LocalizedError {
 
 @MainActor
 final class CompanionService {
-    private static let companionURL = LicenseService.serviceBaseURL.appendingPathComponent("api/companion")
-    private static let pairURL = companionURL.appendingPathComponent("pair")
-    private static let deliveriesURL = companionURL.appendingPathComponent("deliveries")
+    private static let companionURL = DeskPetApi.companion
+    private static let pairURL = DeskPetApi.companionPair
+    private static let deliveriesURL = DeskPetApi.companionDeliveries
     private static let maximumGIFBytes = 8 * 1024 * 1024
 
     private let licenses: LicenseService

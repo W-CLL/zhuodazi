@@ -10,9 +10,8 @@ public sealed record TrialStatus(bool Allowed, int RemainingSeconds);
 
 public sealed class LicenseService : IDisposable
 {
-    internal const string ServiceBaseUrl = "https://in.desktoppet.online";
-    private const string ActivationUrl = ServiceBaseUrl + "/api/activate";
-    private const string TrialUrl = ServiceBaseUrl + "/api/trial";
+    private const string ActivationUrl = DeskPetApi.Activate;
+    private const string TrialUrl = DeskPetApi.Trial;
     private static readonly byte[] OptionalEntropy = Encoding.UTF8.GetBytes("ZhuoDazi.Native.License.v1");
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -20,7 +19,7 @@ public sealed class LicenseService : IDisposable
         WriteIndented = false
     };
 
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(25) };
+    private readonly HttpClient _httpClient = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(25));
     private readonly string _licensePath;
     private LicenseRecord _record;
     private bool _trialActive;

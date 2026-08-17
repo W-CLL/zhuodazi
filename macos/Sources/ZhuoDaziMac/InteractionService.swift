@@ -28,15 +28,11 @@ final class InteractionService {
     private struct EventBatch: Encodable { let events: [InteractionEventRecord] }
     private struct ErrorEnvelope: Decodable { let error: String?; let message: String? }
 
-    private static let profileURL = LicenseService.serviceBaseURL
-        .appendingPathComponent("api/interactions/profile")
-    private static let eventsURL = LicenseService.serviceBaseURL
-        .appendingPathComponent("api/interactions/events")
-    private static let batchURL = LicenseService.serviceBaseURL
-        .appendingPathComponent("api/content/batch")
-    private static let offlinePackURL = LicenseService.serviceBaseURL
-        .appendingPathComponent("api/content/offline-pack")
-    private static let publicKeySPKI = "MCowBQYDK2VwAyEANjBEMMQ5TY+0ECNoRqQy9780eoVOzkKpzFDq2TwLytU="
+    private static let profileURL = DeskPetApi.interactionProfile
+    private static let eventsURL = DeskPetApi.interactionEvents
+    private static let batchURL = DeskPetApi.contentBatch
+    private static let offlinePackURL = DeskPetApi.contentOfflinePack
+    private static let publicKeySPKI = DeskPetApi.signingPublicKeySPKI
     private static let maximumResponseBytes = 20 * 1024 * 1024
     private static let maximumSignedPayloadBytes = 16 * 1024 * 1024
     private static let targetCacheSize = 60

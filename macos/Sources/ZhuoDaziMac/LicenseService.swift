@@ -43,9 +43,9 @@ enum LicenseError: LocalizedError {
 }
 
 final class LicenseService {
-    static let serviceBaseURL = URL(string: "https://in.desktoppet.online")!
-    private static let activationURL = serviceBaseURL.appendingPathComponent("api/activate")
-    private static let trialURL = serviceBaseURL.appendingPathComponent("api/trial")
+    static let serviceBaseURL = DeskPetApi.baseURL
+    private static let activationURL = DeskPetApi.activate
+    private static let trialURL = DeskPetApi.trial
     private let service = Bundle.main.bundleIdentifier ?? "com.zhuodazi.desktop-pet"
     private let account = "device-license"
     private var record: LicenseRecord

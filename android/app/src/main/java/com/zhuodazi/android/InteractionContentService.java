@@ -34,8 +34,7 @@ final class InteractionContentService {
     private static final String CATALOG_VERSION = "catalog_version";
     private static final String LAST_SYNC_ERROR = "last_sync_error";
     private static final String LAST_SYNC_AT = "last_sync_at";
-    private static final String PUBLIC_KEY_SPKI =
-        "MCowBQYDK2VwAyEANjBEMMQ5TY+0ECNoRqQy9780eoVOzkKpzFDq2TwLytU=";
+    private static final String PUBLIC_KEY_SPKI = DeskPetApi.SIGNING_PUBLIC_KEY_SPKI;
     private static final Set<String> TYPES = new HashSet<>(
         Arrays.asList("joke", "math", "trivia", "riddle", "tip", "care"));
     private static final List<String> REQUEST_TYPES =
@@ -175,7 +174,7 @@ final class InteractionContentService {
             .put("types", new JSONArray(types))
             .put("limit", 30)
             .put("excludeIds", exclusions);
-        return NetworkClient.json(context, "POST", "/api/content/batch", body,
+        return NetworkClient.json(context, "POST", DeskPetApi.CONTENT_BATCH, body,
             licenses, NetworkClient.Auth.PREMIUM);
     }
 
@@ -192,7 +191,7 @@ final class InteractionContentService {
             for (int i = 0; i < count; i++) batch.put(events.get(i));
         }
         if (count == 0 || !licenses.hasPremiumAccess()) return;
-        NetworkClient.json(context, "POST", "/api/interactions/events",
+        NetworkClient.json(context, "POST", DeskPetApi.INTERACTION_EVENTS,
             new JSONObject().put("events", batch), licenses, NetworkClient.Auth.PREMIUM);
         synchronized (this) {
             for (int i = 0; i < count && !events.isEmpty(); i++) events.remove(0);

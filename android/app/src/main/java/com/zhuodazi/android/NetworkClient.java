@@ -15,7 +15,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
 final class NetworkClient {
-    static final String SERVICE_BASE = "https://in.desktoppet.online";
+    static final String SERVICE_BASE = DeskPetApi.BASE_URL;
     static final int DEFAULT_MAX_RESPONSE = 256 * 1024;
 
     enum Auth { NONE, PREMIUM, ACTIVATED }

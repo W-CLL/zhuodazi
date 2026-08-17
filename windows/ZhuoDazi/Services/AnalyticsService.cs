@@ -5,9 +5,9 @@ namespace ZhuoDazi.Services;
 
 public sealed class AnalyticsService : IDisposable
 {
-    private const string EventsUrl = LicenseService.ServiceBaseUrl + "/api/analytics/events";
+    private const string EventsUrl = DeskPetApi.AnalyticsEvents;
     private readonly LicenseService _licenses;
-    private readonly HttpClient _httpClient = new() { Timeout = TimeSpan.FromSeconds(12) };
+    private readonly HttpClient _httpClient = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(12));
     private readonly string _firstLaunchMarkerPath;
     private bool _disposed;
 

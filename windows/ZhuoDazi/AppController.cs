@@ -25,12 +25,11 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionTimer = new();
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
-    private readonly Queue<CompanionVisit> _companionVisits = new();
+    private readonly CompanionVisitorQueue _visitorQueue = new();
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
     private PetWindow? _petWindow;
     private PetWindow? _companionWindow;
-    private PetWindow? _visitorWindow;
     private SettingsWindow? _settingsWindow;
     private Forms.NotifyIcon? _tray;
     private Forms.ContextMenuStrip? _trayMenu;
@@ -41,7 +40,6 @@ public sealed class AppController : IDisposable
     private bool _interactionSyncing;
     private bool _interactionSyncRequested;
     private bool _companionSyncing;
-    private bool _visitorShowing;
     private bool _disposed;
 
     public AppSettings Settings { get; }
@@ -623,7 +621,7 @@ public sealed class AppController : IDisposable
         IsExiting = true;
         _theaterCancellation?.Cancel();
         if (_companionWindow?.IsLoaded == true) _companionWindow.Close();
-        if (_visitorWindow?.IsLoaded == true) _visitorWindow.Close();
+        _visitorQueue.CloseActive();
         _settingsWindow?.Close();
         _petWindow?.Close();
         System.Windows.Application.Current.Shutdown();
@@ -919,7 +917,7 @@ public sealed class AppController : IDisposable
     private async Task RunTheaterAsync(bool manual)
     {
         if (!HasPremiumAccess) return;
-        if (_theaterActive || _interactionActive || _visitorShowing || _petWindow is not { IsVisible: true } main)
+        if (_theaterActive || _interactionActive || _visitorQueue.IsShowing || _petWindow is not { IsVisible: true } main)
         {
             if (!_theaterActive) RestartTheaterTimer();
             return;
@@ -1248,54 +1246,15 @@ public sealed class AppController : IDisposable
         try
         {
             var visits = await Companions.ReceiveAsync();
-            foreach (var visit in visits) _companionVisits.Enqueue(visit);
-            if (!_visitorShowing && _companionVisits.Count > 0) _ = ShowQueuedVisitorsAsync();
+            _visitorQueue.Enqueue(visits);
+            if (!_visitorQueue.IsShowing && _visitorQueue.HasPending)
+                _ = _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
         }
         catch { }
         finally
         {
             _companionSyncing = false;
             if (!_disposed && !IsExiting) _companionTimer.Start();
-        }
-    }
-
-    private async Task ShowQueuedVisitorsAsync()
-    {
-        if (_visitorShowing) return;
-        _visitorShowing = true;
-        try
-        {
-            while (_companionVisits.TryDequeue(out var visit))
-            {
-                if (_petWindow is not { IsVisible: true } main)
-                {
-                    _companionVisits.Enqueue(visit);
-                    break;
-                }
-                var visitor = new PetWindow(this, true);
-                _visitorWindow = visitor;
-                visitor.RefreshAppearance(visit.FilePath);
-                visitor.EnterScriptedMode();
-                var area = main.GetWorkingArea();
-                var left = main.Left - visitor.Width - 12;
-                if (left < area.Left) left = main.Left + main.Width + 12;
-                left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - visitor.Width));
-                var top = Math.Clamp(main.Top, area.Top, Math.Max(area.Top, area.Bottom - visitor.Height));
-                visitor.Place(new Point(left, top));
-                visitor.Show();
-                visitor.ShowReaction($"{visit.SenderName} 来串门啦");
-                try { await Task.Delay(TimeSpan.FromSeconds(10)); }
-                finally
-                {
-                    if (visitor.IsLoaded) visitor.Close();
-                    if (ReferenceEquals(_visitorWindow, visitor)) _visitorWindow = null;
-                    try { File.Delete(visit.FilePath); } catch { }
-                }
-            }
-        }
-        finally
-        {
-            _visitorShowing = false;
         }
     }
 
