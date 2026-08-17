@@ -81,10 +81,10 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ "${{ github.event_name }}" = "pull_request" ]; then
-            gradle --project-dir android :app:lintDebug :app:assembleDebug --stacktrace
+            gradle --project-dir android :app:lintDebug :app:assembleDebug --no-configuration-cache --stacktrace
             echo "APK_DIR=android/app/build/outputs/apk/debug" >> "$GITHUB_ENV"
           else
-            gradle --project-dir android :app:lintRelease :app:assembleRelease --stacktrace
+            gradle --project-dir android :app:lintRelease :app:assembleRelease --no-configuration-cache --stacktrace
             echo "APK_DIR=android/app/build/outputs/apk/release" >> "$GITHUB_ENV"
           fi
 
