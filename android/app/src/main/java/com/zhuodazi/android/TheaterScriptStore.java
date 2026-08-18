@@ -236,7 +236,7 @@ final class TheaterScriptStore {
                 if (output.size() + count > maximumBytes) throw new IllegalArgumentException("小剧场剧本不能超过 256 KB。");
                 output.write(buffer, 0, count);
             }
-            return output.toString(StandardCharsets.UTF_8);
+            return new String(output.toByteArray(), StandardCharsets.UTF_8);
         }
     }
 }
