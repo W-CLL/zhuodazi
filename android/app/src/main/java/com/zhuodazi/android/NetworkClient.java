@@ -120,5 +120,13 @@ final class NetworkClient {
         return status == 401 || status == 403 ? "设备激活已失效，请重新激活" : "服务请求失败（" + status + "）";
     }
 
-    record HttpResult(int status, byte[] body) { }
+    static final class HttpResult {
+        final int status;
+        final byte[] body;
+
+        HttpResult(int status, byte[] body) {
+            this.status = status;
+            this.body = body;
+        }
+    }
 }
