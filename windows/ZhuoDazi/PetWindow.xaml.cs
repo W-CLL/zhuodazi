@@ -367,7 +367,7 @@ public partial class PetWindow : Window
         _lastDragPoint = GetCursorPositionInDips();
         _lastDragTicks = _clock.ElapsedTicks;
         CaptureMouse();
-        ShowReaction(_controller.GetInteractionWord("grab", "轻点轻点，我的像素快洒出来了！"));
+        ShowReaction(_controller.GetInteractionWord("grab", "轻点，我的像素会掉渣。"));
         PetStage.Cursor = Cursors.SizeAll;
         e.Handled = true;
     }
@@ -583,9 +583,9 @@ public partial class PetWindow : Window
         if (DateTime.UtcNow - _lastBehaviorSpeech > TimeSpan.FromSeconds(38) && Random.Shared.NextDouble() < 0.13)
         {
             if (_activity == Activity.Chase)
-                ShowReaction(_controller.GetInteractionWord("chase", "等等我，鼠标别跑！"));
+                ShowReaction(_controller.GetInteractionWord("chase", "鼠标别跑，我还没热身完。"));
             else if (_activity == Activity.Avoid)
-                ShowReaction(_controller.GetInteractionWord("dodge", "突然靠这么近，我先闪一下。"));
+                ShowReaction(_controller.GetInteractionWord("dodge", "差点！你下手太突然了。"));
             _lastBehaviorSpeech = DateTime.UtcNow;
         }
     }
@@ -683,7 +683,7 @@ public partial class PetWindow : Window
         UpdateFacing(_velocity.X);
         if (bounced && react && impactSpeed > 330 && DateTime.UtcNow - _lastBounceSpeech > TimeSpan.FromSeconds(7))
         {
-            ShowReaction(_controller.GetInteractionWord("bounce", "碰到边啦，我弹回来！"));
+            ShowReaction(_controller.GetInteractionWord("bounce", "碰到边啦，这不叫撞，叫折返。"));
             _lastBounceSpeech = DateTime.UtcNow;
         }
     }

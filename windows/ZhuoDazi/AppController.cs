@@ -86,7 +86,7 @@ public sealed class AppController : IDisposable
         _reminderTimer.Tick += (_, _) => CheckReminders();
         _idleTimer.Tick += (_, _) =>
         {
-            if (!_interactionActive) _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责陪你。"));
+            if (!_interactionActive) _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
         };
         _theaterTimer.Tick += async (_, _) =>
         {
@@ -530,7 +530,7 @@ public sealed class AppController : IDisposable
         _activeLibraryPetPath = _library.Pick(_libraryFiles, _activeLibraryPetPath);
         RestartRandomTimer();
         SaveAndRefresh();
-        _petWindow?.ShowReaction(GetInteractionWord("switch", "换班完成，新选手登场。"));
+        _petWindow?.ShowReaction(GetInteractionWord("switch", "换班了，上一位把零食吃完就跑。"));
     }
 
     public void StartTheater()

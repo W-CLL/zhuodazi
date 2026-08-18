@@ -1,12 +1,13 @@
 <section class="download-hero">
   <div class="site-shell download-hero-inner">
     <div class="download-hero-copy reveal">
-      <p class="section-kicker">Windows / macOS</p>
+      <p class="section-kicker">Windows / macOS / Android</p>
       <h1>下载桌搭子</h1>
-      <p>装上就能先养一只。想给对方发 GIF，打开设置里的「搭子」，换一对码就行。</p>
+      <p>电脑和手机都能先养一只。想给对方发 GIF，打开设置里的「搭子」，换一对码就行。</p>
       <div class="download-version-line">
         <span data-release-version="windows/x64">Windows 最新版</span>
         <span data-release-version="macos/arm64">macOS 最新版</span>
+        <span data-release-version="android/arm64-v8a">Android 最新版</span>
       </div>
     </div>
     <figure class="download-hero-media reveal">
@@ -20,9 +21,9 @@
   <div class="site-shell">
     <div class="download-section-heading reveal">
       <p class="section-kicker">选择安装包</p>
-      <h2 id="download-options-title">按你的电脑下载。</h2>
+      <h2 id="download-options-title">按你的设备下载。</h2>
     </div>
-    <div class="download-grid">
+    <div class="download-grid download-grid-three">
       <article class="download-card download-card-primary reveal">
         <div class="download-card-heading">
           <span class="platform-mark">WIN</span>
@@ -60,6 +61,23 @@
           </a>
         </div>
       </article>
+
+      <article class="download-card reveal">
+        <div class="download-card-heading">
+          <span class="platform-mark platform-mark-android">AND</span>
+          <div>
+            <p>Android</p>
+            <h3 data-release-version="android/arm64-v8a">桌搭子 最新版</h3>
+          </div>
+        </div>
+        <p class="download-card-copy">悬浮在其他应用上层，锁屏前也能在桌角待着。打开后允许悬浮窗，再点一次启动。</p>
+        <dl class="download-meta">
+          <div><dt>架构</dt><dd>ARM64</dd></div>
+          <div><dt>大小</dt><dd data-release-size="android/arm64-v8a">约 46 MB</dd></div>
+          <div><dt>格式</dt><dd>APK</dd></div>
+        </dl>
+        <a class="button button-primary download-button" data-analytics-download data-platform="android" data-architecture="arm64-v8a" href="https://in.desktoppet.online/downloads/latest/android/arm64-v8a">下载安装包 (.apk) <span aria-hidden="true">↓</span></a>
+      </article>
     </div>
   </div>
 </section>
@@ -80,8 +98,12 @@
         <p>到「系统设置 → 隐私与安全性」允许打开，或按住 Control 再点一次。</p>
       </article>
       <article class="reveal">
+        <h3>Android 装完看不见？</h3>
+        <p>到系统设置允许「显示在其他应用上层」，回到桌搭子再启动一次。安装时若提示未知来源，选允许即可。</p>
+      </article>
+      <article class="reveal">
         <h3>怎么给对方发 GIF？</h3>
-        <p>打开设置里的「搭子」，换一对码。它会自己去对方桌面，不顶掉原来的桌宠。</p>
+        <p>打开设置里的「搭子」，换一对码。它会自己去对方桌面或手机上坐一会儿，不顶掉原来的桌宠。</p>
       </article>
       <article class="reveal">
         <h3>需要找作者的时候？</h3>
@@ -105,6 +127,6 @@
 <section class="download-note">
   <div class="site-shell download-note-inner reveal">
     <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="" loading="lazy" decoding="async">
-    <div><strong>只从本站下载</strong><p>请认准 desktoppet.online。Windows 用 EXE，不要用不明来源的便携包。</p></div>
+    <div><strong>只从本站下载</strong><p>请认准 desktoppet.online。Windows 用 EXE，Android 用 APK，不要用不明来源的安装包。</p></div>
   </div>
 </section>

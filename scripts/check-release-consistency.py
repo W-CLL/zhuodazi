@@ -39,7 +39,7 @@ def main():
         "index": (ROOT / "website" / "themes" / "deskpet" / "layout" / "index.ejs").read_text(encoding="utf-8"),
     }
     for name, layout in layouts.items():
-        for target in ("windows/x64", "macos/arm64"):
+        for target in ("windows/x64", "macos/arm64", "android/arm64-v8a"):
             marker = f'data-release-version="{target}"'
             if marker not in layout:
                 raise SystemExit(f"Website {name} layout is missing dynamic release marker {target}")

@@ -281,7 +281,7 @@ public final class PetOverlayService extends Service {
         windowManager.addView(overlay, windowParams);
         currentPet = pets.selectedPet();
         loadCurrentPet();
-        if (announce) say("idle", "我来啦，点一下可以打开快捷菜单。", 4800);
+        if (announce) say("idle", "我来啦。点一下，菜单会自己冒出来。", 4800);
         restartSchedules();
     }
 
@@ -334,7 +334,7 @@ public final class PetOverlayService extends Service {
         currentPet = petId;
         settings.putString(SettingsStore.ACTIVE_PET, petId);
         loadCurrentPet();
-        if (announce) say("switch", "新搭档登场。", 4200);
+        if (announce) say("switch", "换班了，上一位把零食吃完就跑。", 4200);
     }
 
     private void nextPet() { selectPet(pets.nextPet(currentPet), true); }
@@ -357,12 +357,12 @@ public final class PetOverlayService extends Service {
             default -> "happy";
         };
         String fallback = switch (action) {
-            case "cheer" -> "再坚持一下，我在旁边给你加油！";
-            case "calm" -> "先慢慢呼吸，我们把节奏找回来。";
-            case "sleepy" -> "眼睛休息一下，我替你守着桌面。";
-            case "surprised" -> "今天会不会突然有一件小好事？";
-            case "sad" -> "不开心也没关系，我先陪你待一会儿。";
-            default -> "碰到我啦，今天也一起加油。";
+            case "cheer" -> "先做完眼前这件，别的以后再编。";
+            case "calm" -> "现在不用赢，先坐稳。";
+            case "sleepy" -> "困意比需求准时，建议先投降。";
+            case "surprised" -> "啊？这个展开我没备案。";
+            case "sad" -> "先别装没事，我又不会打分。";
+            default -> "碰到我啦。笑一个，别那么正经。";
         };
         say(action, fallback, 5200);
     }
@@ -666,7 +666,7 @@ public final class PetOverlayService extends Service {
                     dragging = true;
                     overlay.hideQuickMenu();
                     collapseMenuWindow();
-                    say("grab", "抓稳啦。", 2500);
+                    say("grab", "轻点，我的像素会掉渣。", 2500);
                 }
                 if (dragging) {
                     facing = dx >= 0 ? 1 : -1;
@@ -973,7 +973,7 @@ public final class PetOverlayService extends Service {
             removeVisitor(false);
             theaterVisitor = false;
         }
-        if (announce && overlay != null) say("theater_finish", "本场演出结束，谢谢观看。", 4200);
+        if (announce && overlay != null) say("theater_finish", "谢幕。把掌声留给下一次摸鱼。", 4200);
         scheduleTheater();
         scheduleWander();
     }
