@@ -89,58 +89,47 @@ def save_gif(frames: list[Image.Image], output: Path, duration: int = 150) -> No
     )
 
 
-def build_interaction_scene() -> None:
-    pet_frames = load_gif_frames(IMAGE_DIR / "pet-keyboard.gif", limit=20)
+def build_visit_scene() -> None:
+    home_frames = load_gif_frames(IMAGE_DIR / "collection" / "bubu-phone.gif", limit=20)
+    visit_frames = load_gif_frames(IMAGE_DIR / "collection" / "bubu-visit.gif", limit=20)
     frames: list[Image.Image] = []
     for index in range(20):
         canvas = Image.new("RGB", (WIDTH, HEIGHT), "#edf4f0")
         draw = ImageDraw.Draw(canvas)
-        draw_topbar(draw, "\u4eca\u5929\u7684\u684c\u9762")
+        draw_topbar(draw, "今天下午的桌面")
 
-        draw.rounded_rectangle((58, 106, 670, 628), radius=10, fill="#ffffff", outline="#d5dfdb", width=2)
-        draw.text((94, 145), "\u4e0b\u5348\u7684\u5c0f\u6e05\u5355", fill="#17231e", font=FONT_28_BOLD)
-        draw.text((94, 192), "\u4e09\u4ef6\u5c0f\u4e8b\uff0c\u6162\u6162\u6765", fill="#718078", font=FONT_18)
-        tasks = (
-            ("\u56de\u590d\u4e24\u5c01\u90ae\u4ef6", True),
-            ("\u6574\u7406\u4eca\u5929\u7684\u8bb0\u5f55", True),
-            ("\u7ed9\u81ea\u5df1\u7559\u4e94\u5206\u949f", False),
-        )
-        for task_index, (label, done) in enumerate(tasks):
-            y = 268 + task_index * 92
-            fill = "#16846f" if done else "#ffffff"
-            draw.rounded_rectangle((94, y, 124, y + 30), radius=8, fill=fill, outline="#aebdb7", width=2)
-            if done:
-                draw.line((101, y + 15, 109, y + 23, 118, y + 8), fill="#ffffff", width=3)
-            draw.text((148, y - 2), label, fill="#26352f", font=FONT_24)
+        draw.rounded_rectangle((58, 118, 620, 430), radius=10, fill="#ffffff", outline="#d5dfdb", width=2)
+        draw.text((92, 154), "还在写的那封邮件", fill="#17231e", font=FONT_28_BOLD)
+        draw.rounded_rectangle((92, 214, 560, 236), radius=6, fill="#dbe7e1")
+        draw.rounded_rectangle((92, 258, 486, 280), radius=6, fill="#e7eee9")
+        draw.rounded_rectangle((92, 302, 520, 324), radius=6, fill="#dbe7e1")
+        draw.rounded_rectangle((92, 346, 404, 368), radius=6, fill="#f3d990")
 
         draw_speech_bubble(
             canvas,
-            (706, 128, 1146, 344),
-            "\u684c\u642d\u5b50",
-            "\u4e24\u4ef6\u4e8b\u5df2\u7ecf\u5b8c\u6210\u5566\uff0c\n\u8bb0\u5f97\u7ed9\u81ea\u5df1\u559d\u53e3\u6c34\u3002",
-            (1030, 420),
+            (668, 126, 1140, 318),
+            "搭子送来一张",
+            "下班啦，\n记得抬头看我一眼。",
+            (980, 390),
         )
-        chip_y = 376
-        draw.rounded_rectangle((742, chip_y, 874, chip_y + 48), radius=9, fill="#16846f")
-        draw.text((780, chip_y + 9), "\u597d\u5440", fill="#ffffff", font=FONT_20_BOLD)
-        draw.rounded_rectangle((890, chip_y, 1080, chip_y + 48), radius=9, fill="#ffffff", outline="#cdd9d4", width=2)
-        draw.text((919, chip_y + 9), "\u7b49\u6211\u4e00\u5206\u949f", fill="#405149", font=FONT_20_BOLD)
 
-        sprite = resize_sprite(pet_frames[index % len(pet_frames)], 290)
+        home = resize_sprite(home_frames[index % len(home_frames)], 250)
+        visitor = resize_sprite(visit_frames[index % len(visit_frames)], 250)
         bounce = -6 if index % 10 in (2, 3, 4) else 0
-        canvas.paste(sprite, (824, 454 + bounce), sprite)
+        canvas.paste(home, (86, 470 + bounce), home)
+        canvas.paste(visitor, (860, 456 + bounce), visitor)
         frames.append(canvas)
-    save_gif(frames, OUTPUT_DIR / "interaction-showcase.gif")
+    save_gif(frames, OUTPUT_DIR / "visit-showcase.gif")
 
 
-def build_theater_scene() -> None:
-    left_frames = load_gif_frames(IMAGE_DIR / "pet-chair.gif", limit=20)
-    right_frames = load_gif_frames(IMAGE_DIR / "pet-balance.gif", limit=20)
+def build_together_scene() -> None:
+    left_frames = load_gif_frames(IMAGE_DIR / "collection" / "bubu-play.gif", limit=20)
+    right_frames = load_gif_frames(IMAGE_DIR / "collection" / "bubu-together.gif", limit=20)
     frames: list[Image.Image] = []
     for index in range(20):
         canvas = Image.new("RGB", (WIDTH, HEIGHT), "#203d33")
         draw = ImageDraw.Draw(canvas)
-        draw_topbar(draw, "\u5c0f\u5267\u573a\uff1a\u6708\u66dc\u4f1a\u8bae\u9003\u751f\u8ba1\u5212")
+        draw_topbar(draw, "小剧场：下班后来坐一会儿")
         draw.rectangle((0, 62, 92, HEIGHT), fill="#ed765f")
         draw.rectangle((WIDTH - 92, 62, WIDTH, HEIGHT), fill="#ed765f")
         draw.rectangle((92, 646, WIDTH - 92, HEIGHT), fill="#e7ba4d")
@@ -152,8 +141,8 @@ def build_theater_scene() -> None:
             draw_speech_bubble(
                 canvas,
                 (142, 114, 530, 312),
-                "\u5de6\u8fb9\u7684\u642d\u5b50",
-                "\u4f1a\u8bae\u7ed3\u675f\uff0c\n\u53bb\u559d\u676f\u5496\u5561\uff1f",
+                "左边这只",
+                "忙完了吗，\n我先过来坐一会儿。",
                 (392, 400),
                 accent="#d45443",
             )
@@ -161,25 +150,25 @@ def build_theater_scene() -> None:
             draw_speech_bubble(
                 canvas,
                 (670, 114, 1058, 312),
-                "\u53f3\u8fb9\u7684\u642d\u5b50",
-                "\u6210\u4ea4\uff0c\n\u4e94\u5206\u949f\u540e\u51fa\u53d1\u3002",
+                "右边这只",
+                "坐吧，\n我不赶你走。",
                 (800, 400),
                 accent="#16846f",
             )
 
-        left_sprite = resize_sprite(left_frames[index % len(left_frames)], 300)
-        right_sprite = resize_sprite(right_frames[(index * 2) % len(right_frames)], 300)
-        left_y = 390 - (8 if index % 8 in (2, 3) else 0)
-        right_y = 390 - (8 if index % 8 in (5, 6) else 0)
-        canvas.paste(left_sprite, (206, left_y), left_sprite)
-        canvas.paste(right_sprite, (692, right_y), right_sprite)
+        left_sprite = resize_sprite(left_frames[index % len(left_frames)], 280)
+        right_sprite = resize_sprite(right_frames[index % len(right_frames)], 280)
+        left_y = 400 - (8 if index % 8 in (2, 3) else 0)
+        right_y = 400 - (8 if index % 8 in (5, 6) else 0)
+        canvas.paste(left_sprite, (216, left_y), left_sprite)
+        canvas.paste(right_sprite, (702, right_y), right_sprite)
         frames.append(canvas)
-    save_gif(frames, OUTPUT_DIR / "theater-showcase.gif")
+    save_gif(frames, OUTPUT_DIR / "together-showcase.gif")
 
 
 def main() -> None:
-    build_interaction_scene()
-    build_theater_scene()
+    build_visit_scene()
+    build_together_scene()
 
 
 if __name__ == "__main__":

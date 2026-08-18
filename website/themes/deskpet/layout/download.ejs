@@ -1,18 +1,17 @@
 <section class="download-hero">
   <div class="site-shell download-hero-inner">
     <div class="download-hero-copy reveal">
-      <p class="section-kicker">下载与安装</p>
+      <p class="section-kicker">Windows / macOS</p>
       <h1>下载桌搭子</h1>
-      <p>选择适合你的版本。装上就能先养一只，当前 GIF 发给对方时，也不会替换原来的桌宠。</p>
+      <p>装上就能先养一只。想给对方发 GIF，打开设置里的「搭子」，换一对码就行。</p>
       <div class="download-version-line">
         <span data-release-version="windows/x64">Windows 最新版</span>
         <span data-release-version="macos/arm64">macOS 最新版</span>
-        <span data-release-version="android/arm64-v8a">Android 最新版</span>
       </div>
     </div>
     <figure class="download-hero-media reveal">
-      <img src="<%= url_for('/images/screenshots/theater-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只桌搭子在小剧场中对白演出" decoding="async" fetchpriority="high">
-      <figcaption>小剧场场景演示</figcaption>
+      <img src="<%= url_for('/images/screenshots/visit-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="白熊待在桌角，棕熊带着下班表情来串门" decoding="async" fetchpriority="high">
+      <figcaption>打开后大概是这样</figcaption>
     </figure>
   </div>
 </section>
@@ -21,9 +20,9 @@
   <div class="site-shell">
     <div class="download-section-heading reveal">
       <p class="section-kicker">选择安装包</p>
-      <h2 id="download-options-title">按你的设备下载。</h2>
+      <h2 id="download-options-title">按你的电脑下载。</h2>
     </div>
-    <div class="download-grid download-grid-three">
+    <div class="download-grid">
       <article class="download-card download-card-primary reveal">
         <div class="download-card-heading">
           <span class="platform-mark">WIN</span>
@@ -32,11 +31,11 @@
             <h3 data-release-version="windows/x64">桌搭子 最新版</h3>
           </div>
         </div>
-        <p class="download-card-copy">适用于 Windows 10 22H2 与 Windows 11 x64。本站直接提供 EXE 安装包，并已包含 .NET 8 运行环境。</p>
+        <p class="download-card-copy">Windows 10 22H2 与 Windows 11 x64。本站直接提供 EXE，已包含运行环境。</p>
         <dl class="download-meta">
           <div><dt>架构</dt><dd>x64</dd></div>
           <div><dt>大小</dt><dd data-release-size="windows/x64">约 54 MB</dd></div>
-          <div><dt>格式</dt><dd>EXE 安装程序</dd></div>
+          <div><dt>格式</dt><dd>EXE</dd></div>
         </dl>
         <a class="button button-primary download-button" data-analytics-download data-platform="windows" data-architecture="x64" href="https://in.desktoppet.online/downloads/latest/windows/x64">下载安装包 (.exe) <span aria-hidden="true">↓</span></a>
       </article>
@@ -49,7 +48,7 @@
             <h3 data-release-version="macos/arm64">桌搭子 最新版</h3>
           </div>
         </div>
-        <p class="download-card-copy">为 Apple 芯片与 Intel 芯片分别准备。下载后解压，将桌搭子移入“应用程序”。</p>
+        <p class="download-card-copy">Apple 芯片和 Intel 芯片分开准备。下载后解压，把桌搭子拖进“应用程序”。</p>
         <div class="mac-downloads">
           <a data-analytics-download data-platform="macos" data-architecture="arm64" href="https://in.desktoppet.online/downloads/latest/macos/arm64">
             <span><strong>Apple 芯片</strong><small>M1 / M2 / M3 / M4 · <span data-release-size="macos/arm64">5.2 MB</span></small></span>
@@ -61,85 +60,51 @@
           </a>
         </div>
       </article>
-
-      <article class="download-card reveal">
-        <div class="download-card-heading">
-          <span class="platform-mark platform-mark-android">AND</span>
-          <div>
-            <p>Android</p>
-            <h3 data-release-version="android/arm64-v8a">桌搭子 最新版</h3>
-          </div>
-        </div>
-        <p class="download-card-copy">桌宠会浮在其他应用上面。第一次打开时，请允许悬浮窗权限，它才会出现在屏幕边角。</p>
-        <div class="mac-downloads">
-          <a data-analytics-download data-platform="android" data-architecture="arm64-v8a" href="https://in.desktoppet.online/downloads/latest/android/arm64-v8a">
-            <span><strong>ARM64</strong><small>大多数现代安卓 · <span data-release-size="android/arm64-v8a">APK</span></small></span>
-            <b aria-hidden="true">↓</b>
-          </a>
-          <a data-analytics-download data-platform="android" data-architecture="armeabi-v7a" href="https://in.desktoppet.online/downloads/latest/android/armeabi-v7a">
-            <span><strong>ARMv7</strong><small>较旧的 32 位设备 · <span data-release-size="android/armeabi-v7a">APK</span></small></span>
-            <b aria-hidden="true">↓</b>
-          </a>
-        </div>
-      </article>
     </div>
-  </div>
-</section>
-
-<section class="install-guide" aria-labelledby="install-guide-title">
-  <div class="site-shell install-guide-layout">
-    <div class="install-guide-heading reveal">
-      <p class="section-kicker">三步安装</p>
-      <h2 id="install-guide-title">几分钟，开始陪伴。</h2>
-      <p>安装完成后就能先用内置图鉴和 3 个自定义桌宠。Android 记得打开悬浮窗；Windows 若提示 SmartScreen，选择仍要运行即可。</p>
-    </div>
-    <ol class="install-steps">
-      <li class="reveal">
-        <span>01</span>
-        <div><h3>下载安装包</h3><p>根据系统和芯片选择上方文件。</p></div>
-      </li>
-      <li class="reveal">
-        <span>02</span>
-        <div><h3>完成安装</h3><p>Windows 运行 EXE；macOS 解压后移入“应用程序”；Android 安装 APK 后打开悬浮窗。</p></div>
-      </li>
-      <li class="reveal">
-        <span>03</span>
-        <div><h3>开始体验</h3><p>先在桌角养一只。想给对方发 GIF，打开设置里的「搭子」，交换一对码。</p></div>
-      </li>
-    </ol>
   </div>
 </section>
 
 <section class="download-faq" aria-labelledby="download-faq-title">
   <div class="site-shell">
     <div class="download-section-heading reveal">
-      <p class="section-kicker">安装时常见问题</p>
-      <h2 id="download-faq-title">先装上，再慢慢看。</h2>
+      <p class="section-kicker">卡住了再看这里</p>
+      <h2 id="download-faq-title">大多数情况，点一下就能继续。</h2>
     </div>
     <div class="download-faq-grid">
       <article class="reveal">
         <h3>Windows 提示无法验证发布者？</h3>
-        <p>这是 SmartScreen 的常见提示。点「更多信息」，再选「仍要运行」即可。</p>
+        <p>点「更多信息」，再选「仍要运行」。这是 SmartScreen 的常见提示。</p>
       </article>
       <article class="reveal">
-        <h3>macOS 打不开未验证的应用？</h3>
-        <p>在「系统设置 → 隐私与安全性」里允许打开，或按住 Control 再点一次应用。</p>
+        <h3>macOS 打不开？</h3>
+        <p>到「系统设置 → 隐私与安全性」允许打开，或按住 Control 再点一次。</p>
       </article>
       <article class="reveal">
-        <h3>Android 为什么看不见桌宠？</h3>
-        <p>桌搭子要待在其他应用上层。第一次进入时打开悬浮窗权限，回到应用后它就会出现。</p>
+        <h3>怎么给对方发 GIF？</h3>
+        <p>打开设置里的「搭子」，换一对码。它会自己去对方桌面，不顶掉原来的桌宠。</p>
       </article>
       <article class="reveal">
-        <h3>激活码从哪里来？</h3>
-        <p>装好后可以先玩一会儿。如果需要激活码，在应用里按提示联系作者，或通过闲鱼沟通。</p>
+        <h3>需要找作者的时候？</h3>
+        <p>装好就能先玩。想定制角色，或需要激活码，也可以在闲鱼看看现成的交易页。</p>
       </article>
     </div>
+  </div>
+</section>
+
+<section class="download-xianyu" aria-labelledby="download-xianyu-title">
+  <div class="site-shell download-xianyu-inner reveal">
+    <div>
+      <p class="section-kicker">也可以从这里联系</p>
+      <h2 id="download-xianyu-title">闲鱼上看看。</h2>
+      <p>下载还是走本站。想定制角色、动作，或拿激活码，可以打开闲鱼交易页再聊。</p>
+    </div>
+    <a class="button button-secondary" data-xianyu-link hidden href="https://www.goofish.com/" target="_blank" rel="noopener">在闲鱼看看 <span aria-hidden="true">→</span></a>
   </div>
 </section>
 
 <section class="download-note">
   <div class="site-shell download-note-inner reveal">
     <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="" loading="lazy" decoding="async">
-    <div><strong>只从本站下载安装包</strong><p>请认准 desktoppet.online。Windows 请下载 EXE 安装程序，不使用来历不明的便携包。</p></div>
+    <div><strong>只从本站下载</strong><p>请认准 desktoppet.online。Windows 用 EXE，不要用不明来源的便携包。</p></div>
   </div>
 </section>

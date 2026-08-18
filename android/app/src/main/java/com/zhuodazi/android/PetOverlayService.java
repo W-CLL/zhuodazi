@@ -85,6 +85,7 @@ public final class PetOverlayService extends Service {
     private boolean interactionBusy;
     private boolean interactionSyncBusy;
     private boolean interactionExpanded;
+    private boolean menuExpanded;
     private int baseWindowWidth;
     private int baseWindowHeight;
     private int facing = 1;
@@ -221,12 +222,14 @@ public final class PetOverlayService extends Service {
 
     private void createOverlay(boolean announce) {
         if (settings.petHidden() || overlay != null) return;
-        int petSize = dp(settings.sizeDp());
-        int width = Math.max(petSize + dp(12), dp(128));
-        int height = petSize + dp(64);
+        Point bounds = screenBounds();
+        int petSize = fittedPetSize(bounds, settings.sizeDp());
+        int width = fitWindowWidth(bounds, Math.max(petSize + dp(12), dp(128)));
+        int height = fitWindowHeight(bounds, petSize + dp(64));
         baseWindowWidth = width;
         baseWindowHeight = height;
         interactionExpanded = false;
+        menuExpanded = false;
         overlay = new PetOverlayView(this, petSize, width, height);
         int touchFlag = settings.clickThrough() ? WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE : 0;
         windowParams = new WindowManager.LayoutParams(
@@ -238,11 +241,14 @@ public final class PetOverlayService extends Service {
                 | touchFlag,
             PixelFormat.TRANSLUCENT);
         windowParams.gravity = Gravity.TOP | Gravity.START;
-        Point bounds = screenBounds();
         windowParams.x = SettingsStore.clamp(settings.positionX(bounds.x - width), 0, Math.max(0, bounds.x - width));
         windowParams.y = SettingsStore.clamp(settings.positionY(bounds.y / 2), 0, maxWindowY(bounds, height));
         overlay.setOnTouchListener((view, event) -> handleTouch(event));
-        overlay.setMenuListener(this::handleMenuAction);
+        overlay.setMenuListener(action -> {
+            overlay.hideQuickMenu();
+            collapseMenuWindow();
+            handleMenuAction(action);
+        });
         windowManager.addView(overlay, windowParams);
         currentPet = pets.selectedPet();
         loadCurrentPet();
@@ -271,6 +277,7 @@ public final class PetOverlayService extends Service {
         cancelMovement();
         interactionBusy = false;
         interactionExpanded = false;
+        menuExpanded = false;
     }
 
     private void loadCurrentPet() {
@@ -508,10 +515,11 @@ public final class PetOverlayService extends Service {
 
     private void expandInteractionWindow() {
         if (interactionExpanded || overlay == null || windowParams == null) return;
+        overlay.hideQuickMenu();
+        collapseMenuWindow();
         Point bounds = screenBounds();
-        int width = Math.max(baseWindowWidth, Math.min(dp(196), bounds.x - dp(12)));
-        int height = Math.min(baseWindowHeight + dp(300),
-            Math.max(baseWindowHeight, bounds.y - dp(BOTTOM_GUARD_DP)));
+        int width = fitWindowWidth(bounds, Math.max(baseWindowWidth, dp(196)));
+        int height = fitWindowHeight(bounds, baseWindowHeight + dp(300));
         interactionExpanded = true;
         resizeWindowAnchored(width, height);
     }
@@ -523,15 +531,29 @@ public final class PetOverlayService extends Service {
         int petSize = Math.max(0, baseWindowHeight - dp(64));
         // Pull the pet slightly into the card's lower edge so both read as one interaction unit.
         int desiredHeight = overlay.interactionCardHeight() + petSize - dp(16);
-        int height = SettingsStore.clamp(desiredHeight, baseWindowHeight,
-            Math.max(baseWindowHeight, bounds.y - dp(BOTTOM_GUARD_DP)));
+        int height = SettingsStore.clamp(desiredHeight, baseWindowHeight, usableHeight(bounds));
         resizeWindowAnchored(windowParams.width, height);
     }
 
     private void collapseInteractionWindow() {
         if (!interactionExpanded || overlay == null || windowParams == null) return;
         interactionExpanded = false;
-        resizeWindowAnchored(baseWindowWidth, baseWindowHeight);
+        if (!menuExpanded) resizeWindowAnchored(baseWindowWidth, baseWindowHeight);
+    }
+
+    private void expandMenuWindow() {
+        if (menuExpanded || overlay == null || windowParams == null) return;
+        Point bounds = screenBounds();
+        int width = fitWindowWidth(bounds, Math.max(baseWindowWidth, overlay.preferredMenuWidth()));
+        int height = fitWindowHeight(bounds, Math.max(baseWindowHeight, overlay.preferredMenuHeight()));
+        menuExpanded = true;
+        resizeWindowAnchored(width, height);
+    }
+
+    private void collapseMenuWindow() {
+        if (!menuExpanded || overlay == null || windowParams == null) return;
+        menuExpanded = false;
+        if (!interactionExpanded) resizeWindowAnchored(baseWindowWidth, baseWindowHeight);
     }
 
     private void resizeWindowAnchored(int width, int height) {
@@ -559,6 +581,7 @@ public final class PetOverlayService extends Service {
     private void enableClickThrough() {
         if (overlay == null || windowParams == null) return;
         overlay.hideQuickMenu();
+        collapseMenuWindow();
         settings.setClickThrough(true);
         applyTouchMode();
         updateNotification();
@@ -573,7 +596,11 @@ public final class PetOverlayService extends Service {
 
     private boolean handleTouch(MotionEvent event) {
         if (overlay == null) return false;
-        if (overlay.isInteractionVisible()) return true;
+        if (overlay.hitInteractive(event.getX(), event.getY())) return false;
+        if (overlay.isInteractionVisible()) {
+            if (event.getActionMasked() == MotionEvent.ACTION_UP) overlay.dismissInteraction();
+            return true;
+        }
         switch (event.getActionMasked()) {
             case MotionEvent.ACTION_DOWN -> {
                 cancelMovement();
@@ -594,6 +621,7 @@ public final class PetOverlayService extends Service {
                 if (!dragging && Math.hypot(dx, dy) > touchSlop) {
                     dragging = true;
                     overlay.hideQuickMenu();
+                    collapseMenuWindow();
                     say("grab", "抓稳啦。", 2500);
                 }
                 if (dragging) {
@@ -614,7 +642,13 @@ public final class PetOverlayService extends Service {
                     if (Math.hypot(velocityX, velocityY) > dp(180)) startInertia(velocityX, velocityY);
                     else savePosition();
                 } else if (event.getActionMasked() == MotionEvent.ACTION_UP) {
-                    overlay.toggleQuickMenu();
+                    if (overlay.isQuickMenuVisible()) {
+                        overlay.hideQuickMenu();
+                        collapseMenuWindow();
+                    } else {
+                        expandMenuWindow();
+                        overlay.post(overlay::showQuickMenu);
+                    }
                 }
                 dragging = false;
                 if (velocityTracker != null) velocityTracker.recycle();
@@ -752,6 +786,17 @@ public final class PetOverlayService extends Service {
         }
     }
 
+    @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        if (overlay != null) handler.post(this::refreshOverlay);
+        if (visitorOverlay != null && visitorParams != null) {
+            Point bounds = screenBounds();
+            visitorParams.x = SettingsStore.clamp(visitorParams.x, 0, Math.max(0, bounds.x - visitorParams.width));
+            visitorParams.y = SettingsStore.clamp(visitorParams.y, 0, maxWindowY(bounds, visitorParams.height));
+            try { windowManager.updateViewLayout(visitorOverlay, visitorParams); } catch (Exception ignored) { }
+        }
+    }
+
     private void showVisitor(CompanionService.Visit visit) {
         removeVisitor(true);
         try {
@@ -760,9 +805,10 @@ public final class PetOverlayService extends Service {
                 animated.setRepeatCount(AnimatedImageDrawable.REPEAT_INFINITE);
                 animated.start();
             }
-            int petSize = dp(Math.max(120, Math.min(200, settings.sizeDp() - 20)));
-            int width = Math.max(petSize + dp(20), dp(230));
-            int height = petSize + dp(92);
+            Point bounds = screenBounds();
+            int petSize = fittedPetSize(bounds, Math.max(96, Math.min(200, settings.sizeDp() - 20)));
+            int width = fitWindowWidth(bounds, Math.max(petSize + dp(20), dp(168)));
+            int height = fitWindowHeight(bounds, petSize + dp(92));
             visitorOverlay = new PetOverlayView(this, petSize, width, height);
             visitorFile = visit.file();
             visitorOverlay.setPet(drawable, 1f, false, -facing);
@@ -774,7 +820,6 @@ public final class PetOverlayService extends Service {
                     | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
             visitorParams.gravity = Gravity.TOP | Gravity.START;
-            Point bounds = screenBounds();
             int mainX = windowParams == null ? bounds.x / 2 : windowParams.x;
             visitorParams.x = mainX < bounds.x / 2 ? Math.max(0, bounds.x - width - dp(8)) : dp(8);
             visitorParams.y = windowParams == null ? bounds.y / 2 : windowParams.y;
@@ -865,6 +910,29 @@ public final class PetOverlayService extends Service {
         return Math.max(0, bounds.y - windowHeight - dp(BOTTOM_GUARD_DP));
     }
 
+    private int usableWidth(Point bounds) {
+        return Math.max(dp(96), bounds.x - dp(8));
+    }
+
+    private int usableHeight(Point bounds) {
+        return Math.max(dp(96), bounds.y - dp(BOTTOM_GUARD_DP + 8));
+    }
+
+    private int fitWindowWidth(Point bounds, int desired) {
+        return Math.min(desired, usableWidth(bounds));
+    }
+
+    private int fitWindowHeight(Point bounds, int desired) {
+        return Math.min(desired, usableHeight(bounds));
+    }
+
+    private int fittedPetSize(Point bounds, int sizeDp) {
+        int requested = dp(SettingsStore.clamp(sizeDp, 96, 280));
+        int maxWidth = Math.max(dp(72), usableWidth(bounds) - dp(12));
+        int maxHeight = Math.max(dp(72), usableHeight(bounds) - dp(64));
+        return Math.min(requested, Math.min(maxWidth, maxHeight));
+    }
+
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 
     private void createNotificationChannels() {
@@ -892,8 +960,11 @@ public final class PetOverlayService extends Service {
     }
 
     private Notification buildServiceNotification() {
+        Intent open = new Intent(this, FlutterMainActivity.class)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                | Intent.FLAG_ACTIVITY_CLEAR_TOP);
         PendingIntent content = PendingIntent.getActivity(this, REQUEST_CONTENT,
-            new Intent(this, MainActivity.class), PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = new Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_pet)
             .setContentTitle(getString(R.string.notification_title))

@@ -10,7 +10,7 @@
     <meta property="og:title" content="<%= page.title ? page.title + ' | ' + config.title : config.title %>">
     <meta property="og:description" content="<%= page.description || config.description %>">
     <meta property="og:url" content="<%= config.url + url_for(page.path || '/') %>">
-    <meta property="og:image" content="<%= config.url + url_for('/images/collection/peach-headphones.gif') %>">
+    <meta property="og:image" content="<%= config.url + url_for('/images/collection/bubu-home.gif') %>">
     <title><%= page.title ? page.title + ' | ' + config.title : config.title %></title>
     <link rel="icon" href="<%= url_for('/images/app-icon.png') %>" type="image/png">
     <link rel="stylesheet" href="<%= url_for('/css/site.css') %>?v=<%= theme.asset_version %>">
@@ -25,12 +25,10 @@
         </a>
         <nav class="site-nav" id="site-navigation" aria-label="主导航" data-site-nav>
           <a href="<%= url_for('/') %>">首页</a>
-          <a href="<%= url_for('/#features') %>">功能</a>
-          <a href="<%= url_for('/#customize') %>">素材与互动</a>
-          <a href="<%= url_for('/resources/') %>">资源包</a>
+          <a href="<%= url_for('/#play') %>">怎么玩</a>
           <a href="<%= url_for('/download/') %>">下载</a>
-          <a href="<%= url_for('/#support') %>">支持</a>
-          <a href="<%= url_for('/archives/') %>">动态</a>
+          <a href="<%= url_for('/resources/') %>">资源包</a>
+          <a href="<%= url_for('/archives/') %>">手记</a>
           <a href="<%= url_for('/about/') %>">关于</a>
         </nav>
         <div class="header-actions">
@@ -53,14 +51,14 @@
             <img src="<%= url_for('/images/app-icon.png') %>" width="34" height="34" alt="" loading="lazy" decoding="async">
             <span>桌搭子</span>
           </a>
-          <p>让屏幕边角多一份刚好的陪伴。</p>
+          <p>想起对方，就派一张 GIF 去桌面串个门。</p>
         </div>
         <div class="footer-links">
-          <a href="<%= url_for('/download/') %>">下载安装</a>
-          <a href="<%= url_for('/resources/') %>">互动资源</a>
-          <a href="<%= url_for('/#support') %>">支持与定制</a>
-          <a href="<%= url_for('/archives/') %>">产品动态</a>
-          <a href="<%= url_for('/about/') %>">关于我们</a>
+          <a href="<%= url_for('/download/') %>">下载</a>
+          <a href="<%= url_for('/resources/') %>">资源包</a>
+          <a href="<%= url_for('/archives/') %>">手记</a>
+          <a href="<%= url_for('/about/') %>">关于</a>
+          <a data-xianyu-link hidden href="https://www.goofish.com/" target="_blank" rel="noopener">闲鱼</a>
         </div>
       </div>
       <div class="site-shell footer-meta">

@@ -1304,6 +1304,33 @@ img {
   color: var(--muted);
 }
 
+.play-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.play-grid .feature {
+  min-height: 0;
+  padding: 29px 22px 33px 0;
+}
+
+.play-grid .feature:not(:nth-child(3n + 1)) {
+  padding-left: 0;
+  border-left: 0;
+}
+
+.play-grid .feature:not(:first-child) {
+  padding-left: 24px;
+  border-left: 1px solid var(--line);
+}
+
+.play-grid .feature:nth-child(n + 4) {
+  border-top: 0;
+}
+
+.play-grid .feature p {
+  max-width: none;
+}
+
 .client-showcase {
   padding: 108px 0 116px;
   border-top: 1px solid var(--line);
@@ -1811,7 +1838,7 @@ img {
 }
 
 .download-options {
-  padding: 108px 0 116px;
+  padding: 88px 0 72px;
   background: var(--surface);
 }
 
@@ -1996,7 +2023,7 @@ img {
 }
 
 .download-faq {
-  padding: 0 0 96px;
+  padding: 0 0 88px;
 }
 
 .download-faq-grid {
@@ -2080,6 +2107,31 @@ img {
 
 .install-steps p {
   margin-top: 7px;
+  color: var(--muted);
+}
+
+.download-xianyu {
+  padding: 56px 0;
+  border-top: 1px solid var(--line);
+  background: var(--page);
+}
+
+.download-xianyu-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+}
+
+.download-xianyu h2 {
+  margin: 6px 0 8px;
+  font-size: 32px;
+  line-height: 1.2;
+}
+
+.download-xianyu p {
+  max-width: 560px;
+  margin: 0;
   color: var(--muted);
 }
 
@@ -2815,6 +2867,24 @@ img {
     gap: 45px;
   }
 
+  .play-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .play-grid .feature:not(:first-child) {
+    padding-left: 0;
+    border-left: 0;
+  }
+
+  .play-grid .feature:nth-child(even) {
+    padding-left: 24px;
+    border-left: 1px solid var(--line);
+  }
+
+  .play-grid .feature:nth-child(n + 3) {
+    border-top: 1px solid var(--line);
+  }
+
   .download-hero-inner,
   .install-guide-layout {
     gap: 55px;
@@ -2927,6 +2997,7 @@ img {
   }
 
   .feature-grid,
+  .play-grid,
   .gallery-grid,
   .post-grid,
   .modes-layout,
@@ -3014,7 +3085,9 @@ img {
     border-left: 0;
   }
 
-  .feature:not(:nth-child(3n + 1)) {
+  .feature:not(:nth-child(3n + 1)),
+  .play-grid .feature:not(:first-child),
+  .play-grid .feature:nth-child(even) {
     padding-left: 0;
     border-left: 0;
   }
@@ -3381,8 +3454,14 @@ img {
     gap: 10px;
   }
 
+  .download-xianyu-inner,
   .download-note-inner {
     align-items: start;
+    flex-direction: column;
+  }
+
+  .download-xianyu .button {
+    width: 100%;
   }
 
   .customize-pets {

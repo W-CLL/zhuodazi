@@ -2,17 +2,17 @@
 <section class="hero" id="top">
   <div class="site-shell hero-inner">
     <div class="hero-copy reveal">
-      <p class="eyebrow"><span></span> 情侣 / 搭子的桌面小互动</p>
+      <p class="eyebrow"><span></span> 给情侣 / 搭子的桌面小玩具</p>
       <h1>桌搭子</h1>
-      <p class="hero-lead">想起对方时，就派此刻的 GIF 去桌面串个门。查岗、抱抱、催下班，不必一直聊天，也能一起玩一下。</p>
+      <p class="hero-lead">想起对方，就派一张 GIF 去桌面串个门。查岗、抱抱、催下班，不必一直聊天。</p>
       <div class="hero-actions">
         <a class="button button-primary" href="<%= url_for('/download/') %>">下载桌搭子 <span aria-hidden="true">↓</span></a>
-        <a class="button button-secondary" href="#companion">看看它怎么串门</a>
+        <a class="button button-secondary" href="#play">看看怎么玩</a>
       </div>
       <div class="hero-notes" aria-label="产品特性">
-        <span>Windows / macOS / Android</span>
-        <span>情侣 / 异地 / 上班搭子</span>
-        <span>不替换原桌宠</span>
+        <span>Windows / macOS</span>
+        <span>装上就能先养一只</span>
+        <span>不顶掉原来的桌宠</span>
       </div>
     </div>
     <div class="desktop-scene reveal" aria-label="原桌宠与搭子发来的 GIF 同时出现在桌面上的示意">
@@ -26,113 +26,78 @@
       </div>
       <div class="scene-message" data-speech>搭子发来一张：下班了吗？</div>
       <span class="scene-pet-label scene-pet-label-home">我的桌宠</span>
-      <img class="hero-pet hero-pet-home" src="<%= url_for('/images/collection/peach-headphones.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="接收方原本的蜜桃喵桌宠" decoding="async" fetchpriority="high">
+      <img class="hero-pet hero-pet-home" src="<%= url_for('/images/collection/bubu-home.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="原本待在桌角的白熊桌宠" decoding="async" fetchpriority="high">
       <span class="scene-pet-label scene-pet-label-visitor">搭子送来的 GIF</span>
-      <img class="hero-pet-visitor" src="<%= url_for('/images/collection/line-dog-drive.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="搭子发送后独立来访的开车小狗 GIF" decoding="async" fetchpriority="high">
+      <img class="hero-pet-visitor" src="<%= url_for('/images/collection/bubu-visit.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="搭子派来下班的棕熊访客" decoding="async" fetchpriority="high">
       <div class="scene-taskbar"><span></span><span></span><span></span><span></span><b>14:30</b></div>
     </div>
   </div>
 </section>
 
-<section class="companion-story" id="companion" aria-labelledby="companion-title">
+<section class="companion-story" id="play" aria-labelledby="companion-title">
   <div class="site-shell companion-story-inner">
     <div class="companion-story-heading reveal">
       <div>
-        <p class="section-kicker">查岗、抱抱、催下班、斗图</p>
-        <h2 id="companion-title">不用一直聊天，也能在彼此桌面玩一下。</h2>
+        <p class="section-kicker">怎么玩</p>
+        <h2 id="companion-title">发一张表情，去对方桌面坐一会儿。</h2>
       </div>
-      <p>忙的时候发一张 GIF，不催回复；异地没赶上同一个空闲时间，就让它晚一点去陪对方。它不会替换桌宠，也不要求马上回应。</p>
+      <p>不催回复，也不顶掉原来的桌宠。对方暂时不在，它会等。</p>
     </div>
 
     <div class="companion-flow reveal" aria-label="搭子联机发送流程">
       <article>
         <span>01</span>
-        <img src="<%= url_for('/images/collection/pooh-wave.gif') %>" width="128" height="128" alt="挥手的桌宠 GIF" loading="lazy" decoding="async">
-        <h3>认出彼此</h3>
-        <p>交换搭子码，只和一个熟悉的人连接。</p>
+        <img src="<%= url_for('/images/collection/bubu-wave.gif') %>" width="128" height="128" alt="挥手打招呼的白熊" loading="lazy" decoding="async">
+        <h3>换一对码</h3>
+        <p>只和一个熟人连上。</p>
       </article>
       <i aria-hidden="true">→</i>
       <article>
         <span>02</span>
-        <img src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>" width="128" height="128" alt="抱抱的桌宠 GIF" loading="lazy" decoding="async">
-        <h3>派表情出发</h3>
-        <p>起床了吗、抱一下、该下班了，都可以是一张 GIF。</p>
+        <img src="<%= url_for('/images/collection/bubu-send.gif') %>" width="128" height="128" alt="围着围巾准备出发的白熊" loading="lazy" decoding="async">
+        <h3>派这张出发</h3>
+        <p>起床了吗、抱一下、该下班了。</p>
       </article>
       <i aria-hidden="true">→</i>
       <article>
         <span>03</span>
         <div class="companion-pair">
-          <img src="<%= url_for('/images/collection/peach-headphones.gif') %>" width="128" height="128" alt="接收方原来的桌宠" loading="lazy" decoding="async">
-          <img src="<%= url_for('/images/collection/line-dog-drive.gif') %>" width="128" height="128" alt="搭子发来的访客 GIF" loading="lazy" decoding="async">
+          <img src="<%= url_for('/images/collection/bubu-home.gif') %>" width="128" height="128" alt="接收方原来的白熊桌宠" loading="lazy" decoding="async">
+          <img src="<%= url_for('/images/collection/bubu-visit.gif') %>" width="128" height="128" alt="搭子派来的棕熊访客" loading="lazy" decoding="async">
         </div>
-        <h3>去 TA 的桌面陪一会儿</h3>
-        <p>访客不会顶掉原桌宠；TA 暂时不在线，它也可以等等。</p>
+        <h3>去 TA 桌面坐一会儿</h3>
+        <p>访客自己来、自己走。</p>
       </article>
     </div>
-
-    <div class="companion-facts reveal" aria-label="搭子联机使用说明">
-      <span>Windows <span data-release-version="windows/x64">最新版</span> / macOS <span data-release-version="macos/arm64">最新版</span> / Android</span>
-      <span>熟人一对一连接</span>
-      <span>不公开匹配、不开放陌生人消息</span>
-      <span>装好就能先玩一会儿</span>
-    </div>
   </div>
 </section>
 
-<section class="intro-band">
-  <div class="site-shell intro-copy reveal">
-    <p class="section-kicker">不是又一个待办工具</p>
-    <h2>把一点轻松，留在正在发生的日常里。</h2>
-    <p>桌搭子不抢你的注意力。把它放在屏幕角落，选一只喜欢的伙伴，让忙碌的桌面多一点可亲近的回应。</p>
-  </div>
-</section>
-
-<section class="features" id="features">
+<section class="features" id="features" aria-labelledby="features-title">
   <div class="site-shell">
     <div class="section-heading reveal">
-      <p class="section-kicker">它能做什么</p>
-      <h2>陪伴，不必很大声。</h2>
+      <p class="section-kicker">桌角还会发生这些</p>
+      <h2 id="features-title">不只是发一张图。</h2>
     </div>
-    <div class="feature-grid">
+    <div class="feature-grid play-grid">
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">01</span><img src="<%= url_for('/images/library/together.gif') %>" width="112" height="112" alt="两只桌搭子一起出现" loading="lazy" decoding="async"></div>
-        <h3>把当前 GIF 发给搭子</h3>
-        <p>绑定一位熟人后，像发表情一样发送正在出现的 GIF。它会独立去对方桌面串门，不会替换对方自己的桌宠。</p>
+        <div class="feature-media"><span class="feature-index">01</span><img src="<%= url_for('/images/collection/bubu-walk.gif') %>" width="112" height="112" alt="自己走动的棕熊桌宠" loading="lazy" decoding="async"></div>
+        <h3>自己会走动</h3>
+        <p>追鼠标、躲开、甩出去，还会沿屏幕边缘弹回来。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">02</span><img src="<%= url_for('/images/collection/pooh-run.gif') %>" width="112" height="112" alt="跑动中的桌宠" loading="lazy" decoding="async"></div>
-        <h3>会动，也有自己的脾气</h3>
-        <p>桌宠会游走、停靠、追逐或躲开鼠标。拖动后快速松手，它还会沿着屏幕边缘弹回来。</p>
+        <div class="feature-media"><span class="feature-index">02</span><img src="<%= url_for('/images/collection/bubu-together.gif') %>" width="112" height="112" alt="两只熊一起趴着玩" loading="lazy" decoding="async"></div>
+        <h3>两只一起演一小段</h3>
+        <p>靠近、对白、换位。演完再回来找你。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">03</span><img src="<%= url_for('/images/collection/kitty-hope.gif') %>" width="112" height="112" alt="期待回应的桌宠" loading="lazy" decoding="async"></div>
-        <h3>有来有回的互动</h3>
-        <p>心情问候、冷笑话、数学题、趣味知识和生活小贴士，安静、标准、活跃三档频率随你调。</p>
+        <div class="feature-media"><span class="feature-index">03</span><img src="<%= url_for('/images/collection/bubu-phone.gif') %>" width="112" height="112" alt="玩手机的白熊桌宠" loading="lazy" decoding="async"></div>
+        <h3>喜欢的 GIF 都能养</h3>
+        <p>把透明 GIF 放进来，今天换谁都行。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">04</span><img src="<%= url_for('/images/collection/peach-headphones.gif') %>" width="112" height="112" alt="戴着耳机的自定义桌宠" loading="lazy" decoding="async"></div>
-        <h3>导入自己的 GIF</h3>
-        <p>添加透明 GIF 作为专属桌宠，保留最多 3 个自定义角色，随时切换今天陪你的是谁。</p>
-      </article>
-      <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">05</span><img src="<%= url_for('/images/collection/rilakkuma-car.gif') %>" width="112" height="112" alt="资源库里的轻松熊桌宠" loading="lazy" decoding="async"></div>
-        <h3>建立桌宠资源库</h3>
-        <p>绑定最多 3 个外部 GIF 目录，选定资源库后自动随机换宠，也可以随时手动换一只。</p>
-      </article>
-      <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">06</span><img src="<%= url_for('/images/collection/pooh-wave.gif') %>" width="112" height="112" alt="挥手说话的桌宠" loading="lazy" decoding="async"></div>
-        <h3>换上自己的台词</h3>
-        <p>导入 JSON 或 TXT 互动词包，最多保留 5 套，让问候、夸夸和吐槽更像你的搭子。</p>
-      </article>
-      <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">07</span><img src="<%= url_for('/images/collection/kitty-thanks.gif') %>" width="112" height="112" alt="两只桌宠同台演出" loading="lazy" decoding="async"></div>
-        <h3>把日子演成小剧场</h3>
-        <p>导入最多 10 个 JSON 剧本。两只桌宠会靠近、换位、跳舞，再把一段小故事演完。</p>
-      </article>
-      <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">08</span><img src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>" width="112" height="112" alt="带着指定表情提醒的桌宠" loading="lazy" decoding="async"></div>
-        <h3>提醒时，换个表情来找你</h3>
-        <p>设定时间、内容和重复方式，还能指定一张 GIF。到点后桌宠会带着选好的表情出现。</p>
+        <div class="feature-media"><span class="feature-index">04</span><img src="<%= url_for('/images/collection/bubu-remind.gif') %>" width="112" height="112" alt="带着下班表情来叫你的白熊" loading="lazy" decoding="async"></div>
+        <h3>到点换个表情来叫你</h3>
+        <p>提醒不必弹窗。它带着那张图出现就行。</p>
       </article>
     </div>
   </div>
@@ -142,141 +107,19 @@
   <div class="site-shell">
     <div class="client-showcase-heading reveal">
       <div>
-        <p class="section-kicker">真实客户端展示</p>
-        <h2 id="client-showcase-title">它们先演一小段，再来和你互动。</h2>
+        <p class="section-kicker">打开后大概是这样</p>
+        <h2 id="client-showcase-title">它们会自己演，也会来找你。</h2>
       </div>
-      <p>两只内置桌宠先按剧本完成对白；小剧场结束后，桌搭子回到日常互动，等你接住它的话。</p>
+      <p>先看两只桌宠演完一小段，再接住它丢过来的那句话。</p>
     </div>
     <div class="client-shot-grid client-scene-grid">
       <figure class="client-shot reveal">
-        <img src="<%= url_for('/images/screenshots/theater-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只内置桌宠在客户端小剧场中对白演出" loading="lazy" decoding="async">
-        <figcaption><strong><i>01</i> 两只桌宠同台演出</strong><span>靠近、对白，把一小段故事演完</span></figcaption>
+        <img src="<%= url_for('/images/screenshots/visit-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="白熊待在桌角，棕熊带着下班表情来串门" loading="lazy" decoding="async">
+        <figcaption><strong>搭子来串门</strong><span>原来的桌宠还在，访客自己坐下</span></figcaption>
       </figure>
       <figure class="client-shot reveal">
-        <img src="<%= url_for('/images/screenshots/interaction-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="小剧场结束后桌搭子在客户端发起互动" loading="lazy" decoding="async">
-        <figcaption><strong><i>02</i> 演完，回来找你</strong><span>主动问候，再等你给它一个回应</span></figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<section class="customize" id="customize" aria-labelledby="customize-title">
-  <div class="site-shell">
-    <div class="customize-heading reveal">
-      <div>
-        <p class="section-kicker">功能体验</p>
-        <h2 id="customize-title">把素材、台词和小剧场带进桌面。</h2>
-      </div>
-      <p>从角色动图到它会说的话，都能变成桌面上的真实互动。点下面的选项，看看每一种玩法。</p>
-    </div>
-    <div class="customize-tabs reveal" role="tablist" aria-label="查看桌搭子自定义功能">
-      <button class="customize-tab is-active" type="button" role="tab" aria-selected="true" data-customize="library">GIF 资源库</button>
-      <button class="customize-tab" type="button" role="tab" aria-selected="false" data-customize="interaction">互动词包</button>
-      <button class="customize-tab" type="button" role="tab" aria-selected="false" data-customize="personality">行为与性格</button>
-      <button class="customize-tab" type="button" role="tab" aria-selected="false" data-customize="theater">小剧场</button>
-    </div>
-    <div class="customize-panel reveal" data-customize-panel data-customize-theme="library">
-      <div class="customize-copy" aria-live="polite">
-        <p class="customize-label" data-customize-label>自定义导入</p>
-        <h3 data-customize-title>把自己的角色带进桌面。</h3>
-        <p data-customize-copy>直接添加透明 GIF，或者绑定已有的动图目录。你可以从内置和外部资源库中选择来源，再决定多久随机换一只。</p>
-        <ul class="customize-points">
-          <li data-customize-point="0">最多添加 3 个自定义桌宠</li>
-          <li data-customize-point="1">最多绑定 3 个外部 GIF 目录</li>
-          <li data-customize-point="2">支持手动切换与定时随机换宠</li>
-        </ul>
-      </div>
-      <div class="customize-window" aria-label="桌搭子素材与互动功能演示">
-        <div class="customize-window-bar">
-          <span></span><span></span><span></span>
-          <strong data-customize-status>资源库 / 3 个来源</strong>
-        </div>
-        <div class="customize-pets">
-          <figure>
-            <img data-customize-image="0" src="<%= url_for('/images/collection/kitty-hope.gif') %>" width="150" height="150" alt="期待回应的 Kitty 桌宠" loading="lazy" decoding="async">
-            <figcaption data-customize-item="0">我的角色.gif</figcaption>
-          </figure>
-          <figure>
-            <img data-customize-image="1" src="<%= url_for('/images/collection/line-dog-wait.gif') %>" width="150" height="150" alt="坐在长椅上的线条小狗桌宠" loading="lazy" decoding="async">
-            <figcaption data-customize-item="1">午后休息.gif</figcaption>
-          </figure>
-          <figure>
-            <img data-customize-image="2" src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>" width="150" height="150" alt="抱着小兔的轻松熊桌宠" loading="lazy" decoding="async">
-            <figcaption data-customize-item="2">下班啦.gif</figcaption>
-          </figure>
-        </div>
-        <div class="customize-window-footer">
-          <span data-customize-summary>随机切换：每 5 分钟</span>
-          <span class="customize-switch" aria-hidden="true"><i></i></span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<section class="modes" aria-labelledby="modes-title">
-  <div class="site-shell modes-layout">
-    <div class="modes-copy reveal">
-      <p class="section-kicker">陪伴方式</p>
-      <h2 id="modes-title">今天，想要多热闹一点吗？</h2>
-      <p>互动频率不是任务提醒。它只是决定桌搭子会用怎样的分寸，出现在你的屏幕上。</p>
-      <div class="mode-control" role="tablist" aria-label="选择互动频率">
-        <button type="button" class="mode-button is-active" data-mode="quiet" role="tab" aria-selected="true">安静</button>
-        <button type="button" class="mode-button" data-mode="steady" role="tab" aria-selected="false">标准</button>
-        <button type="button" class="mode-button" data-mode="lively" role="tab" aria-selected="false">热闹</button>
-      </div>
-      <div class="mode-result" aria-live="polite">
-        <strong data-mode-title>安静陪伴</strong>
-        <p data-mode-copy>把它留在角落，需要时再轻轻回应。适合想沉下心的下午。</p>
-      </div>
-    </div>
-    <div class="pet-stage reveal" data-pet-stage>
-      <div class="pet-stage-label">DESKPET / MODE</div>
-      <div class="pet-stage-dots"><span></span><span></span><span></span></div>
-      <img data-mode-image src="<%= url_for('/images/collection/line-dog-wait.gif') %>" width="256" height="256" alt="线条小狗安静陪伴的动画" loading="lazy" decoding="async">
-      <p data-mode-speech>我在，慢慢来。</p>
-    </div>
-  </div>
-</section>
-
-<section class="pet-gallery" aria-labelledby="pet-gallery-title">
-  <div class="site-shell">
-    <div class="section-heading gallery-heading reveal">
-      <div>
-        <p class="section-kicker">真实 GIF 素材库</p>
-        <h2 id="pet-gallery-title">一个目录，就是一整轮不重复的陪伴。</h2>
-      </div>
-      <p>把喜欢的 GIF 放进目录，桌搭子会按文件数量和切换时间随机播放；一轮全部出现后，才开始下一轮。</p>
-    </div>
-    <dl class="library-facts reveal" aria-label="本次 GIF 素材盘点">
-      <div><dt>506</dt><dd>个 GIF 示例素材</dd></div>
-      <div><dt>200</dt><dd>最长单目录文件数</dd></div>
-      <div><dt>一轮不重复</dt><dd>完成后重新随机</dd></div>
-    </dl>
-    <div class="gallery-grid library-gallery">
-      <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-mint"><img src="<%= url_for('/images/collection/peach-ride.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="骑着小猪前进的蜜桃喵桌宠" loading="lazy" decoding="async"></div>
-        <figcaption><strong>今天先出发</strong><span>每个动作都会轮到</span></figcaption>
-      </figure>
-      <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-yellow"><img src="<%= url_for('/images/collection/kitty-thanks.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="两只 Kitty 一起道谢的桌宠动画" loading="lazy" decoding="async"></div>
-        <figcaption><strong>搭子靠近一点</strong><span>双角色也能一起收藏</span></figcaption>
-      </figure>
-      <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-coral"><img src="<%= url_for('/images/collection/line-dog-drive.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="开着红色小车的线条小狗桌宠" loading="lazy" decoding="async"></div>
-        <figcaption><strong>开车路过桌面</strong><span>不同角色都有出场机会</span></figcaption>
-      </figure>
-      <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-yellow"><img src="<%= url_for('/images/collection/pooh-wave.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="挥手走来的维尼桌宠" loading="lazy" decoding="async"></div>
-        <figcaption><strong>挥手来打招呼</strong><span>下一只仍然随机</span></figcaption>
-      </figure>
-      <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-coral"><img src="<%= url_for('/images/collection/rilakkuma-hug.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="抱着小兔的轻松熊桌宠" loading="lazy" decoding="async"></div>
-        <figcaption><strong>抱一下再继续</strong><span>目录内容随时可以增减</span></figcaption>
-      </figure>
-      <figure class="gallery-item reveal">
-        <div class="gallery-frame frame-mint"><img src="<%= url_for('/images/collection/rilakkuma-car.gif') %>?v=<%= theme.asset_version %>" width="240" height="240" alt="开着小车的轻松熊桌宠" loading="lazy" decoding="async"></div>
-        <figcaption><strong>换辆小车出发</strong><span>轮完一遍再重新洗牌</span></figcaption>
+        <img src="<%= url_for('/images/screenshots/together-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只熊在小剧场里对白，约对方坐一会儿" loading="lazy" decoding="async">
+        <figcaption><strong>两只一起待一会儿</strong><span>靠近、对白，演完一小段</span></figcaption>
       </figure>
     </div>
   </div>
@@ -285,30 +128,11 @@
 <section class="download-band" aria-labelledby="download-band-title">
   <div class="site-shell download-band-inner reveal">
     <div>
-      <p class="section-kicker">开始安装</p>
-      <h2 id="download-band-title">把桌搭子放进今天的桌面。</h2>
-      <p>Windows <span data-release-version="windows/x64">最新版</span>、macOS <span data-release-version="macos/arm64">最新版</span> 和 Android 已经准备好。装上就能先在桌角养一只，再决定要不要把 GIF 发到对方那边。</p>
+      <p class="section-kicker">先玩起来</p>
+      <h2 id="download-band-title">装上就能先养一只。</h2>
+      <p>Windows <span data-release-version="windows/x64">最新版</span> 和 macOS <span data-release-version="macos/arm64">最新版</span>。想给对方发 GIF，打开设置里的「搭子」就行。</p>
     </div>
-    <a class="button button-primary" href="<%= url_for('/download/') %>">选择安装包 <span aria-hidden="true">→</span></a>
-  </div>
-</section>
-
-<section class="support-band" id="support" aria-labelledby="support-title">
-  <div class="site-shell support-inner">
-    <div class="support-heading reveal">
-      <p class="section-kicker">支持与定制</p>
-      <h2 id="support-title">先下载，喜欢再慢慢聊。</h2>
-      <p>桌宠、走动和内置图鉴可以一直用。想给对方发 GIF，或做一只专属角色时，再来找作者就好。</p>
-    </div>
-    <div class="support-options reveal" role="list" aria-label="桌搭子使用方式">
-      <div class="support-option" role="listitem"><span>先下载</span><strong>装上就玩</strong><p>内置图鉴、走动，以及 3 个自定义桌宠。</p></div>
-      <div class="support-option" role="listitem"><span>完整体验</span><strong>装好先试</strong><p>互动、小剧场、提醒和给搭子发 GIF，都可以先摸一遍。</p></div>
-      <div class="support-option" role="listitem"><span>专属定制</span><strong>按需求聊</strong><p>角色、动作或功能都可以单独沟通。</p></div>
-    </div>
-    <div class="support-contact reveal">
-      <p>想定制，或需要激活码，可以先把系统和需求聊清楚。</p>
-      <a class="text-link" data-xianyu-link href="#" target="_blank" rel="noopener noreferrer" hidden>在闲鱼联系 <span aria-hidden="true">→</span></a>
-    </div>
+    <a class="button button-primary" href="<%= url_for('/download/') %>">去下载 <span aria-hidden="true">→</span></a>
   </div>
 </section>
 
@@ -316,10 +140,10 @@
   <div class="site-shell">
     <div class="journal-heading reveal">
       <div>
-        <p class="section-kicker">桌搭子手记</p>
+        <p class="section-kicker">手记</p>
         <h2>最近写下的几件小事。</h2>
       </div>
-      <a class="text-link" href="<%= url_for('/archives/') %>">查看全部文章 <span aria-hidden="true">→</span></a>
+      <a class="text-link" href="<%= url_for('/archives/') %>">查看全部 <span aria-hidden="true">→</span></a>
     </div>
     <div class="post-grid">
       <% latestPosts.forEach(function(post) { %>

@@ -30,12 +30,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".MainActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
         <service
             android:name=".PetOverlayService"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|keyboardHidden|uiMode"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property

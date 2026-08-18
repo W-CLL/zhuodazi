@@ -70,34 +70,37 @@ final class PetOverlayView extends FrameLayout {
         bubble.setBackground(bubbleBackground);
         bubble.setVisibility(View.INVISIBLE);
         LayoutParams bubbleParams = new LayoutParams(
-            Math.min(windowWidth - dp(10), dp(144)), LayoutParams.WRAP_CONTENT,
+            Math.min(Math.max(windowWidth - dp(12), dp(96)), dp(168)), LayoutParams.WRAP_CONTENT,
             Gravity.TOP | Gravity.CENTER_HORIZONTAL);
         bubbleParams.topMargin = dp(4);
         addView(bubble, bubbleParams);
 
         quickMenu = new LinearLayout(context);
         quickMenu.setOrientation(LinearLayout.VERTICAL);
-        quickMenu.setPadding(dp(5), dp(5), dp(5), dp(5));
-        quickMenu.setElevation(dp(6));
+        quickMenu.setPadding(dp(8), dp(8), dp(8), dp(4));
+        quickMenu.setElevation(dp(8));
+        quickMenu.setClickable(true);
         GradientDrawable menuBackground = new GradientDrawable();
         menuBackground.setColor(0xfaffffff);
-        menuBackground.setCornerRadius(dp(8));
+        menuBackground.setCornerRadius(dp(12));
         menuBackground.setStroke(dp(1), 0x22000000);
         quickMenu.setBackground(menuBackground);
         LinearLayout firstRow = menuRow();
         firstRow.addView(menuAction("互动一下", MENU_INTERACT));
         firstRow.addView(menuAction("换一只", MENU_NEXT));
-        quickMenu.addView(firstRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+        quickMenu.addView(firstRow, menuRowParams());
         LinearLayout secondRow = menuRow();
         secondRow.addView(menuAction("发给搭子", MENU_SEND));
         secondRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
-        quickMenu.addView(secondRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+        quickMenu.addView(secondRow, menuRowParams());
         LinearLayout thirdRow = menuRow();
         thirdRow.addView(menuAction("隐藏桌宠", MENU_HIDE));
-        quickMenu.addView(thirdRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, dp(34)));
+        quickMenu.addView(thirdRow, menuRowParams());
         quickMenu.setVisibility(View.GONE);
-        LayoutParams menuParams = new LayoutParams(Math.min(windowWidth - dp(8), dp(144)), dp(112),
-            Gravity.CENTER);
+        LayoutParams menuParams = new LayoutParams(
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        menuParams.leftMargin = dp(8);
+        menuParams.rightMargin = dp(8);
         addView(quickMenu, menuParams);
 
         interactionCard = new LinearLayout(context);
@@ -126,8 +129,10 @@ final class PetOverlayView extends FrameLayout {
         close.setTextSize(22);
         close.setGravity(Gravity.CENTER);
         close.setClickable(true);
+        close.setMinWidth(dp(44));
+        close.setMinHeight(dp(44));
         close.setOnClickListener(view -> completeInteraction(null));
-        titleRow.addView(close, new LinearLayout.LayoutParams(dp(34), dp(30)));
+        titleRow.addView(close, new LinearLayout.LayoutParams(dp(44), dp(44)));
         interactionCard.addView(titleRow, new LinearLayout.LayoutParams(
             LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
 
@@ -197,10 +202,11 @@ final class PetOverlayView extends FrameLayout {
         for (InteractionChoice choice : choices) {
             TextView button = new TextView(getContext());
             button.setText(choice.label);
-            button.setTextSize(12);
+            button.setTextSize(13);
             button.setGravity(Gravity.CENTER);
             button.setClickable(true);
             button.setFocusable(true);
+            button.setMinHeight(dp(44));
             button.setTextColor(choice.primary ? Color.WHITE : Color.rgb(23, 32, 30));
             GradientDrawable background = new GradientDrawable();
             background.setColor(choice.primary ? 0xff147d6b : 0xffedf5f2);
@@ -208,7 +214,7 @@ final class PetOverlayView extends FrameLayout {
             background.setStroke(dp(1), choice.primary ? 0xff147d6b : 0x28167d6c);
             button.setBackground(background);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LayoutParams.MATCH_PARENT, dp(38));
+                LayoutParams.MATCH_PARENT, dp(44));
             params.bottomMargin = dp(6);
             button.setLayoutParams(params);
             button.setOnClickListener(view -> completeInteraction(choice.value));
@@ -228,15 +234,35 @@ final class PetOverlayView extends FrameLayout {
 
     int interactionCardHeight() { return interactionCard.getMeasuredHeight(); }
 
-    void toggleQuickMenu() {
+    boolean toggleQuickMenu() {
+        if (isQuickMenuVisible()) {
+            hideQuickMenu();
+            return false;
+        }
+        showQuickMenu();
+        return true;
+    }
+
+    void showQuickMenu() {
         if (isInteractionVisible()) return;
-        boolean show = quickMenu.getVisibility() != View.VISIBLE;
         bubble.setVisibility(View.INVISIBLE);
-        if (show) quickMenu.bringToFront();
-        quickMenu.setVisibility(show ? View.VISIBLE : View.GONE);
+        quickMenu.bringToFront();
+        quickMenu.setVisibility(View.VISIBLE);
     }
 
     void hideQuickMenu() { quickMenu.setVisibility(View.GONE); }
+
+    boolean isQuickMenuVisible() { return quickMenu.getVisibility() == View.VISIBLE; }
+
+    boolean hitInteractive(float x, float y) {
+        return hitVisible(quickMenu, x, y) || hitVisible(interactionCard, x, y);
+    }
+
+    void dismissInteraction() { completeInteraction(null); }
+
+    int preferredMenuWidth() { return dp(188); }
+
+    int preferredMenuHeight() { return dp(188); }
 
     private void completeInteraction(String value) {
         InteractionListener listener = interactionListener;
@@ -251,21 +277,31 @@ final class PetOverlayView extends FrameLayout {
         return row;
     }
 
+    private LinearLayout.LayoutParams menuRowParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            LayoutParams.MATCH_PARENT, dp(44));
+        params.bottomMargin = dp(6);
+        return params;
+    }
+
     private TextView menuAction(String label, String action) {
         TextView button = new TextView(getContext());
         button.setText(label);
-        button.setTextSize(11);
+        button.setTextSize(13);
+        button.setTypeface(button.getTypeface(), android.graphics.Typeface.BOLD);
         button.setTextColor(Color.rgb(23, 32, 30));
         button.setGravity(Gravity.CENTER);
         button.setClickable(true);
         button.setFocusable(true);
+        button.setMinHeight(dp(44));
         GradientDrawable background = new GradientDrawable();
         background.setColor(0xffedf5f2);
-        background.setCornerRadius(dp(5));
+        background.setCornerRadius(dp(8));
         background.setStroke(dp(1), 0x18167d6c);
         button.setBackground(background);
-        LinearLayout.LayoutParams params = weightedAction();
-        params.setMargins(dp(2), dp(2), dp(2), dp(2));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+            0, LayoutParams.MATCH_PARENT, 1f);
+        params.setMargins(dp(3), 0, dp(3), 0);
         button.setLayoutParams(params);
         button.setOnClickListener(view -> {
             quickMenu.setVisibility(View.GONE);
@@ -274,11 +310,14 @@ final class PetOverlayView extends FrameLayout {
         return button;
     }
 
-    private LinearLayout.LayoutParams weightedAction() {
-        return new LinearLayout.LayoutParams(0, LayoutParams.MATCH_PARENT, 1f);
-    }
-
     int bubbleHeight() { return bubbleHeight; }
+
+    private boolean hitVisible(View view, float x, float y) {
+        if (view.getVisibility() != View.VISIBLE) return false;
+        int slop = dp(6);
+        return x >= view.getLeft() - slop && x <= view.getRight() + slop
+            && y >= view.getTop() - slop && y <= view.getBottom() + slop;
+    }
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
