@@ -18,6 +18,9 @@ final class DeskPetApi {
     static final String COMPANION_DELIVERIES = "/api/companion/deliveries";
     static final String ANALYTICS_EVENTS = "/api/analytics/events";
     static final String COMPANION_DOWNLOAD_PREFIX = "/api/companion/";
+    static final String SITE_SETTINGS = "/api/public/site-settings";
+    static final String UPDATE_LATEST = "/api/update/latest";
+    static final String DOWNLOAD_PATH_PREFIX = "/downloads/";
 
     private DeskPetApi() { }
 }

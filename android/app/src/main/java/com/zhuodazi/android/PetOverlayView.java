@@ -33,6 +33,7 @@ final class PetOverlayView extends FrameLayout {
     }
 
     static final String MENU_INTERACT = "interact";
+    static final String MENU_THEATER = "theater";
     static final String MENU_SEND = "send";
     static final String MENU_NEXT = "next";
     static final String MENU_CLICK_THROUGH = "click_through";
@@ -87,13 +88,14 @@ final class PetOverlayView extends FrameLayout {
         quickMenu.setBackground(menuBackground);
         LinearLayout firstRow = menuRow();
         firstRow.addView(menuAction("互动一下", MENU_INTERACT));
-        firstRow.addView(menuAction("换一只", MENU_NEXT));
+        firstRow.addView(menuAction("小剧场", MENU_THEATER));
         quickMenu.addView(firstRow, menuRowParams());
         LinearLayout secondRow = menuRow();
+        secondRow.addView(menuAction("换一只", MENU_NEXT));
         secondRow.addView(menuAction("发给搭子", MENU_SEND));
-        secondRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
         quickMenu.addView(secondRow, menuRowParams());
         LinearLayout thirdRow = menuRow();
+        thirdRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
         thirdRow.addView(menuAction("隐藏桌宠", MENU_HIDE));
         quickMenu.addView(thirdRow, menuRowParams());
         quickMenu.setVisibility(View.GONE);
@@ -262,7 +264,7 @@ final class PetOverlayView extends FrameLayout {
 
     int preferredMenuWidth() { return dp(188); }
 
-    int preferredMenuHeight() { return dp(188); }
+    int preferredMenuHeight() { return dp(220); }
 
     private void completeInteraction(String value) {
         InteractionListener listener = interactionListener;

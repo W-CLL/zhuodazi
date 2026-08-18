@@ -45,14 +45,17 @@ public final class PetOverlayService extends Service {
     static final String ACTION_SHOW = "com.zhuodazi.android.SHOW";
     static final String ACTION_HIDE = "com.zhuodazi.android.HIDE";
     static final String ACTION_CLICK_THROUGH = "com.zhuodazi.android.CLICK_THROUGH";
+    static final String ACTION_THEATER = "com.zhuodazi.android.THEATER";
     static final String EXTRA_REACTION = "reaction";
 
     private static final int BOTTOM_GUARD_DP = 48;
 
     private static final String CHANNEL_ID = "pet_overlay";
     private static final String VISITOR_CHANNEL_ID = "companion_visits";
+    private static final String REMINDER_CHANNEL_ID = "deskpet_reminders";
     private static final int NOTIFICATION_ID = 2107;
     private static final int VISITOR_NOTIFICATION_ID = 2108;
+    private static final int REMINDER_NOTIFICATION_ID = 2109;
     private static final int REQUEST_CONTENT = 101;
     private static final int REQUEST_STOP = 102;
     private static final int REQUEST_NEXT = 103;
@@ -74,6 +77,8 @@ public final class PetOverlayService extends Service {
     private LicenseService licenses;
     private InteractionContentService interactionContent;
     private CompanionService companions;
+    private TheaterScriptStore theaterScripts;
+    private ReminderStore reminderStore;
     private ValueAnimator movementAnimator;
     private VelocityTracker velocityTracker;
     private float touchDownX;
@@ -82,6 +87,10 @@ public final class PetOverlayService extends Service {
     private int windowDownY;
     private boolean dragging;
     private boolean companionBusy;
+    private boolean theaterActive;
+    private boolean theaterVisitor;
+    private int theaterVersion;
+    private int reminderExpressionVersion;
     private boolean interactionBusy;
     private boolean interactionSyncBusy;
     private boolean interactionExpanded;
@@ -98,14 +107,14 @@ public final class PetOverlayService extends Service {
 
     private final Runnable wanderTask = new Runnable() {
         @Override public void run() {
-            if (overlay != null && settings.movement() && !dragging && !settings.clickThrough()) wander();
+            if (overlay != null && settings.movement() && !dragging && !settings.clickThrough() && !theaterActive) wander();
             scheduleWander();
         }
     };
 
     private final Runnable interactionTask = new Runnable() {
         @Override public void run() {
-            if (overlay != null && settings.interactions() && licenses.hasPremiumAccess() && !dragging) {
+            if (overlay != null && settings.interactions() && licenses.hasPremiumAccess() && !dragging && !theaterActive) {
                 startRandomInteraction(false);
             } else {
                 scheduleInteraction();
@@ -115,7 +124,7 @@ public final class PetOverlayService extends Service {
 
     private final Runnable petSwitchTask = new Runnable() {
         @Override public void run() {
-            if (overlay != null && settings.randomPet()) selectPet(pets.randomPet(currentPet), true);
+            if (overlay != null && settings.randomPet() && !theaterActive) selectPet(pets.randomPet(currentPet), true);
             schedulePetSwitch();
         }
     };
@@ -143,6 +152,15 @@ public final class PetOverlayService extends Service {
         }
     };
 
+    private final Runnable theaterTask = new Runnable() {
+        @Override public void run() {
+            startTheater(false);
+            scheduleTheater();
+        }
+    };
+
+    private final Runnable reminderTask = this::checkReminders;
+
     @Override public void onCreate() {
         super.onCreate();
         settings = new SettingsStore(this);
@@ -151,6 +169,9 @@ public final class PetOverlayService extends Service {
         licenses = new LicenseService(this);
         interactionContent = new InteractionContentService(this, licenses);
         companions = new CompanionService(this, licenses, pets);
+        theaterScripts = new TheaterScriptStore(settings);
+        reminderStore = new ReminderStore(settings);
+        reminderStore.normalizePast(System.currentTimeMillis());
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
         createNotificationChannels();
@@ -191,6 +212,12 @@ public final class PetOverlayService extends Service {
             if (overlay == null) createOverlay(false);
             else applyTouchMode();
             startRandomInteraction(true);
+        } else if (ACTION_THEATER.equals(action)) {
+            settings.setPetHidden(false);
+            settings.setClickThrough(false);
+            if (overlay == null) createOverlay(false);
+            else applyTouchMode();
+            startTheater(true);
         } else if (ACTION_HIDE.equals(action)) {
             hidePet();
         } else if (ACTION_CLICK_THROUGH.equals(action)) {
@@ -199,6 +226,7 @@ public final class PetOverlayService extends Service {
             if (overlay == null && !settings.petHidden()) createOverlay(false);
             if (ACTION_NEXT.equals(action)) nextPet();
             else if (ACTION_SEND_COMPANION.equals(action)) sendToCompanion();
+            else if (ACTION_THEATER.equals(action)) startTheater(true);
             else if (ACTION_REFRESH.equals(action)) refreshOverlay();
         }
         settings.setRunning(true);
@@ -268,12 +296,21 @@ public final class PetOverlayService extends Service {
     private void removeMainOverlay(boolean savePosition) {
         if (overlay == null) return;
         if (savePosition && windowParams != null) settings.savePosition(windowParams.x, windowParams.y);
+        if (theaterActive) {
+            theaterVersion++;
+            theaterActive = false;
+            if (theaterVisitor) {
+                removeVisitor(false);
+                theaterVisitor = false;
+            }
+        }
         try { windowManager.removeView(overlay); } catch (Exception ignored) { }
         overlay = null;
         windowParams = null;
         handler.removeCallbacks(wanderTask);
         handler.removeCallbacks(interactionTask);
         handler.removeCallbacks(petSwitchTask);
+        handler.removeCallbacks(theaterTask);
         cancelMovement();
         interactionBusy = false;
         interactionExpanded = false;
@@ -303,6 +340,7 @@ public final class PetOverlayService extends Service {
     private void handleMenuAction(String action) {
         switch (action) {
             case PetOverlayView.MENU_INTERACT -> startRandomInteraction(true);
+            case PetOverlayView.MENU_THEATER -> startTheater(true);
             case PetOverlayView.MENU_SEND -> sendToCompanion();
             case PetOverlayView.MENU_NEXT -> nextPet();
             case PetOverlayView.MENU_CLICK_THROUGH -> enableClickThrough();
@@ -332,6 +370,10 @@ public final class PetOverlayService extends Service {
         if (!licenses.hasPremiumAccess()) {
             if (manual) sayText("体验或正式激活后可以使用随机趣味互动。", 5200);
             scheduleInteraction();
+            return;
+        }
+        if (theaterActive) {
+            if (manual) sayText("这一场还没演完。", 3600);
             return;
         }
         if (overlay == null || dragging || (!manual && (settings.clickThrough() || !settings.interactions()))) {
@@ -753,6 +795,227 @@ public final class PetOverlayService extends Service {
         }, duration);
     }
 
+    private void startTheater(boolean manual) {
+        handler.removeCallbacks(theaterTask);
+        if (!licenses.hasPremiumAccess()) {
+            if (manual) sayText("体验或正式激活后可以上演小剧场。", 5200);
+            scheduleTheater();
+            return;
+        }
+        if (overlay == null || settings.petHidden() || settings.clickThrough()) {
+            if (manual) sayText("先让桌宠显示出来，再上演小剧场。", 4800);
+            scheduleTheater();
+            return;
+        }
+        if (theaterActive || interactionBusy || dragging) {
+            if (manual && theaterActive) sayText("这一场还没演完。", 3600);
+            else if (manual && interactionBusy) sayText("先把眼前这个互动完成吧。", 3600);
+            scheduleTheater();
+            return;
+        }
+        List<TheaterScriptStore.Script> pool = theaterScripts.playbackPool();
+        if (pool.isEmpty()) {
+            if (manual) sayText("还没有可演的剧本。", 4200);
+            scheduleTheater();
+            return;
+        }
+        String actorB = pets.randomPet(currentPet);
+        if (actorB.isEmpty() || actorB.equals(currentPet)) {
+            if (manual) sayText("小剧场还缺一位演员，再准备一个 GIF 吧。", 5200);
+            scheduleTheater();
+            return;
+        }
+        TheaterScriptStore.Script script = pool.get(random.nextInt(pool.size()));
+        overlay.hideQuickMenu();
+        collapseMenuWindow();
+        if (overlay.isInteractionVisible()) overlay.dismissInteraction();
+        if (visitorOverlay != null) removeVisitor(true);
+        cancelMovement();
+        theaterActive = true;
+        theaterVisitor = true;
+        int version = ++theaterVersion;
+        Point bounds = screenBounds();
+        int petSize = fittedPetSize(bounds, Math.max(96, Math.min(200, settings.sizeDp() - 20)));
+        int width = fitWindowWidth(bounds, Math.max(petSize + dp(20), dp(168)));
+        int height = fitWindowHeight(bounds, petSize + dp(92));
+        try {
+            Drawable drawable = pets.load(actorB);
+            visitorOverlay = new PetOverlayView(this, petSize, width, height);
+            visitorOverlay.setPet(drawable, settings.opacity() / 100f, settings.mirrored(), -facing);
+            visitorParams = new WindowManager.LayoutParams(width, height,
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                    | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                PixelFormat.TRANSLUCENT);
+            visitorParams.gravity = Gravity.TOP | Gravity.START;
+            placeTheaterPair(bounds, width);
+            windowManager.addView(visitorOverlay, visitorParams);
+        } catch (Exception error) {
+            theaterActive = false;
+            theaterVisitor = false;
+            removeVisitor(false);
+            if (manual) sayText("搭档暂时登不了台，稍后再试。", 4800);
+            scheduleTheater();
+            return;
+        }
+        playTheaterScene(script, 0, version);
+    }
+
+    private void placeTheaterPair(Point bounds, int visitorWidth) {
+        if (windowParams == null || visitorParams == null) return;
+        int gap = dp(12);
+        boolean visitorOnRight = windowParams.x + windowParams.width / 2 < bounds.x / 2;
+        if (visitorOnRight) {
+            visitorParams.x = Math.min(bounds.x - visitorWidth - dp(8), windowParams.x + windowParams.width + gap);
+        } else {
+            visitorParams.x = Math.max(dp(8), windowParams.x - visitorWidth - gap);
+        }
+        visitorParams.y = SettingsStore.clamp(windowParams.y, 0, maxWindowY(bounds, visitorParams.height));
+    }
+
+    private void playTheaterScene(TheaterScriptStore.Script script, int index, int version) {
+        if (version != theaterVersion || overlay == null || visitorOverlay == null) {
+            finishTheater(false);
+            return;
+        }
+        if (index >= script.scenes.size()) {
+            handler.postDelayed(() -> {
+                if (version == theaterVersion) finishTheater(true);
+            }, 1800);
+            return;
+        }
+        TheaterScriptStore.Scene scene = script.scenes.get(index);
+        sayText(scene.main, 4400);
+        handler.postDelayed(() -> {
+            if (version != theaterVersion || visitorOverlay == null) return;
+            visitorOverlay.say(scene.companion);
+            handler.postDelayed(() -> {
+                if (version != theaterVersion || visitorOverlay == null) return;
+                visitorOverlay.hideBubble();
+            }, 4400);
+        }, 2100);
+        handler.postDelayed(() -> {
+            if (version != theaterVersion) return;
+            performTheaterMotion(index, () -> playTheaterScene(script, index + 1, version));
+        }, 3200);
+    }
+
+    private void performTheaterMotion(int step, Runnable next) {
+        if (windowParams == null || visitorParams == null || overlay == null || visitorOverlay == null) {
+            next.run();
+            return;
+        }
+        Point bounds = screenBounds();
+        int mainX = windowParams.x;
+        int mainY = windowParams.y;
+        int visitorX = visitorParams.x;
+        int visitorY = visitorParams.y;
+        int hop = dp(22);
+        switch (step % 4) {
+            case 0 -> animatePair(
+                mainX, Math.max(0, mainY - hop), visitorX, Math.max(0, visitorY - hop), 220,
+                () -> animatePair(mainX, mainY, visitorX, visitorY, 240, next));
+            case 1 -> animatePair(visitorX, visitorY, mainX, mainY, 650, next);
+            case 2 -> {
+                int direction = mainX <= visitorX ? 1 : -1;
+                animatePair(
+                    mainX + dp(18) * direction, Math.max(0, mainY - dp(12)),
+                    visitorX - dp(18) * direction, SettingsStore.clamp(visitorY + dp(8), 0, maxWindowY(bounds, visitorParams.height)),
+                    250,
+                    () -> animatePair(mainX, mainY, visitorX, visitorY, 250, next));
+            }
+            default -> animatePair(visitorX, visitorY, mainX, mainY, 650, next);
+        }
+    }
+
+    private void animatePair(int mainX, int mainY, int visitorX, int visitorY, long duration, Runnable done) {
+        if (windowParams == null || visitorParams == null) {
+            if (done != null) done.run();
+            return;
+        }
+        Point bounds = screenBounds();
+        int startMainX = windowParams.x;
+        int startMainY = windowParams.y;
+        int startVisitorX = visitorParams.x;
+        int startVisitorY = visitorParams.y;
+        int endMainX = SettingsStore.clamp(mainX, 0, Math.max(0, bounds.x - windowParams.width));
+        int endMainY = SettingsStore.clamp(mainY, 0, maxWindowY(bounds, windowParams.height));
+        int endVisitorX = SettingsStore.clamp(visitorX, 0, Math.max(0, bounds.x - visitorParams.width));
+        int endVisitorY = SettingsStore.clamp(visitorY, 0, maxWindowY(bounds, visitorParams.height));
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(duration);
+        animator.setInterpolator(new DecelerateInterpolator());
+        animator.addUpdateListener(animation -> {
+            float value = (float) animation.getAnimatedValue();
+            moveWindow(Math.round(startMainX + (endMainX - startMainX) * value),
+                Math.round(startMainY + (endMainY - startMainY) * value));
+            if (visitorParams != null && visitorOverlay != null) {
+                visitorParams.x = Math.round(startVisitorX + (endVisitorX - startVisitorX) * value);
+                visitorParams.y = Math.round(startVisitorY + (endVisitorY - startVisitorY) * value);
+                try { windowManager.updateViewLayout(visitorOverlay, visitorParams); } catch (Exception ignored) { }
+            }
+        });
+        animator.addListener(new android.animation.AnimatorListenerAdapter() {
+            @Override public void onAnimationEnd(android.animation.Animator animation) {
+                if (done != null) done.run();
+            }
+        });
+        animator.start();
+    }
+
+    private void finishTheater(boolean announce) {
+        theaterVersion++;
+        theaterActive = false;
+        if (theaterVisitor) {
+            removeVisitor(false);
+            theaterVisitor = false;
+        }
+        if (announce && overlay != null) say("theater_finish", "本场演出结束，谢谢观看。", 4200);
+        scheduleTheater();
+        scheduleWander();
+    }
+
+    private void checkReminders() {
+        handler.removeCallbacks(reminderTask);
+        if (licenses.hasPremiumAccess()) {
+            List<ReminderStore.Reminder> due = reminderStore.fireDue(System.currentTimeMillis());
+            for (ReminderStore.Reminder reminder : due) showReminder(reminder);
+        }
+        scheduleReminders();
+    }
+
+    private void showReminder(ReminderStore.Reminder reminder) {
+        settings.setClickThrough(false);
+        if (overlay == null && !settings.petHidden() && Settings.canDrawOverlays(this)) {
+            createOverlay(false);
+        } else {
+            applyTouchMode();
+        }
+        String fallback = reminder.message.isEmpty() ? "休息一下吧" : reminder.message;
+        if (overlay != null) {
+            say(reminder.emotion, fallback, 6200);
+            if (!reminder.expressionPetId.isEmpty() && !reminder.expressionPetId.equals(currentPet)) {
+                showReminderExpression(reminder.expressionPetId);
+            }
+        }
+        showReminderNotification(fallback);
+    }
+
+    private void showReminderExpression(String petId) {
+        if (overlay == null) return;
+        String original = currentPet;
+        try {
+            overlay.setPet(pets.load(petId), settings.opacity() / 100f, settings.mirrored(), facing);
+            int version = ++reminderExpressionVersion;
+            handler.postDelayed(() -> {
+                if (overlay == null || version != reminderExpressionVersion) return;
+                currentPet = original;
+                loadCurrentPet();
+            }, 6000);
+        } catch (Exception ignored) { }
+    }
+
     private void sendToCompanion() {
         if (!licenses.isActivated()) {
             sayText("搭子联机需要先在“我的”中正式激活。", 5200);
@@ -777,6 +1040,10 @@ public final class PetOverlayService extends Service {
     }
 
     private void receiveVisit(CompanionService.Visit visit) {
+        if (theaterActive) {
+            visit.file().delete();
+            return;
+        }
         if (overlay == null || settings.petHidden() || settings.clickThrough()) {
             if (pendingVisit != null) pendingVisit.file().delete();
             pendingVisit = visit;
@@ -798,6 +1065,10 @@ public final class PetOverlayService extends Service {
     }
 
     private void showVisitor(CompanionService.Visit visit) {
+        if (theaterActive) {
+            visit.file().delete();
+            return;
+        }
         removeVisitor(true);
         try {
             Drawable drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(visit.file()));
@@ -848,14 +1119,18 @@ public final class PetOverlayService extends Service {
         handler.removeCallbacks(wanderTask);
         handler.removeCallbacks(interactionTask);
         handler.removeCallbacks(petSwitchTask);
+        handler.removeCallbacks(theaterTask);
+        handler.removeCallbacks(reminderTask);
         scheduleWander();
         scheduleInteraction();
         schedulePetSwitch();
+        scheduleTheater();
+        scheduleReminders();
     }
 
     private void scheduleWander() {
         handler.removeCallbacks(wanderTask);
-        if (!settings.movement() || overlay == null || settings.clickThrough()) return;
+        if (!settings.movement() || overlay == null || settings.clickThrough() || theaterActive) return;
         int minimum = switch (settings.personality()) {
             case "shy" -> 9000;
             case "clingy" -> 3500;
@@ -867,7 +1142,7 @@ public final class PetOverlayService extends Service {
 
     private void scheduleInteraction() {
         handler.removeCallbacks(interactionTask);
-        if (!settings.interactions() || overlay == null || !licenses.hasPremiumAccess()) return;
+        if (!settings.interactions() || overlay == null || !licenses.hasPremiumAccess() || theaterActive) return;
         int minimumMinutes;
         int additionalMinutes;
         switch (settings.interactionMode()) {
@@ -881,8 +1156,20 @@ public final class PetOverlayService extends Service {
 
     private void schedulePetSwitch() {
         handler.removeCallbacks(petSwitchTask);
-        if (!settings.randomPet() || overlay == null) return;
+        if (!settings.randomPet() || overlay == null || theaterActive) return;
         handler.postDelayed(petSwitchTask, settings.randomPetInterval() * 1000L);
+    }
+
+    private void scheduleTheater() {
+        handler.removeCallbacks(theaterTask);
+        if (!licenses.hasPremiumAccess() || !settings.theaterEnabled() || overlay == null || theaterActive) return;
+        handler.postDelayed(theaterTask, settings.theaterInterval() * 1000L);
+    }
+
+    private void scheduleReminders() {
+        handler.removeCallbacks(reminderTask);
+        if (!licenses.hasPremiumAccess()) return;
+        handler.postDelayed(reminderTask, 20_000L);
     }
 
     private void scheduleCompanionPoll() {
@@ -943,7 +1230,12 @@ public final class PetOverlayService extends Service {
         NotificationChannel visitor = new NotificationChannel(
             VISITOR_CHANNEL_ID, "搭子来访", NotificationManager.IMPORTANCE_DEFAULT);
         visitor.setDescription("搭子发送桌宠时通知你");
-        getSystemService(NotificationManager.class).createNotificationChannel(visitor);
+        NotificationChannel reminder = new NotificationChannel(
+            REMINDER_CHANNEL_ID, "桌搭子提醒", NotificationManager.IMPORTANCE_DEFAULT);
+        reminder.setDescription("到点时由桌宠提醒你");
+        NotificationManager manager = getSystemService(NotificationManager.class);
+        manager.createNotificationChannel(visitor);
+        manager.createNotificationChannel(reminder);
     }
 
     private void startAsForeground() {
@@ -992,6 +1284,22 @@ public final class PetOverlayService extends Service {
     private Notification.Action action(String title, int requestCode, String action) {
         return new Notification.Action.Builder(R.drawable.ic_pet, title,
             servicePendingIntent(requestCode, action)).build();
+    }
+
+    private void showReminderNotification(String message) {
+        PendingIntent open = PendingIntent.getActivity(this, REQUEST_CONTENT,
+            new Intent(this, FlutterMainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    | Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification notification = new Notification.Builder(this, REMINDER_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_pet)
+            .setContentTitle("桌搭子提醒")
+            .setContentText(message)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build();
+        getSystemService(NotificationManager.class).notify(REMINDER_NOTIFICATION_ID, notification);
     }
 
     private void showVisitorNotification(String sender) {

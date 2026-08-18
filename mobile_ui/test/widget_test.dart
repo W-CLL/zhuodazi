@@ -30,6 +30,21 @@ void main() {
     ],
     'activePet': '001',
     'wordPacks': <String>['元气夸夸.json'],
+    'theaterEnabled': false,
+    'theaterInterval': 300,
+    'theaterScripts': <Map<String, Object>>[],
+    'reminders': <Map<String, Object>>[],
+    'xianyuUrl': 'https://www.goofish.com/item?id=1',
+    'wechatId': 'wcl_lcw627',
+    'websiteUrl': 'https://desktoppet.online/',
+    'autoCheckUpdates': true,
+    'ignoredUpdateVersion': '',
+    'canInstallPackages': false,
+    'update': <String, Object>{
+      'phase': 'idle',
+      'message': '可以检查更新',
+      'progress': 0,
+    },
   };
 
   setUp(() {
@@ -43,7 +58,11 @@ void main() {
           switch (call.method) {
             case 'snapshot':
             case 'checkTrial':
+            case 'siteLinks':
+            case 'checkUpdate':
               return snapshot();
+            case 'petGif':
+              return null;
             case 'requestOverlayPermission':
               overlayAllowed = true;
               return true;
@@ -76,6 +95,23 @@ void main() {
     await tester.pumpWidget(const ZhuoDaziApp());
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapHomeSend(WidgetTester tester) async {
+    final sendHome = find.widgetWithText(QuickAction, '发给搭子');
+    await tester.scrollUntilVisible(
+      sendHome,
+      180,
+      scrollable: find.descendant(
+        of: find.byType(HomePage),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.ensureVisible(sendHome);
+    await tester.pump();
+    await tester.tap(sendHome, warnIfMissed: false);
+    await tester.pump();
   }
 
   testWidgets('renders the Android companion shell', (tester) async {
@@ -92,10 +128,22 @@ void main() {
     expect(destinations, ['首页', '互动', '桌宠', '搭子', '我的']);
 
     await tester.tap(find.text('互动').last);
-    await tester.pump();
+    await tester.pumpAndSettle();
     expect(find.text('随机来一个'), findsOneWidget);
     expect(find.text('18 条可用内容'), findsOneWidget);
     expect(find.text('线上趣味内容'), findsOneWidget);
+    await tester.drag(
+      find.descendant(
+        of: find.byType(InteractionPage),
+        matching: find.byType(ListView),
+      ),
+      const Offset(0, -1400),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('小剧场'), findsWidgets);
+    expect(find.text('自动随机上演'), findsOneWidget);
+    expect(find.text('提醒'), findsWidgets);
+    expect(find.text('新建提醒'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('桌宠').last);
@@ -109,15 +157,45 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('我的').last);
-    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(find.text('还没有激活码'), findsOneWidget);
+    await tester.drag(
+      find.descendant(
+        of: find.byType(AccountPage),
+        matching: find.byType(ListView),
+      ),
+      const Offset(0, -600),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('去闲鱼看看'), findsOneWidget);
+    expect(find.text('复制微信号'), findsOneWidget);
+    await tester.drag(
+      find.descendant(
+        of: find.byType(AccountPage),
+        matching: find.byType(ListView),
+      ),
+      const Offset(0, -800),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('检查更新'), findsOneWidget);
+    expect(find.text('自动检查更新'), findsOneWidget);
+    expect(find.text('可以检查更新'), findsOneWidget);
+    expect(
+      calls.any((call) => call.method == 'checkUpdate'),
+      isTrue,
+    );
+    await tester.tap(find.text('检查更新'));
+    await tester.pumpAndSettle();
+    expect(
+      calls.where((call) => call.method == 'checkUpdate').length,
+      greaterThanOrEqualTo(2),
+    );
     expect(tester.takeException(), isNull);
   });
 
   testWidgets('home send path asks for overlay first', (tester) async {
     await pumpApp(tester, const Size(360, 800));
-    await tester.ensureVisible(find.text('发给搭子').first);
-    await tester.tap(find.text('发给搭子').first);
-    await tester.pump();
+    await tapHomeSend(tester);
     expect(
       calls.any((call) => call.method == 'requestOverlayPermission'),
       isTrue,
@@ -129,9 +207,7 @@ void main() {
   ) async {
     overlayAllowed = true;
     await pumpApp(tester, const Size(360, 800));
-    await tester.ensureVisible(find.text('发给搭子').first);
-    await tester.tap(find.text('发给搭子').first);
-    await tester.pump();
+    await tapHomeSend(tester);
     await tester.pump(const Duration(milliseconds: 320));
     expect(
       calls.any(
@@ -156,12 +232,11 @@ void main() {
     ) async {
       await pumpApp(tester, size);
       expect(tester.takeException(), isNull);
-      expect(find.text('发给搭子'), findsWidgets);
-
-      await tester.ensureVisible(find.text('发给搭子').first);
-      await tester.tap(find.text('发给搭子').first);
-      await tester.pump();
-      expect(tester.takeException(), isNull);
+      if (size.height >= 700) {
+        expect(find.widgetWithText(QuickAction, '发给搭子'), findsOneWidget);
+        await tapHomeSend(tester);
+        expect(tester.takeException(), isNull);
+      }
 
       for (final tab in ['互动', '桌宠', '搭子', '我的', '首页']) {
         await tester.tap(

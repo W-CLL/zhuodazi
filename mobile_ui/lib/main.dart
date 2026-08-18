@@ -366,6 +366,11 @@ class HomePage extends StatelessWidget {
               onTap: () => sendHomeGif(context, controller),
             ),
             QuickAction(
+              icon: Icons.theater_comedy_outlined,
+              label: '小剧场',
+              onTap: () => startTheater(context, controller),
+            ),
+            QuickAction(
               icon: Icons.touch_app_outlined,
               label: '说句话',
               onTap: () => runAction(
@@ -923,6 +928,14 @@ class InteractionPage extends StatelessWidget {
                 : null,
           ),
         ),
+        const SizedBox(height: 22),
+        const SectionTitle(label: '小剧场'),
+        const SizedBox(height: 8),
+        TheaterPanel(controller: controller),
+        const SizedBox(height: 22),
+        const SectionTitle(label: '提醒'),
+        const SizedBox(height: 8),
+        ReminderPanel(controller: controller),
       ],
     );
   }
@@ -1249,10 +1262,19 @@ class AccountPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = controller.snapshot;
+    final trialEnded = !snapshot.activated && controller.liveTrialSeconds <= 0;
     return PageScroll(
-      onRefresh: controller.refresh,
+      onRefresh: () async {
+        await controller.refresh(checkTrial: true);
+        await controller.refreshSiteLinks();
+      },
       children: [
-        const PageIntro(title: '我的', subtitle: '激活、权限与应用设置。'),
+        PageIntro(
+          title: '我的',
+          subtitle: snapshot.activated
+              ? '这台 Android 已经解锁完整功能。'
+              : '想给搭子发一张 GIF，或继续小剧场和提醒时，再输入激活码。',
+        ),
         Panel(
           color: snapshot.activated ? _mint : _coralSoft,
           child: Row(
@@ -1270,7 +1292,11 @@ class AccountPage extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      snapshot.activated ? '此设备已激活' : '体验与激活',
+                      snapshot.activated
+                          ? '此设备已激活'
+                          : trialEnded
+                          ? '五分钟体验结束啦'
+                          : '体验与激活',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 4),
@@ -1287,14 +1313,38 @@ class AccountPage extends StatelessWidget {
           ),
         ),
         if (!snapshot.activated) ...[
+          if (trialEnded) ...[
+            const SizedBox(height: 14),
+            const AdaptiveActionRow(
+              children: [
+                _KeepPauseCard(
+                  title: '继续留下',
+                  color: Color(0xffeef6f3),
+                  border: Color(0xffc7ddd6),
+                  titleColor: Color(0xff167d6c),
+                  items: ['桌宠还在角落', '走动、拖动、换一只', '内置图鉴和 3 个自定义 GIF'],
+                ),
+                _KeepPauseCard(
+                  title: '想接着玩再回来',
+                  color: Color(0xfffbf6f1),
+                  border: Color(0xffe6d6c6),
+                  titleColor: Color(0xff9a6a3a),
+                  items: ['给搭子发 GIF', '小剧场、提醒', '词包和外部图鉴'],
+                ),
+              ],
+            ),
+          ],
           const SizedBox(height: 14),
           Panel(
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text('已有 6 位激活码', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: () => _activateWithPrompt(context),
                   icon: const Icon(Icons.lock_open_outlined),
-                  label: const Text('输入激活码'),
+                  label: Text(trialEnded ? '解锁完整功能' : '输入激活码'),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
@@ -1305,6 +1355,103 @@ class AccountPage extends StatelessWidget {
                   ),
                   icon: const Icon(Icons.timer_outlined),
                   label: const Text('检查体验时间'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('还没有激活码', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 10),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final stacked = constraints.maxWidth < 420;
+                    final qr = ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.asset(
+                        'assets/contact-author-wechat.png',
+                        width: stacked ? double.infinity : 148,
+                        height: stacked ? 168 : 148,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => SizedBox(
+                          width: stacked ? double.infinity : 148,
+                          height: stacked ? 168 : 148,
+                          child: const ColoredBox(
+                            color: _mint,
+                            child: Icon(Icons.qr_code_2, color: _brand, size: 48),
+                          ),
+                        ),
+                      ),
+                    );
+                    final copy = Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('加作者微信，备注「桌搭子」，按提示领取激活码。一般当天回。'),
+                        const SizedBox(height: 10),
+                        const Text('微信号', style: TextStyle(color: _muted, fontSize: 12)),
+                        SelectableText(
+                          snapshot.wechatId,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: _ink,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        AdaptiveActionRow(
+                          children: [
+                            OutlinedButton.icon(
+                              onPressed: () => runAction(
+                                context,
+                                controller.copyText(snapshot.wechatId),
+                                (_) => '微信号已复制，备注「桌搭子」即可',
+                              ),
+                              icon: const Icon(Icons.copy_outlined),
+                              label: const Text('复制微信号'),
+                            ),
+                            if (snapshot.xianyuUrl.isNotEmpty)
+                              OutlinedButton.icon(
+                                onPressed: () => runAction(
+                                  context,
+                                  controller.openUrl(snapshot.xianyuUrl),
+                                  (_) => '',
+                                ),
+                                icon: const Icon(Icons.storefront_outlined),
+                                label: const Text('去闲鱼看看'),
+                              ),
+                          ],
+                        ),
+                      ],
+                    );
+                    if (stacked) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [qr, const SizedBox(height: 12), copy],
+                      );
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        qr,
+                        const SizedBox(width: 14),
+                        Expanded(child: copy),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextButton.icon(
+                  onPressed: () => runAction(
+                    context,
+                    controller.openUrl(snapshot.websiteUrl),
+                    (_) => '',
+                  ),
+                  icon: const Icon(Icons.public_outlined),
+                  label: const Text('去官网看看'),
                 ),
               ],
             ),
@@ -1358,9 +1505,103 @@ class AccountPage extends StatelessWidget {
         const SizedBox(height: 8),
         Panel(
           child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               InfoRow(label: '当前版本', value: 'Android v${snapshot.version}'),
-              const Divider(height: 15),
+              const SizedBox(height: 12),
+              Text(
+                controller.update.message,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              if (controller.update.notes.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(controller.update.notes),
+              ],
+              if (controller.update.downloading ||
+                  controller.update.downloaded) ...[
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: LinearProgressIndicator(
+                    minHeight: 6,
+                    value: controller.update.progress <= 0
+                        ? null
+                        : controller.update.progress / 100,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('自动检查更新'),
+                subtitle: const Text('打开应用后先看一下有没有新版本'),
+                value: snapshot.autoCheckUpdates,
+                onChanged: (value) =>
+                    controller.setSetting(settingAutoCheckUpdates, value),
+              ),
+              const SizedBox(height: 4),
+              AdaptiveActionRow(
+                children: [
+                  FilledButton.icon(
+                    onPressed: controller.update.busy || controller.busy
+                        ? null
+                        : () => runAction(
+                            context,
+                            controller.checkUpdate(),
+                            (_) => controller.update.message,
+                          ),
+                    icon: const Icon(Icons.system_update_alt_outlined),
+                    label: const Text('检查更新'),
+                  ),
+                  if (controller.update.available &&
+                      snapshot.ignoredUpdateVersion !=
+                          controller.update.version)
+                    OutlinedButton.icon(
+                      onPressed: controller.busy
+                          ? null
+                          : () => runAction(
+                              context,
+                              controller.downloadUpdate(),
+                              (_) => controller.update.message,
+                            ),
+                      icon: const Icon(Icons.download_outlined),
+                      label: const Text('下载更新'),
+                    ),
+                  if (controller.update.downloaded)
+                    FilledButton.icon(
+                      onPressed: controller.busy
+                          ? null
+                          : () => runAction(
+                              context,
+                              controller.installUpdate(),
+                              (_) => snapshot.canInstallPackages
+                                  ? '请在系统安装页确认更新'
+                                  : '',
+                            ),
+                      icon: const Icon(Icons.install_mobile_outlined),
+                      label: const Text('安装更新'),
+                    ),
+                  if (controller.update.available &&
+                      snapshot.ignoredUpdateVersion !=
+                          controller.update.version)
+                    TextButton(
+                      onPressed: controller.busy
+                          ? null
+                          : () => runAction(
+                              context,
+                              controller.ignoreUpdate(),
+                              (_) => '已忽略该版本',
+                            ),
+                      child: const Text('忽略该版本'),
+                    ),
+                ],
+              ),
+              if (!snapshot.canInstallPackages &&
+                  controller.update.downloaded) ...[
+                const SizedBox(height: 8),
+                const Text('安装前需要允许桌搭子安装应用。点安装更新后会先打开系统设置。'),
+              ],
+              const Divider(height: 22),
               PermissionRow(
                 icon: Icons.settings_outlined,
                 label: '应用系统设置',
@@ -1422,6 +1663,223 @@ class AccountPage extends StatelessWidget {
         (_) => '此 Android 设备已激活',
       );
     }
+  }
+}
+
+class _KeepPauseCard extends StatelessWidget {
+  const _KeepPauseCard({
+    required this.title,
+    required this.color,
+    required this.border,
+    required this.titleColor,
+    required this.items,
+  });
+  final String title;
+  final Color color;
+  final Color border;
+  final Color titleColor;
+  final List<String> items;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: double.infinity,
+    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+    decoration: BoxDecoration(
+      color: color,
+      border: Border.all(color: border),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: titleColor,
+            fontSize: 13,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (final item in items)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              '· $item',
+              style: TextStyle(color: titleColor.withValues(alpha: 0.92), fontSize: 12, height: 1.35),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+class TheaterPanel extends StatelessWidget {
+  const TheaterPanel({required this.controller, super.key});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = controller.snapshot;
+    final scripts = snapshot.theaterScripts;
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('自动随机上演'),
+            subtitle: Text(
+              snapshot.premium ? '按间隔从剧本池里抽一场' : '体验或正式激活后可开启',
+            ),
+            value: snapshot.theaterEnabled,
+            onChanged: snapshot.premium
+                ? (value) => controller.setSetting(settingTheaterEnabled, value)
+                : null,
+          ),
+          const Divider(height: 10),
+          ChoiceRow(
+            label: '上演间隔',
+            value: '${snapshot.theaterInterval}',
+            options: const {
+              '60': '1 分钟',
+              '180': '3 分钟',
+              '300': '5 分钟',
+              '600': '10 分钟',
+              '1800': '30 分钟',
+            },
+            enabled: snapshot.premium,
+            onChanged: (value) =>
+                controller.setSetting(settingTheaterInterval, int.parse(value)),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: snapshot.premium
+                  ? () => startTheater(context, controller)
+                  : null,
+              icon: const Icon(Icons.theater_comedy_outlined),
+              label: Text(
+                !snapshot.running
+                    ? '先启动桌宠再演'
+                    : snapshot.premium
+                    ? '立即上演'
+                    : '体验或激活后可用',
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            scripts.isEmpty
+                ? '还没有导入剧本，先用内置的三场小剧场。'
+                : '已导入 ${scripts.length}/10 个剧本 · 每次演出随机抽取',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (scripts.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final script in scripts)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(script.name),
+                subtitle: Text('${script.sceneCount} 轮对白'),
+                trailing: IconButton(
+                  tooltip: '删除剧本',
+                  onPressed: snapshot.premium
+                      ? () => runAction(
+                          context,
+                          controller.deleteTheaterScript(script.id),
+                          (_) => '剧本已删除',
+                        )
+                      : null,
+                  icon: const Icon(Icons.delete_outline, color: _coral),
+                ),
+              ),
+          ],
+          const SizedBox(height: 8),
+          AdaptiveActionRow(
+            children: [
+              OutlinedButton.icon(
+                onPressed: snapshot.premium
+                    ? () => runAction(
+                        context,
+                        controller.importTheaterScript(),
+                        (_) => '剧本已导入',
+                      )
+                    : null,
+                icon: const Icon(Icons.file_upload_outlined),
+                label: const Text('导入剧本'),
+              ),
+              OutlinedButton.icon(
+                onPressed: () => showTheaterGuide(context),
+                icon: const Icon(Icons.help_outline),
+                label: const Text('格式说明'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ReminderPanel extends StatelessWidget {
+  const ReminderPanel({required this.controller, super.key});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = controller.snapshot;
+    final reminders = snapshot.reminders;
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            !snapshot.premium
+                ? '体验或正式激活后，桌宠会在设定时间提醒你。'
+                : reminders.isEmpty
+                ? '暂无提醒'
+                : '共 ${reminders.length} 个提醒',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: snapshot.premium
+                  ? () => editReminder(context, controller)
+                  : null,
+              icon: const Icon(Icons.add_alert_outlined),
+              label: const Text('新建提醒'),
+            ),
+          ),
+          if (reminders.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            for (final reminder in reminders)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  reminder.enabled
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_off_outlined,
+                  color: reminder.enabled ? _brand : _muted,
+                ),
+                title: Text(reminder.message),
+                subtitle: Text(
+                  '${_formatReminderTime(reminder)} · ${_emotionLabel(reminder.emotion)}'
+                  '${reminder.repeatDaily ? ' · 每天' : ''}'
+                  '${reminder.enabled ? '' : ' · 已关闭'}',
+                ),
+                trailing: const Icon(Icons.chevron_right, color: _muted),
+                onTap: snapshot.premium
+                    ? () => editReminder(context, controller, reminder: reminder)
+                    : null,
+              ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -1530,7 +1988,8 @@ class AdaptiveActionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final compact = MediaQuery.sizeOf(context).width < 360;
+    final width = MediaQuery.sizeOf(context).width;
+    final compact = width < 360;
     if (compact) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1538,6 +1997,31 @@ class AdaptiveActionRow extends StatelessWidget {
           for (var i = 0; i < children.length; i++) ...[
             if (i > 0) const SizedBox(height: 8),
             children[i],
+          ],
+        ],
+      );
+    }
+    if (children.length > 3 && width < 560) {
+      final rows = <Widget>[];
+      for (var i = 0; i < children.length; i += 2) {
+        final pair = children.sublist(i, i + 2 > children.length ? children.length : i + 2);
+        rows.add(
+          Row(
+            children: [
+              for (var j = 0; j < pair.length; j++) ...[
+                if (j > 0) const SizedBox(width: 9),
+                Expanded(child: pair[j]),
+              ],
+              if (pair.length == 1) const Expanded(child: SizedBox.shrink()),
+            ],
+          ),
+        );
+      }
+      return Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            rows[i],
           ],
         ],
       );
@@ -2136,6 +2620,254 @@ void tabToAccount(BuildContext context) {
 void tabToCompanion(BuildContext context) {
   final shell = context.findAncestorStateOfType<_AppShellState>();
   shell?.selectTab(3);
+}
+
+Future<void> startTheater(
+  BuildContext context,
+  AppController controller,
+) async {
+  final snapshot = controller.snapshot;
+  if (!snapshot.overlayAllowed) {
+    await runAction(
+      context,
+      controller.requestOverlayPermission(),
+      (_) => '打开悬浮窗后回来，就能上演小剧场',
+    );
+    return;
+  }
+  if (!snapshot.running) {
+    await runAction(context, controller.service('start'), (_) => '');
+    if (!controller.snapshot.running) return;
+  }
+  if (!controller.snapshot.premium) {
+    if (context.mounted) tabToAccount(context);
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('小剧场需要体验或正式激活')),
+      );
+    }
+    return;
+  }
+  await runAction(
+    context,
+    controller.service('theater'),
+    (_) => '小剧场已经开演',
+  );
+}
+
+Future<void> showTheaterGuide(BuildContext context) async {
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: _page,
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('小剧场剧本格式', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            const Text(
+              '每个 JSON 剧本包含 3–5 轮双人对白。导入后每次演出会从剧本池随机抽取。',
+            ),
+            const SizedBox(height: 12),
+            const SelectableText(
+              '{"name":"周一摸鱼大会","scenes":[\n'
+              '  {"main":"我宣布，今天的任务是准时下班。","companion":"收到，我负责盯住时钟。"},\n'
+              '  {"main":"要是临时又来需求呢？","companion":"先深呼吸，再把优先级问清楚。"},\n'
+              '  {"main":"计划听起来很稳。","companion":"最后记得保存文件，我们撤！"}\n'
+              ']}',
+              style: TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4),
+            ),
+            const SizedBox(height: 12),
+            const Text('也兼容 actorA / actorB 字段。每句最多 60 个字符。'),
+            const SizedBox(height: 16),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('知道了'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+const _emotionLabels = <String, String>{
+  'happy': '开心',
+  'cheer': '加油',
+  'shy': '害羞',
+  'surprised': '惊讶',
+  'angry': '生气',
+  'confused': '疑惑',
+  'sad': '难过',
+  'sleepy': '困倦',
+  'calm': '安静',
+};
+
+String _emotionLabel(String emotion) => _emotionLabels[emotion] ?? '开心';
+
+String _two(int value) => value.toString().padLeft(2, '0');
+
+String _formatReminderTime(ReminderItem reminder) {
+  final time = reminder.localTime;
+  return '${time.month}/${time.day} ${_two(time.hour)}:${_two(time.minute)}';
+}
+
+Future<void> editReminder(
+  BuildContext context,
+  AppController controller, {
+  ReminderItem? reminder,
+}) async {
+  var enabled = reminder?.enabled ?? true;
+  var repeatDaily = reminder?.repeatDaily ?? false;
+  var emotion = reminder?.emotion ?? 'happy';
+  var expressionPetId = reminder?.expressionPetId ?? '';
+  var at = reminder?.localTime ?? DateTime.now().add(const Duration(minutes: 10));
+  final message = TextEditingController(text: reminder?.message ?? '休息一下吧');
+  final saved = await showModalBottomSheet<bool>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: _page,
+    builder: (context) {
+      return StatefulBuilder(
+        builder: (context, setModalState) {
+          final inset = MediaQuery.viewInsetsOf(context).bottom;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(20, 18, 20, 20 + inset),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    reminder == null ? '新建提醒' : '编辑提醒',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: message,
+                    maxLength: 40,
+                    decoration: const InputDecoration(labelText: '提醒内容'),
+                  ),
+                  const SizedBox(height: 8),
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('提醒时间'),
+                    subtitle: Text(
+                      '${at.year}-${_two(at.month)}-${_two(at.day)} ${_two(at.hour)}:${_two(at.minute)}',
+                    ),
+                    trailing: const Icon(Icons.schedule_outlined),
+                    onTap: () async {
+                      final date = await showDatePicker(
+                        context: context,
+                        initialDate: at,
+                        firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                      );
+                      if (date == null || !context.mounted) return;
+                      final time = await showTimePicker(
+                        context: context,
+                        initialTime: TimeOfDay.fromDateTime(at),
+                      );
+                      if (time == null) return;
+                      setModalState(() {
+                        at = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                      });
+                    },
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: _emotionLabels.containsKey(emotion) ? emotion : 'happy',
+                    decoration: const InputDecoration(labelText: '情绪'),
+                    items: _emotionLabels.entries
+                        .map(
+                          (item) => DropdownMenuItem(
+                            value: item.key,
+                            child: Text(item.value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) setModalState(() => emotion = value);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<String>(
+                    initialValue: expressionPetId,
+                    decoration: const InputDecoration(
+                      labelText: '指定表情 GIF（可选）',
+                      helperText: '到点时桌宠会短暂换成这只',
+                    ),
+                    items: [
+                      const DropdownMenuItem(value: '', child: Text('不更换')),
+                      for (final pet in controller.snapshot.pets)
+                        DropdownMenuItem(value: pet.id, child: Text(pet.name)),
+                    ],
+                    onChanged: (value) {
+                      setModalState(() => expressionPetId = value ?? '');
+                    },
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('启用提醒'),
+                    value: enabled,
+                    onChanged: (value) => setModalState(() => enabled = value),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('每天重复'),
+                    value: repeatDaily,
+                    onChanged: (value) => setModalState(() => repeatDaily = value),
+                  ),
+                  const SizedBox(height: 8),
+                  AdaptiveActionRow(
+                    children: [
+                      if (reminder != null)
+                        OutlinedButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('删除提醒'),
+                        ),
+                      FilledButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('保存提醒'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+  if (!context.mounted) {
+    message.dispose();
+    return;
+  }
+  if (saved == false && reminder != null) {
+    await runAction(context, controller.deleteReminder(reminder.id), (_) => '提醒已删除');
+  } else if (saved == true) {
+    await runAction(
+      context,
+      controller.saveReminder(
+        id: reminder?.id,
+        enabled: enabled,
+        at: at.millisecondsSinceEpoch,
+        message: message.text,
+        emotion: emotion,
+        expressionPetId: expressionPetId,
+        repeatDaily: repeatDaily,
+      ),
+      (_) => '提醒已保存',
+    );
+  }
+  message.dispose();
 }
 
 Future<void> sendHomeGif(

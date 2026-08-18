@@ -2,6 +2,8 @@ package com.zhuodazi.android;
 
 import android.Manifest;
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.ImageDecoder;
@@ -12,6 +14,9 @@ import android.os.Build;
 import android.provider.Settings;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.FileProvider;
+
+import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -34,6 +39,9 @@ public final class FlutterMainActivity extends FlutterActivity {
     private static final String CHANNEL = "com.zhuodazi.android/host";
     private static final int REQUEST_GIF = 4302;
     private static final int REQUEST_NOTIFICATIONS = 4303;
+    private static final int REQUEST_THEATER_SCRIPT = 4304;
+    private static final String AUTHOR_WECHAT = "wcl_lcw627";
+    private static final String WEBSITE_URL = "https://desktoppet.online/";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private SettingsStore settings;
@@ -42,7 +50,12 @@ public final class FlutterMainActivity extends FlutterActivity {
     private LicenseService licenses;
     private InteractionContentService interactionContent;
     private CompanionService companions;
+    private TheaterScriptStore theaterScripts;
+    private ReminderStore reminders;
+    private UpdateService updates;
+    private MethodChannel channel;
     private MethodChannel.Result pendingImport;
+    private MethodChannel.Result pendingTheaterImport;
 
     @Override public void configureFlutterEngine(@NonNull FlutterEngine engine) {
         super.configureFlutterEngine(engine);
@@ -52,8 +65,11 @@ public final class FlutterMainActivity extends FlutterActivity {
         licenses = new LicenseService(this);
         interactionContent = new InteractionContentService(this, licenses);
         companions = new CompanionService(this, licenses, pets);
-        new MethodChannel(engine.getDartExecutor().getBinaryMessenger(), CHANNEL)
-            .setMethodCallHandler(this::handleCall);
+        theaterScripts = new TheaterScriptStore(settings);
+        reminders = new ReminderStore(settings);
+        updates = new UpdateService(this, settings, licenses);
+        channel = new MethodChannel(engine.getDartExecutor().getBinaryMessenger(), CHANNEL);
+        channel.setMethodCallHandler(this::handleCall);
     }
 
     private void handleCall(MethodCall call, MethodChannel.Result result) {
@@ -72,6 +88,17 @@ public final class FlutterMainActivity extends FlutterActivity {
                 case "deleteCustom" -> deleteCustom(call, result);
                 case "activate" -> activate((String) call.argument("code"), result);
                 case "checkTrial" -> checkTrial(result);
+                case "siteLinks" -> siteLinks(result);
+                case "openUrl" -> openUrl((String) call.argument("url"), result);
+                case "copyText" -> copyText((String) call.argument("text"), result);
+                case "importTheaterScript" -> importTheaterScript(result);
+                case "deleteTheaterScript" -> deleteTheaterScript((String) call.argument("id"), result);
+                case "saveReminder" -> saveReminder(call, result);
+                case "deleteReminder" -> deleteReminder((String) call.argument("id"), result);
+                case "checkUpdate" -> checkUpdate(!Boolean.FALSE.equals(call.argument("manual")), result);
+                case "downloadUpdate" -> downloadUpdate(result);
+                case "installUpdate" -> installUpdate(result);
+                case "ignoreUpdate" -> ignoreUpdate(result);
                 case "companionRefresh" -> runAsync(result, () -> profileMap(companions.refreshProfile()));
                 case "companionUpdateName" -> runAsync(result,
                     () -> profileMap(companions.updateName((String) call.argument("name"))));
@@ -118,7 +145,30 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("trialSeconds", licenses.trialRemainingSeconds());
         value.put("installationSuffix", lastEight(licenses.installationId()));
         value.put("version", NetworkClient.appVersion(this));
+        value.put("theaterEnabled", settings.theaterEnabled());
+        value.put("theaterInterval", settings.theaterInterval());
+        value.put("theaterScripts", theaterScriptMaps());
+        value.put("reminders", reminderMaps());
+        value.put("xianyuUrl", settings.xianyuUrl());
+        value.put("wechatId", AUTHOR_WECHAT);
+        value.put("websiteUrl", WEBSITE_URL);
+        value.put("autoCheckUpdates", settings.autoCheckUpdates());
+        value.put("ignoredUpdateVersion", settings.ignoredUpdateVersion());
+        value.put("canInstallPackages", canInstallPackages());
+        value.put("update", updates.state().toMap());
         return value;
+    }
+
+    private List<Map<String, Object>> theaterScriptMaps() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (TheaterScriptStore.Script script : theaterScripts.scripts()) result.add(script.toMap());
+        return result;
+    }
+
+    private List<Map<String, Object>> reminderMaps() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (ReminderStore.Reminder reminder : reminders.reminders()) result.add(reminder.toMap());
+        return result;
     }
 
     private List<Map<String, String>> petMaps() {
@@ -139,10 +189,17 @@ public final class FlutterMainActivity extends FlutterActivity {
             settings.putString(key, String.valueOf(value));
             settings.putBoolean(SettingsStore.RANDOM_PET, false);
         } else if (SettingsStore.SIZE.equals(key) || SettingsStore.OPACITY.equals(key)
-            || SettingsStore.RANDOM_PET_INTERVAL.equals(key)) {
-            settings.putInt(key, ((Number) value).intValue());
+            || SettingsStore.RANDOM_PET_INTERVAL.equals(key)
+            || SettingsStore.THEATER_INTERVAL.equals(key)) {
+            int number = ((Number) value).intValue();
+            if (SettingsStore.THEATER_INTERVAL.equals(key)
+                && number != 60 && number != 180 && number != 300 && number != 600 && number != 1800) {
+                number = 300;
+            }
+            settings.putInt(key, number);
         } else if (SettingsStore.PERSONALITY.equals(key) || SettingsStore.INTERACTION_MODE.equals(key)
-            || SettingsStore.WORD_PACK.equals(key)) {
+            || SettingsStore.WORD_PACK.equals(key)
+            || SettingsStore.IGNORED_UPDATE_VERSION.equals(key)) {
             settings.putString(key, String.valueOf(value));
         } else {
             settings.putBoolean(key, Boolean.TRUE.equals(value));
@@ -158,6 +215,7 @@ public final class FlutterMainActivity extends FlutterActivity {
             case "next" -> PetOverlayService.ACTION_NEXT;
             case "interact" -> PetOverlayService.ACTION_INTERACT;
             case "send" -> PetOverlayService.ACTION_SEND_COMPANION;
+            case "theater" -> PetOverlayService.ACTION_THEATER;
             case "show" -> PetOverlayService.ACTION_SHOW;
             case "hide" -> PetOverlayService.ACTION_HIDE;
             case "clickThrough" -> PetOverlayService.ACTION_CLICK_THROUGH;
@@ -266,6 +324,134 @@ public final class FlutterMainActivity extends FlutterActivity {
         });
     }
 
+    private void siteLinks(MethodChannel.Result result) {
+        runAsync(result, () -> {
+            try {
+                JSONObject response = NetworkClient.json(this, "GET", DeskPetApi.SITE_SETTINGS,
+                    null, licenses, NetworkClient.Auth.NONE);
+                String url = response.optString("xianyuUrl", "").trim();
+                if (url.startsWith("https://")) settings.putString(SettingsStore.XIANYU_URL, url);
+            } catch (Exception ignored) { }
+            return snapshot();
+        });
+    }
+
+    private void openUrl(String url, MethodChannel.Result result) {
+        String target = url == null ? "" : url.trim();
+        if (target.isEmpty()) target = WEBSITE_URL;
+        if (!target.startsWith("https://") && !target.startsWith("http://")) {
+            result.error("INVALID_URL", "链接无效", null);
+            return;
+        }
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(target))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        result.success(true);
+    }
+
+    private void copyText(String text, MethodChannel.Result result) {
+        String value = text == null ? "" : text;
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        clipboard.setPrimaryClip(ClipData.newPlainText("桌搭子", value));
+        result.success(true);
+    }
+
+    private void importTheaterScript(MethodChannel.Result result) {
+        if (!licenses.hasPremiumAccess()) {
+            result.error("PREMIUM_REQUIRED", "体验或正式激活后才能导入小剧场剧本", null);
+            return;
+        }
+        if (theaterScripts.scripts().size() >= TheaterScriptStore.MAX_SCRIPTS) {
+            result.error("LIMIT", "最多只能保存 10 个小剧场剧本", null);
+            return;
+        }
+        pendingTheaterImport = result;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(Intent.CATEGORY_OPENABLE)
+            .setType("application/json");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"application/json", "text/plain", "*/*"});
+        startActivityForResult(intent, REQUEST_THEATER_SCRIPT);
+    }
+
+    private void deleteTheaterScript(String id, MethodChannel.Result result) {
+        theaterScripts.delete(id);
+        sendService(PetOverlayService.ACTION_REFRESH);
+        result.success(snapshot());
+    }
+
+    private void saveReminder(MethodCall call, MethodChannel.Result result) {
+        if (!licenses.hasPremiumAccess()) {
+            result.error("PREMIUM_REQUIRED", "体验或正式激活后才能使用提醒", null);
+            return;
+        }
+        Number at = call.argument("at");
+        reminders.save(
+            (String) call.argument("id"),
+            Boolean.TRUE.equals(call.argument("enabled")),
+            at == null ? 0L : at.longValue(),
+            (String) call.argument("message"),
+            (String) call.argument("emotion"),
+            (String) call.argument("expressionPetId"),
+            Boolean.TRUE.equals(call.argument("repeatDaily")));
+        sendService(PetOverlayService.ACTION_REFRESH);
+        result.success(snapshot());
+    }
+
+    private void deleteReminder(String id, MethodChannel.Result result) {
+        reminders.delete(id);
+        sendService(PetOverlayService.ACTION_REFRESH);
+        result.success(snapshot());
+    }
+
+    private void checkUpdate(boolean manual, MethodChannel.Result result) {
+        if (manual) updates.clearIgnored();
+        runAsync(result, () -> {
+            updates.check(manual);
+            return snapshot();
+        });
+    }
+
+    private void downloadUpdate(MethodChannel.Result result) {
+        runAsync(result, () -> {
+            updates.download(state -> runOnUiThread(() -> {
+                if (channel != null) channel.invokeMethod("updateProgress", state.toMap());
+            }));
+            return snapshot();
+        });
+    }
+
+    private void installUpdate(MethodChannel.Result result) {
+        File apk = updates.downloadedFile();
+        if (apk == null) {
+            result.error("UPDATE_MISSING", "已下载的更新文件不存在", null);
+            return;
+        }
+        if (!canInstallPackages()) {
+            startActivity(new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:" + getPackageName())).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            result.error("INSTALL_PERMISSION", "请先允许桌搭子安装应用，再回来点安装更新", null);
+            return;
+        }
+        Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".update", apk);
+        Intent intent = new Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .setClipData(ClipData.newRawUri("update", uri))
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        for (var resolve : getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)) {
+            grantUriPermission(resolve.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        }
+        startActivity(intent);
+        result.success(snapshot());
+    }
+
+    private void ignoreUpdate(MethodChannel.Result result) {
+        updates.ignoreAvailable();
+        result.success(snapshot());
+    }
+
+    private boolean canInstallPackages() {
+        return getPackageManager().canRequestPackageInstalls();
+    }
+
     private void runAsync(MethodChannel.Result result, ThrowingSupplier<Object> operation) {
         executor.execute(() -> {
             try {
@@ -293,6 +479,10 @@ public final class FlutterMainActivity extends FlutterActivity {
 
     @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_THEATER_SCRIPT) {
+            handleTheaterImportResult(resultCode, data);
+            return;
+        }
         if (requestCode != REQUEST_GIF || pendingImport == null) return;
         MethodChannel.Result result = pendingImport;
         pendingImport = null;
@@ -333,6 +523,29 @@ public final class FlutterMainActivity extends FlutterActivity {
                 runOnUiThread(() -> result.success(snapshot()));
             } catch (Exception error) {
                 pending.delete();
+                runOnUiThread(() -> result.error("IMPORT_ERROR", safeMessage(error), null));
+            }
+        });
+    }
+
+    private void handleTheaterImportResult(int resultCode, Intent data) {
+        if (pendingTheaterImport == null) return;
+        MethodChannel.Result result = pendingTheaterImport;
+        pendingTheaterImport = null;
+        if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+            result.success(snapshot());
+            return;
+        }
+        executor.execute(() -> {
+            try (InputStream input = getContentResolver().openInputStream(data.getData())) {
+                if (input == null) throw new IllegalStateException("无法读取所选文件");
+                byte[] bytes = TheaterScriptStore.readLimited(input, TheaterScriptStore.MAX_FILE_BYTES)
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                String name = data.getData().getLastPathSegment();
+                theaterScripts.importJson(bytes, name);
+                sendService(PetOverlayService.ACTION_REFRESH);
+                runOnUiThread(() -> result.success(snapshot()));
+            } catch (Exception error) {
                 runOnUiThread(() -> result.error("IMPORT_ERROR", safeMessage(error), null));
             }
         });

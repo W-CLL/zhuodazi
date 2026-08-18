@@ -24,6 +24,13 @@ final class SettingsStore {
     static final String POSITION_Y = "position_y";
     static final String TRIAL_EXPIRES_AT = "trial_expires_at";
     static final String SELECTED_TAB = "selected_tab";
+    static final String THEATER_ENABLED = "theater_enabled";
+    static final String THEATER_INTERVAL = "theater_interval";
+    static final String THEATER_SCRIPTS = "theater_scripts";
+    static final String REMINDERS = "reminders";
+    static final String XIANYU_URL = "xianyu_url";
+    static final String AUTO_CHECK_UPDATES = "auto_check_updates";
+    static final String IGNORED_UPDATE_VERSION = "ignored_update_version";
 
     private final SharedPreferences values;
 
@@ -51,6 +58,16 @@ final class SettingsStore {
     int positionY(int fallback) { return values.getInt(POSITION_Y, fallback); }
     int selectedTab() { return clamp(values.getInt(SELECTED_TAB, 0), 0, 4); }
     long trialExpiresAt() { return values.getLong(TRIAL_EXPIRES_AT, 0L); }
+    boolean theaterEnabled() { return values.getBoolean(THEATER_ENABLED, false); }
+    int theaterInterval() {
+        int value = values.getInt(THEATER_INTERVAL, 300);
+        return value == 60 || value == 180 || value == 300 || value == 600 || value == 1800 ? value : 300;
+    }
+    String theaterScriptsJson() { return values.getString(THEATER_SCRIPTS, "[]"); }
+    String remindersJson() { return values.getString(REMINDERS, "[]"); }
+    String xianyuUrl() { return values.getString(XIANYU_URL, ""); }
+    boolean autoCheckUpdates() { return values.getBoolean(AUTO_CHECK_UPDATES, true); }
+    String ignoredUpdateVersion() { return values.getString(IGNORED_UPDATE_VERSION, ""); }
 
     void putInt(String key, int value) { values.edit().putInt(key, value).apply(); }
     void putLong(String key, long value) { values.edit().putLong(key, value).apply(); }

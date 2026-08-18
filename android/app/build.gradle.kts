@@ -24,6 +24,7 @@ val prepareBundledPetAssets by tasks.registering(Sync::class) {
 
 dependencies {
     implementation(project(":flutter"))
+    implementation("androidx.core:core:1.16.0")
     implementation("com.google.crypto.tink:tink-android:1.23.0")
 }
 

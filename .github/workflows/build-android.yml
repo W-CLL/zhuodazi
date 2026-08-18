@@ -8,6 +8,7 @@ on:
       - "mobile_ui/**"
       - "macos/Resources/Pets/**"
       - "content-packs/互动词包/**"
+      - "content-packs/小剧场/**"
       - ".github/workflows/build-android.yml"
   pull_request:
     paths:
@@ -15,6 +16,7 @@ on:
       - "mobile_ui/**"
       - "macos/Resources/Pets/**"
       - "content-packs/互动词包/**"
+      - "content-packs/小剧场/**"
       - ".github/workflows/build-android.yml"
 
 permissions:
@@ -119,7 +121,7 @@ jobs:
               --draft \
               --target "$GITHUB_SHA" \
               --title "桌搭子 Android v1.1.0" \
-              --notes "Android 功能预览版：五栏应用界面、趣味互动、悬浮桌宠中央菜单、触摸穿透、搭子配对和桌宠互发。ARM64 适用于绝大多数手机，ARMv7 仅用于较旧的 32 位设备。安装后需授予显示在其他应用上层权限。"
+              --notes "Android 功能预览版：五栏应用界面、趣味互动、小剧场、提醒、检查更新与应用内安装、激活引导与闲鱼入口、悬浮桌宠中央菜单、触摸穿透、搭子配对和桌宠互发。ARM64 适用于绝大多数手机，ARMv7 仅用于较旧的 32 位设备。安装后需授予显示在其他应用上层权限。"
           fi
           gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
           gh release delete-asset "$tag" "ZhuoDazi-Android-1.1.0.apk" --yes || true

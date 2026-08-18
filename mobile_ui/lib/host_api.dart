@@ -12,6 +12,9 @@ const settingRandomPetInterval = 'random_pet_interval';
 const settingActivePet = 'active_pet';
 const settingWordPack = 'word_pack';
 const settingStartOnBoot = 'start_on_boot';
+const settingTheaterEnabled = 'theater_enabled';
+const settingTheaterInterval = 'theater_interval';
+const settingAutoCheckUpdates = 'auto_check_updates';
 
 class PetItem {
   const PetItem({required this.id, required this.name});
@@ -20,6 +23,82 @@ class PetItem {
   final String name;
 
   bool get isCustom => id.startsWith('@custom:');
+}
+
+class TheaterScriptItem {
+  const TheaterScriptItem({
+    required this.id,
+    required this.name,
+    required this.sceneCount,
+  });
+
+  final String id;
+  final String name;
+  final int sceneCount;
+}
+
+class ReminderItem {
+  const ReminderItem({
+    required this.id,
+    required this.enabled,
+    required this.at,
+    required this.message,
+    required this.emotion,
+    required this.expressionPetId,
+    required this.repeatDaily,
+  });
+
+  final String id;
+  final bool enabled;
+  final int at;
+  final String message;
+  final String emotion;
+  final String expressionPetId;
+  final bool repeatDaily;
+
+  DateTime get localTime => DateTime.fromMillisecondsSinceEpoch(at);
+}
+
+class UpdateState {
+  const UpdateState({
+    required this.phase,
+    required this.message,
+    required this.progress,
+    this.version = '',
+    this.notes = '',
+  });
+
+  factory UpdateState.idle() => const UpdateState(
+    phase: 'idle',
+    message: '可以检查更新',
+    progress: 0,
+  );
+
+  factory UpdateState.from(Map<String, dynamic> data) {
+    final manifest = data['manifest'];
+    final details = manifest is Map
+        ? Map<String, dynamic>.from(manifest)
+        : const <String, dynamic>{};
+    return UpdateState(
+      phase: '${data['phase'] ?? 'idle'}',
+      message: '${data['message'] ?? '可以检查更新'}',
+      progress: (data['progress'] as num?)?.toInt() ?? 0,
+      version: '${details['version'] ?? ''}',
+      notes: '${details['notes'] ?? ''}',
+    );
+  }
+
+  final String phase;
+  final String message;
+  final int progress;
+  final String version;
+  final String notes;
+
+  bool get checking => phase == 'checking';
+  bool get downloading => phase == 'downloading';
+  bool get available => phase == 'available';
+  bool get downloaded => phase == 'downloaded';
+  bool get busy => checking || downloading;
 }
 
 class HostSnapshot {
@@ -56,6 +135,22 @@ class HostSnapshot {
   String get wordPack => _string('wordPack', '');
   String get installationSuffix => _string('installationSuffix', '');
   String get version => _string('version', '1.1.0');
+  bool get theaterEnabled => _bool('theaterEnabled');
+  int get theaterInterval => _int('theaterInterval', 300);
+  String get xianyuUrl => _string('xianyuUrl', '');
+  String get wechatId => _string('wechatId', 'wcl_lcw627');
+  String get websiteUrl => _string('websiteUrl', 'https://desktoppet.online/');
+  bool get autoCheckUpdates => _data.containsKey('autoCheckUpdates')
+      ? _bool('autoCheckUpdates')
+      : true;
+  String get ignoredUpdateVersion => _string('ignoredUpdateVersion', '');
+  bool get canInstallPackages => _bool('canInstallPackages');
+
+  UpdateState get update {
+    final raw = _data['update'];
+    if (raw is! Map) return UpdateState.idle();
+    return UpdateState.from(Map<String, dynamic>.from(raw));
+  }
 
   List<PetItem> get pets {
     final raw = _data['pets'];
@@ -77,6 +172,45 @@ class HostSnapshot {
     final raw = _data['wordPacks'];
     if (raw is! List) return const [];
     return raw.map((item) => '$item').toList(growable: false);
+  }
+
+  List<TheaterScriptItem> get theaterScripts {
+    final raw = _data['theaterScripts'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final value = Map<String, dynamic>.from(item);
+          final scenes = value['scenes'];
+          return TheaterScriptItem(
+            id: '${value['id'] ?? ''}',
+            name: '${value['name'] ?? '小剧场剧本'}',
+            sceneCount: scenes is List ? scenes.length : 0,
+          );
+        })
+        .where((script) => script.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  List<ReminderItem> get reminders {
+    final raw = _data['reminders'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final value = Map<String, dynamic>.from(item);
+          return ReminderItem(
+            id: '${value['id'] ?? ''}',
+            enabled: value['enabled'] == true,
+            at: (value['at'] as num?)?.toInt() ?? 0,
+            message: '${value['message'] ?? ''}',
+            emotion: '${value['emotion'] ?? 'happy'}',
+            expressionPetId: '${value['expressionPetId'] ?? ''}',
+            repeatDaily: value['repeatDaily'] == true,
+          );
+        })
+        .where((reminder) => reminder.id.isNotEmpty && reminder.at > 0)
+        .toList(growable: false);
   }
 
   PetItem? get selectedPet {
@@ -147,6 +281,56 @@ class HostApi {
       _snapshotCall('activate', {'code': code});
 
   Future<HostSnapshot> checkTrial() => _snapshotCall('checkTrial');
+
+  Future<HostSnapshot> siteLinks() => _snapshotCall('siteLinks');
+
+  Future<void> openUrl(String url) =>
+      _channel.invokeMethod<void>('openUrl', {'url': url});
+
+  Future<void> copyText(String text) =>
+      _channel.invokeMethod<void>('copyText', {'text': text});
+
+  Future<HostSnapshot> importTheaterScript() =>
+      _snapshotCall('importTheaterScript');
+
+  Future<HostSnapshot> deleteTheaterScript(String id) =>
+      _snapshotCall('deleteTheaterScript', {'id': id});
+
+  Future<HostSnapshot> saveReminder({
+    String? id,
+    required bool enabled,
+    required int at,
+    required String message,
+    required String emotion,
+    required String expressionPetId,
+    required bool repeatDaily,
+  }) => _snapshotCall('saveReminder', {
+    if (id != null && id.isNotEmpty) 'id': id,
+    'enabled': enabled,
+    'at': at,
+    'message': message,
+    'emotion': emotion,
+    'expressionPetId': expressionPetId,
+    'repeatDaily': repeatDaily,
+  });
+
+  Future<HostSnapshot> deleteReminder(String id) =>
+      _snapshotCall('deleteReminder', {'id': id});
+
+  Future<HostSnapshot> checkUpdate({bool manual = true}) =>
+      _snapshotCall('checkUpdate', {'manual': manual});
+
+  Future<HostSnapshot> downloadUpdate() => _snapshotCall('downloadUpdate');
+
+  Future<HostSnapshot> installUpdate() => _snapshotCall('installUpdate');
+
+  Future<HostSnapshot> ignoreUpdate() => _snapshotCall('ignoreUpdate');
+
+  void listen(void Function(String method, Object? arguments) onEvent) {
+    _channel.setMethodCallHandler((call) async {
+      onEvent(call.method, call.arguments);
+    });
+  }
 
   Future<Map<String, dynamic>> companionRefresh() =>
       _mapCall('companionRefresh');

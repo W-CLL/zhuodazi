@@ -5,10 +5,13 @@ import 'package:flutter/foundation.dart';
 import 'host_api.dart';
 
 class AppController extends ChangeNotifier {
-  AppController({HostApi? api}) : _api = api ?? HostApi();
+  AppController({HostApi? api}) : _api = api ?? HostApi() {
+    _api.listen(_onHostEvent);
+  }
 
   final HostApi _api;
   HostSnapshot snapshot = HostSnapshot.empty();
+  UpdateState update = UpdateState.idle();
   Uint8List? petGif;
   Map<String, dynamic>? companion;
   bool loading = true;
@@ -18,6 +21,7 @@ class AppController extends ChangeNotifier {
   DateTime? _trialSyncedAt;
   int _trialSecondsAtSync = 0;
   Timer? _trialTimer;
+  bool _autoChecked = false;
 
   int get liveTrialSeconds {
     if (snapshot.activated) return 0;
@@ -39,6 +43,12 @@ class AppController extends ChangeNotifier {
     notifyListeners();
     try {
       await _pullSnapshot(checkTrial: true);
+      try {
+        snapshot = await _api.siteLinks();
+        _rememberTrial(snapshot);
+        _rememberUpdate(snapshot);
+      } catch (_) {}
+      unawaited(_maybeAutoCheckUpdates());
     } finally {
       loading = false;
       notifyListeners();
@@ -56,6 +66,7 @@ class AppController extends ChangeNotifier {
       await Future<void>.delayed(const Duration(milliseconds: 260));
       snapshot = await _api.snapshot();
       _rememberTrial(snapshot);
+      _rememberUpdate(snapshot);
     });
   }
 
@@ -77,6 +88,7 @@ class AppController extends ChangeNotifier {
     final previousPet = snapshot.activePet;
     snapshot = await _api.setSetting(key, value);
     _rememberTrial(snapshot);
+    _rememberUpdate(snapshot);
     if (snapshot.activePet != previousPet) await _loadActivePet();
     notifyListeners();
   }
@@ -115,6 +127,93 @@ class AppController extends ChangeNotifier {
     await _guard(() async {
       snapshot = await _api.checkTrial();
       _rememberTrial(snapshot);
+    });
+  }
+
+  Future<void> refreshSiteLinks() async {
+    await _guard(() async {
+      snapshot = await _api.siteLinks();
+      _rememberTrial(snapshot);
+    });
+  }
+
+  Future<void> openUrl(String url) => _api.openUrl(url);
+
+  Future<void> copyText(String text) => _api.copyText(text);
+
+  Future<void> importTheaterScript() async {
+    await _guard(() async {
+      snapshot = await _api.importTheaterScript();
+      _rememberTrial(snapshot);
+    });
+  }
+
+  Future<void> deleteTheaterScript(String id) async {
+    await _guard(() async {
+      snapshot = await _api.deleteTheaterScript(id);
+      _rememberTrial(snapshot);
+    });
+  }
+
+  Future<void> saveReminder({
+    String? id,
+    required bool enabled,
+    required int at,
+    required String message,
+    required String emotion,
+    required String expressionPetId,
+    required bool repeatDaily,
+  }) async {
+    await _guard(() async {
+      snapshot = await _api.saveReminder(
+        id: id,
+        enabled: enabled,
+        at: at,
+        message: message,
+        emotion: emotion,
+        expressionPetId: expressionPetId,
+        repeatDaily: repeatDaily,
+      );
+      _rememberTrial(snapshot);
+    });
+  }
+
+  Future<void> deleteReminder(String id) async {
+    await _guard(() async {
+      snapshot = await _api.deleteReminder(id);
+      _rememberTrial(snapshot);
+    });
+  }
+
+  Future<void> checkUpdate({bool manual = true}) async {
+    await _guard(() async {
+      snapshot = await _api.checkUpdate(manual: manual);
+      _rememberTrial(snapshot);
+      _rememberUpdate(snapshot);
+    });
+  }
+
+  Future<void> downloadUpdate() async {
+    await _guard(() async {
+      snapshot = await _api.downloadUpdate();
+      _rememberTrial(snapshot);
+      _rememberUpdate(snapshot);
+    });
+  }
+
+  Future<void> installUpdate() async {
+    await _guard(() async {
+      snapshot = await _api.installUpdate();
+      _rememberTrial(snapshot);
+      _rememberUpdate(snapshot);
+    });
+  }
+
+  Future<void> ignoreUpdate() async {
+    await _guard(() async {
+      snapshot = await _api.ignoreUpdate();
+      _rememberTrial(snapshot);
+      _rememberUpdate(snapshot);
     });
   }
 
@@ -174,7 +273,32 @@ class AppController extends ChangeNotifier {
       }
     }
     _rememberTrial(snapshot);
+    _rememberUpdate(snapshot);
     await _loadActivePet();
+  }
+
+  void _rememberUpdate(HostSnapshot next) {
+    update = next.update;
+  }
+
+  void _onHostEvent(String method, Object? arguments) {
+    if (method != 'updateProgress' || arguments is! Map) return;
+    update = UpdateState.from(Map<String, dynamic>.from(arguments));
+    notifyListeners();
+  }
+
+  Future<void> _maybeAutoCheckUpdates() async {
+    if (_autoChecked || !snapshot.autoCheckUpdates) return;
+    _autoChecked = true;
+    try {
+      final next = await _api.checkUpdate(manual: false);
+      snapshot = next;
+      _rememberTrial(next);
+      _rememberUpdate(next);
+      notifyListeners();
+    } catch (_) {
+      // Keep the last known update state if the silent check fails.
+    }
   }
 
   Future<void> _loadActivePet() async {
@@ -211,6 +335,7 @@ class AppController extends ChangeNotifier {
   @override
   void dispose() {
     _trialTimer?.cancel();
+    _api.listen((_, __) {});
     super.dispose();
   }
 }
