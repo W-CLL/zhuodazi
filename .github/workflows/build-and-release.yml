@@ -87,7 +87,7 @@ jobs:
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
           notes="$(cat <<EOF
-          ${APP_VERSION}：搭子 GIF 来访作为独立互动出现，不会替换原桌宠。
+          ${APP_VERSION}：替换默认互动词，台词更短、更好玩。
 
           本 Release 同时包含 Windows x64 安装包、Windows 便携包、macOS Apple 芯片包和 macOS Intel 芯片包。
           EOF
