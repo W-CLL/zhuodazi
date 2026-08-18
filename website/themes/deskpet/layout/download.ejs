@@ -3,11 +3,11 @@
     <div class="download-hero-copy reveal">
       <p class="section-kicker">下载与安装</p>
       <h1>下载桌搭子</h1>
-      <p>选择适合你电脑的版本。当前 GIF 会作为独立互动出现，不会替换原桌宠。</p>
+      <p>选择适合你的版本。装上就能先养一只，当前 GIF 发给对方时，也不会替换原来的桌宠。</p>
       <div class="download-version-line">
         <span data-release-version="windows/x64">Windows 最新版</span>
         <span data-release-version="macos/arm64">macOS 最新版</span>
-        <span>2026.08 更新</span>
+        <span data-release-version="android/arm64-v8a">Android 最新版</span>
       </div>
     </div>
     <figure class="download-hero-media reveal">
@@ -21,9 +21,9 @@
   <div class="site-shell">
     <div class="download-section-heading reveal">
       <p class="section-kicker">选择安装包</p>
-      <h2 id="download-options-title">按你的电脑下载。</h2>
+      <h2 id="download-options-title">按你的设备下载。</h2>
     </div>
-    <div class="download-grid">
+    <div class="download-grid download-grid-three">
       <article class="download-card download-card-primary reveal">
         <div class="download-card-heading">
           <span class="platform-mark">WIN</span>
@@ -61,6 +61,27 @@
           </a>
         </div>
       </article>
+
+      <article class="download-card reveal">
+        <div class="download-card-heading">
+          <span class="platform-mark platform-mark-android">AND</span>
+          <div>
+            <p>Android</p>
+            <h3 data-release-version="android/arm64-v8a">桌搭子 最新版</h3>
+          </div>
+        </div>
+        <p class="download-card-copy">桌宠会浮在其他应用上面。第一次打开时，请允许悬浮窗权限，它才会出现在屏幕边角。</p>
+        <div class="mac-downloads">
+          <a data-analytics-download data-platform="android" data-architecture="arm64-v8a" href="https://in.desktoppet.online/downloads/latest/android/arm64-v8a">
+            <span><strong>ARM64</strong><small>大多数现代安卓 · <span data-release-size="android/arm64-v8a">APK</span></small></span>
+            <b aria-hidden="true">↓</b>
+          </a>
+          <a data-analytics-download data-platform="android" data-architecture="armeabi-v7a" href="https://in.desktoppet.online/downloads/latest/android/armeabi-v7a">
+            <span><strong>ARMv7</strong><small>较旧的 32 位设备 · <span data-release-size="android/armeabi-v7a">APK</span></small></span>
+            <b aria-hidden="true">↓</b>
+          </a>
+        </div>
+      </article>
     </div>
   </div>
 </section>
@@ -70,22 +91,49 @@
     <div class="install-guide-heading reveal">
       <p class="section-kicker">三步安装</p>
       <h2 id="install-guide-title">几分钟，开始陪伴。</h2>
-      <p>安装完成后即可使用内置资源库和 3 个自定义桌宠。搭子联机、完整互动、提醒、词包和小剧场需激活完整版。</p>
+      <p>安装完成后就能先用内置图鉴和 3 个自定义桌宠。Android 记得打开悬浮窗；Windows 若提示 SmartScreen，选择仍要运行即可。</p>
     </div>
     <ol class="install-steps">
       <li class="reveal">
         <span>01</span>
-        <div><h3>下载安装包</h3><p>根据芯片与系统选择上方文件。</p></div>
+        <div><h3>下载安装包</h3><p>根据系统和芯片选择上方文件。</p></div>
       </li>
       <li class="reveal">
         <span>02</span>
-        <div><h3>完成安装</h3><p>Windows 运行 EXE；macOS 解压后移入“应用程序”。</p></div>
+        <div><h3>完成安装</h3><p>Windows 运行 EXE；macOS 解压后移入“应用程序”；Android 安装 APK 后打开悬浮窗。</p></div>
       </li>
       <li class="reveal">
         <span>03</span>
-        <div><h3>开始体验</h3><p>先完整体验 5 分钟；激活完整版后，即可绑定一位搭子并互相发送当前 GIF。</p></div>
+        <div><h3>开始体验</h3><p>先在桌角养一只。想给对方发 GIF，打开设置里的「搭子」，交换一对码。</p></div>
       </li>
     </ol>
+  </div>
+</section>
+
+<section class="download-faq" aria-labelledby="download-faq-title">
+  <div class="site-shell">
+    <div class="download-section-heading reveal">
+      <p class="section-kicker">安装时常见问题</p>
+      <h2 id="download-faq-title">先装上，再慢慢看。</h2>
+    </div>
+    <div class="download-faq-grid">
+      <article class="reveal">
+        <h3>Windows 提示无法验证发布者？</h3>
+        <p>这是 SmartScreen 的常见提示。点「更多信息」，再选「仍要运行」即可。</p>
+      </article>
+      <article class="reveal">
+        <h3>macOS 打不开未验证的应用？</h3>
+        <p>在「系统设置 → 隐私与安全性」里允许打开，或按住 Control 再点一次应用。</p>
+      </article>
+      <article class="reveal">
+        <h3>Android 为什么看不见桌宠？</h3>
+        <p>桌搭子要待在其他应用上层。第一次进入时打开悬浮窗权限，回到应用后它就会出现。</p>
+      </article>
+      <article class="reveal">
+        <h3>激活码从哪里来？</h3>
+        <p>装好后可以先玩一会儿。如果需要激活码，在应用里按提示联系作者，或通过闲鱼沟通。</p>
+      </article>
+    </div>
   </div>
 </section>
 

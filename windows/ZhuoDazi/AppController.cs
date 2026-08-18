@@ -25,6 +25,7 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionTimer = new();
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
+    private readonly DispatcherTimer _trialDisplayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly CompanionVisitorQueue _visitorQueue = new();
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
@@ -48,9 +49,12 @@ public sealed class AppController : IDisposable
     public InteractionService Interactions { get; }
     public CompanionService Companions { get; }
     public event Action? StateChanged;
+    public event Action? TrialClockChanged;
     public bool IsExiting { get; private set; }
     public bool HasPremiumAccess => _licenses.HasPremiumAccess;
     public bool HasActivatedLicense => _licenses.IsActivated;
+    public bool IsTrialActive => _licenses.IsTrialActive;
+    public int RemainingTrialSeconds => _licenses.RemainingTrialSeconds;
     public LibraryDefinition? ActiveLibrary => HasPremiumAccess
         ? Settings.Libraries.FirstOrDefault(item => item.Id == Settings.ActiveLibraryId)
         : null;
@@ -63,7 +67,9 @@ public sealed class AppController : IDisposable
     public int InteractionWordCount => ActiveInteractionWordPack?.WordCount ?? 0;
     public string LicenseSummary => _licenses.IsActivated
         ? _licenses.Summary
-        : HasPremiumAccess ? "五分钟完整功能体验中" : "免费版 · 激活可解锁完整功能";
+        : IsTrialActive
+            ? $"完整体验还剩 {FormatTrialClock(RemainingTrialSeconds)}"
+            : "基础陪伴中 · 桌宠会一直在";
     public string InteractionStatus => Interactions.StatusSummary;
 
     public AppController(LicenseService licenses)
@@ -102,6 +108,7 @@ public sealed class AppController : IDisposable
             _companionTimer.Stop();
             await PollCompanionAsync();
         };
+        _trialDisplayTimer.Tick += (_, _) => RefreshTrialDisplay();
     }
 
     public void Start()
@@ -130,6 +137,8 @@ public sealed class AppController : IDisposable
             _ = RefreshCompanionAsync();
         }
         Save();
+        RefreshTrialDisplay();
+        StartOnboardingIfNeeded();
         _ = _analytics.TrackStartupAsync();
         if (Settings.AutoCheckUpdates)
         {
@@ -155,9 +164,9 @@ public sealed class AppController : IDisposable
         _settingsWindow.Activate();
     }
 
-    public bool ShowActivation(Window? owner = null, string? status = null)
+    public bool ShowActivation(Window? owner = null, string? status = null, bool trialEnded = false)
     {
-        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status);
+        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status, trialEnded);
         if (owner is not null) activationWindow.Owner = owner;
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
@@ -172,7 +181,7 @@ public sealed class AppController : IDisposable
     public bool RequestPremiumAccess(string feature, Window? owner = null)
     {
         if (HasPremiumAccess) return true;
-        return ShowActivation(owner ?? _settingsWindow, $"{feature}需要激活完整功能；基础陪伴仍可免费使用。");
+        return ShowActivation(owner ?? _settingsWindow, $"{feature}可以在完整体验里接着用，桌宠会一直在。");
     }
 
     public void RefreshPremiumAccess(string? message = null)
@@ -190,7 +199,42 @@ public sealed class AppController : IDisposable
             _ = RefreshCompanionAsync();
         }
         if (!string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
+        RefreshTrialDisplay();
         SaveAndRefresh();
+    }
+
+    public void MarkOnboardingSeen()
+    {
+        if (Settings.OnboardingHintSeen) return;
+        Settings.OnboardingHintSeen = true;
+        Save();
+    }
+
+    public void StartOnboardingIfNeeded()
+    {
+        if (Settings.OnboardingHintSeen || _petWindow is null) return;
+        var steps = new[]
+        {
+            "拖我、点我，右键还有更多。",
+            "来点互动，或上演一小段小剧场。",
+            "有搭子的话，打开设置里的「搭子」交换一对码。"
+        };
+        var index = 0;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4.2) };
+        void ShowStep()
+        {
+            if (_disposed || IsExiting || Settings.OnboardingHintSeen || index >= steps.Length)
+            {
+                timer.Stop();
+                MarkOnboardingSeen();
+                return;
+            }
+            _petWindow?.ShowReaction(steps[index]);
+            index++;
+        }
+        ShowStep();
+        timer.Tick += (_, _) => ShowStep();
+        timer.Start();
     }
 
     public void ShowTrayMenu() => _trayMenu?.Show(Forms.Cursor.Position);
@@ -314,7 +358,7 @@ public sealed class AppController : IDisposable
     {
         if (!_licenses.IsActivated)
         {
-            ShowActivation(_settingsWindow, "激活完整版本后可以使用搭子联机。");
+            ShowActivation(_settingsWindow, "绑定一位熟人后，可以把当前 GIF 发到对方桌角。");
             return;
         }
         var path = CurrentPetPath();
@@ -1189,15 +1233,43 @@ public sealed class AppController : IDisposable
         return candidates.Length == 0 ? null : candidates[_random.Next(candidates.Length)];
     }
 
+    private void RefreshTrialDisplay()
+    {
+        if (_tray is not null) _tray.Text = TrayTooltip();
+        if (IsTrialActive)
+        {
+            if (!_trialDisplayTimer.IsEnabled) _trialDisplayTimer.Start();
+        }
+        else if (_trialDisplayTimer.IsEnabled)
+        {
+            _trialDisplayTimer.Stop();
+        }
+        TrialClockChanged?.Invoke();
+    }
+
+    private string TrayTooltip()
+    {
+        if (Settings.ClickThrough) return "桌搭子 · 鼠标穿透中 · Ctrl+Shift+P 关闭";
+        if (IsTrialActive) return $"桌搭子 · 完整体验还剩 {FormatTrialClock(RemainingTrialSeconds)}";
+        return "桌搭子";
+    }
+
+    private static string FormatTrialClock(int seconds)
+    {
+        seconds = Math.Max(0, seconds);
+        return $"{seconds / 60}:{seconds % 60:00}";
+    }
+
     private void RefreshTray()
     {
         _trayMenu?.Dispose();
         _trayMenu = new Forms.ContextMenuStrip();
+        var partner = Companions.Profile?.Partner;
         _trayMenu.Items.Add("打开设置", null, (_, _) => ShowSettings());
         _trayMenu.Items.Add(_petWindow?.IsVisible == true ? "隐藏桌宠" : "显示桌宠", null, (_, _) => TogglePetVisibility());
         _trayMenu.Items.Add("随机换一只", null, (_, _) => RandomizePet()).Enabled = _libraryFiles.Count > 0;
-        var partner = Companions.Profile?.Partner;
-        var sendLabel = partner is null ? "发送当前 GIF 给搭子（先绑定）" : $"发送当前 GIF 给 {partner.DisplayName}";
+        _trayMenu.Items.Add(new Forms.ToolStripSeparator());
+        var sendLabel = partner is null ? "发给搭子（先绑定）" : $"发给 {partner.DisplayName}";
         _trayMenu.Items.Add(sendLabel, null, async (_, _) =>
         {
             try { await SendCurrentGifToCompanionAsync(); }
@@ -1206,15 +1278,25 @@ public sealed class AppController : IDisposable
                 _petWindow?.ShowReaction(NetworkConnectionErrors.ForUser(error, "暂时发送不了，请稍后重试。"));
             }
         }).Enabled = _licenses.IsActivated && partner is not null && File.Exists(CurrentPetPath());
-        var premiumSuffix = HasPremiumAccess ? string.Empty : "（激活解锁）";
-        _trayMenu.Items.Add($"来点互动{premiumSuffix}", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
-        _trayMenu.Items.Add($"上演小剧场{premiumSuffix}", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
+        _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
+        _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("始终置顶", null, (_, _) => SetAlwaysOnTop(!Settings.AlwaysOnTop)) { Checked = Settings.AlwaysOnTop });
-        _trayMenu.Items.Add(new Forms.ToolStripMenuItem("鼠标穿透", null, (_, _) => SetClickThrough(!Settings.ClickThrough)) { Checked = Settings.ClickThrough });
+        var clickThroughItem = new Forms.ToolStripMenuItem(
+            Settings.ClickThrough ? "鼠标穿透（开）" : "鼠标穿透",
+            null,
+            (_, _) => SetClickThrough(!Settings.ClickThrough))
+        {
+            Checked = Settings.ClickThrough
+        };
+        _trayMenu.Items.Add(clickThroughItem);
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add("退出桌搭子", null, (_, _) => Exit());
-        if (_tray is not null) _tray.ContextMenuStrip = _trayMenu;
+        if (_tray is not null)
+        {
+            _tray.ContextMenuStrip = _trayMenu;
+            _tray.Text = TrayTooltip();
+        }
     }
 
     private void OnUpdateStateChanged(UpdateState state)
@@ -1269,6 +1351,7 @@ public sealed class AppController : IDisposable
         _interactionTimer.Stop();
         _interactionSyncTimer.Stop();
         _companionTimer.Stop();
+        _trialDisplayTimer.Stop();
         _theaterCancellation?.Cancel();
         Updates.StateChanged -= OnUpdateStateChanged;
         Updates.Dispose();

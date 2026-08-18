@@ -53,11 +53,11 @@ public partial class App : System.Windows.Application
                 {
                     var trial = await _licenseService.CheckTrialAsync();
                     if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
-                    else freeModeMessage = "五分钟完整体验已结束，基础陪伴仍可免费使用。";
+                    else freeModeMessage = "五分钟完整体验结束啦，基础陪伴继续。";
                 }
                 catch
                 {
-                    freeModeMessage = "已进入免费版，基础陪伴仍可继续使用。";
+                    freeModeMessage = "先用基础陪伴就好，桌搭子还在。";
                 }
             }
             Controller = new AppController(_licenseService);
@@ -130,8 +130,8 @@ public partial class App : System.Windows.Application
         }
 
         _licenseService.EndTrial();
-        Controller?.RefreshPremiumAccess("五分钟完整体验结束啦，基础陪伴继续免费营业。");
-        ShowActivation("输入激活码即可继续完整玩法，也可以先保留基础陪伴。", trialEnded: true);
+        Controller?.RefreshPremiumAccess("五分钟完整体验结束啦，基础陪伴继续。");
+        ShowActivation("刚才试过的互动和小剧场还可以接着用。想慢慢玩，先留下基础陪伴也完全没问题。", trialEnded: true);
         Controller?.RefreshPremiumAccess();
     }
 

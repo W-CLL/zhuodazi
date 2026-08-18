@@ -76,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             if await ActivationPrompts.activate(
                                 licenses: licenses,
                                 required: true,
-                                statusMessage: "输入激活码即可继续完整玩法，也可以先保留基础陪伴。",
+                                statusMessage: "刚才试过的互动和小剧场还可以接着用。想慢慢玩，先留下基础陪伴也完全没问题。",
                                 trialEnded: true
                             ) {
                                 petController.refreshPremiumAccess()
@@ -111,6 +111,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         petController.startInteractionServices()
         startCompanionPolling()
         startReminderChecks()
+        startOnboardingIfNeeded()
         analytics.trackStartup()
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -119,6 +120,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             _ = try? await updates.check()
             if let manifest = updates.availableManifest, manifest.version != settings.ignoredUpdateVersion {
                 petController.showBubble("发现新版本 v\(manifest.version)，可在设置中安装。")
+            }
+        }
+    }
+
+    private func startOnboardingIfNeeded() {
+        guard !settings.onboardingHintSeen else { return }
+        settings.onboardingHintSeen = true
+        settingsStore.save(settings)
+        let steps = [
+            "拖我、点我，右键还有更多。",
+            "来点互动，或上演一小段小剧场。",
+            "有搭子的话，打开设置里的「搭子」交换一对码。"
+        ]
+        for (index, step) in steps.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 4.2) { [weak self] in
+                self?.petController.showBubble(step)
             }
         }
     }
@@ -138,11 +155,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch { }
                 self.licenses.endTrial()
                 self.petController.refreshPremiumAccess()
+                self.petController.showBubble("五分钟完整体验结束啦，基础陪伴继续。")
                 self.settingsWindow?.refreshAccessState()
                 if await ActivationPrompts.activate(
                     licenses: self.licenses,
                     required: true,
-                    statusMessage: "输入激活码即可继续完整玩法，也可以先保留基础陪伴。",
+                    statusMessage: "刚才试过的互动和小剧场还可以接着用。想慢慢玩，先留下基础陪伴也完全没问题。",
                     trialEnded: true
                 ) {
                     self.petController.refreshPremiumAccess()
@@ -197,12 +215,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         mouseItem.state = petController.mouseInteractionEnabled ? .on : .off
         movementItem.state = petController.randomMovementEnabled ? .on : .off
         interactionItem.state = petController.currentSettings.randomInteractionsEnabled ? .on : .off
-        interactionItem.title = licenses.hasPremiumAccess ? "随机互动" : "随机互动（激活解锁）"
+        interactionItem.title = licenses.hasPremiumAccess ? "随机互动" : "随机互动"
         randomPetItem.state = petController.randomPetEnabled ? .on : .off
         randomPetItem.isEnabled = petController.canRandomizePet
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
-        theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场（激活解锁）"
+        theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场"
         if let partner = companions?.profile?.partner {
             sendCompanionItem.title = "发送当前 GIF 给 \(partner.displayName)"
             sendCompanionItem.isEnabled = licenses.isActivated && petController.currentGIFURL != nil
@@ -348,7 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if await ActivationPrompts.activate(
                 licenses: licenses,
                 required: true,
-                statusMessage: "\(feature)需要激活完整功能；基础陪伴仍可免费使用。"
+                statusMessage: "\(feature)可以在完整体验里接着用，桌宠会一直在。"
             ) {
                 petController.refreshPremiumAccess()
                 settingsWindow?.refreshAccessState()

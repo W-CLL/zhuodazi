@@ -22,9 +22,9 @@ public partial class PetWindow : Window
 {
     private const int HotkeyId = 0xDA21;
     private const int WmHotkey = 0x0312;
-    private const double CollapsedBubbleHeight = 90;
-    private const double MinimumInteractionBubbleHeight = 190;
-    private const double MinimumScrollableMessageHeight = 76;
+    private const double CollapsedBubbleHeight = 120;
+    private const double MinimumInteractionBubbleHeight = 220;
+    private const double MinimumScrollableMessageHeight = 96;
     private const double WindowEdgeGap = 16;
     private readonly AppController _controller;
     private readonly AnimatedGifPlayer _gifPlayer;
@@ -113,6 +113,8 @@ public partial class PetWindow : Window
         DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
         NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough);
         SetInteractionExpanded(IsInteractionVisible, bottom);
+        if (!_isCompanion && _controller.Settings.ClickThrough)
+            ShowReaction("鼠标穿透开着，Ctrl+Shift+P 可关掉。");
     }
 
     public void RefreshBehavior()

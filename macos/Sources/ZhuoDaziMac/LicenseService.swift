@@ -50,13 +50,21 @@ final class LicenseService {
     private let account = "device-license"
     private var record: LicenseRecord
     private var trialActive = false
+    private var remainingTrialSeconds = 0
+    private var trialCheckedAt = Date.distantPast
 
     var isActivated: Bool {
         guard let identifier = record.licenseId else { return false }
         return UUID(uuidString: identifier) != nil
     }
 
-    var hasPremiumAccess: Bool { isActivated || trialActive }
+    var isTrialActive: Bool { !isActivated && trialActive && remainingTrialSecondsNow > 0 }
+    var hasPremiumAccess: Bool { isActivated || isTrialActive }
+    var remainingTrialSecondsNow: Int {
+        guard trialActive, !isActivated else { return 0 }
+        let elapsed = Int(Date().timeIntervalSince(trialCheckedAt))
+        return max(0, remainingTrialSeconds - elapsed)
+    }
 
     var summary: String {
         guard let identifier = record.licenseId, isActivated else { return "此设备尚未绑定" }
@@ -149,13 +157,18 @@ final class LicenseService {
             throw LicenseError.invalidResponse
         }
         trialActive = result.allowed && result.remainingSeconds > 0
+        remainingTrialSeconds = trialActive ? result.remainingSeconds : 0
+        trialCheckedAt = Date()
         return TrialStatus(
             allowed: trialActive,
-            remainingSeconds: result.remainingSeconds
+            remainingSeconds: remainingTrialSecondsNow
         )
     }
 
-    func endTrial() { trialActive = false }
+    func endTrial() {
+        trialActive = false
+        remainingTrialSeconds = 0
+    }
 
     func authorize(_ request: inout URLRequest) throws {
         if isActivated, let licenseId = record.licenseId {

@@ -18,5 +18,6 @@ internal static class DeskPetApi
     public const string CompanionDeliveries = Companion + "/deliveries";
     public const string AnalyticsEvents = BaseUrl + "/api/analytics/events";
     public const string UpdateLatest = BaseUrl + "/api/update/latest?platform=windows&architecture=x64";
+    public const string SiteSettings = BaseUrl + "/api/public/site-settings";
     public const string DownloadPathPrefix = "/downloads/";
 }

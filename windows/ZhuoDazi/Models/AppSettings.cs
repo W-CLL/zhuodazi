@@ -94,6 +94,9 @@ public sealed class AppSettings
     [JsonPropertyName("position")]
     public WindowPosition? Position { get; set; }
 
+    [JsonPropertyName("onboardingHintSeen")]
+    public bool OnboardingHintSeen { get; set; }
+
     public void Normalize()
     {
         Pets = (Pets ?? []).Where(item => !string.IsNullOrWhiteSpace(item.Id)

@@ -23,11 +23,23 @@ public sealed class LicenseService : IDisposable
     private readonly string _licensePath;
     private LicenseRecord _record;
     private bool _trialActive;
+    private int _remainingTrialSeconds;
+    private DateTimeOffset _trialCheckedAt;
 
     public bool IsActivated => Guid.TryParse(_record.LicenseId, out _);
-    public bool HasPremiumAccess => IsActivated || _trialActive;
+    public bool IsTrialActive => !IsActivated && _trialActive && RemainingTrialSeconds > 0;
+    public bool HasPremiumAccess => IsActivated || IsTrialActive;
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
     public string InstallationId => _record.InstallationId;
+    public int RemainingTrialSeconds
+    {
+        get
+        {
+            if (!_trialActive || IsActivated) return 0;
+            var elapsed = (int)(DateTimeOffset.UtcNow - _trialCheckedAt).TotalSeconds;
+            return Math.Max(0, _remainingTrialSeconds - elapsed);
+        }
+    }
     public string Summary => IsActivated ? $"此设备已完成绑定 · {LicenseId[^8..]}" : "此设备尚未绑定";
 
     public LicenseService()
@@ -132,11 +144,17 @@ public sealed class LicenseService : IDisposable
             if (result is null || result.RemainingSeconds is < 0 or > 300)
                 throw new InvalidOperationException("试用服务返回的数据无效。");
             _trialActive = result.Allowed && result.RemainingSeconds > 0;
-            return new TrialStatus(_trialActive, result.RemainingSeconds);
+            _remainingTrialSeconds = _trialActive ? result.RemainingSeconds : 0;
+            _trialCheckedAt = DateTimeOffset.UtcNow;
+            return new TrialStatus(_trialActive, RemainingTrialSeconds);
         }
     }
 
-    public void EndTrial() => _trialActive = false;
+    public void EndTrial()
+    {
+        _trialActive = false;
+        _remainingTrialSeconds = 0;
+    }
 
     public void Authorize(HttpRequestMessage request)
     {

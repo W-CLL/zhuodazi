@@ -306,6 +306,18 @@ class HomePage extends StatelessWidget {
         const PageIntro(title: '今天也一起', subtitle: '查看桌宠状态，快速完成常用操作。'),
         PetStage(snapshot: snapshot, gif: controller.petGif, height: 206),
         const SizedBox(height: 14),
+        if (!snapshot.activated && snapshot.trialSeconds > 0) ...[
+          Panel(
+            color: _mint,
+            child: StatusLine(
+              icon: Icons.timer_outlined,
+              title: '完整体验还剩 ${trialClock(snapshot.trialSeconds)}',
+              detail: '先拖一拖、换一只，或打开「搭子」看看怎么发 GIF。',
+              color: _brand,
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         _HomeStatus(controller: controller),
         const SizedBox(height: 22),
         const SectionTitle(label: '常用操作'),
@@ -375,8 +387,8 @@ class _HomeStatus extends StatelessWidget {
           children: [
             const StatusLine(
               icon: Icons.layers_outlined,
-              title: '开启悬浮窗权限',
-              detail: '授权后桌宠才能出现在其他应用上层。',
+              title: '先打开悬浮窗，桌宠才会出现',
+              detail: '桌搭子要待在其他应用上面。授权后回到这里，它就会待在屏幕边角。',
               color: _coral,
             ),
             const SizedBox(height: 14),
@@ -387,7 +399,7 @@ class _HomeStatus extends StatelessWidget {
                 (_) => '',
               ),
               icon: const Icon(Icons.open_in_new),
-              label: const Text('去授权'),
+              label: const Text('去打开悬浮窗'),
             ),
           ],
         ),
@@ -2022,11 +2034,16 @@ Future<void> showPetPicker(
   );
 }
 
+String trialClock(int seconds) {
+  final safe = seconds < 0 ? 0 : seconds;
+  final minutes = safe ~/ 60;
+  final remaining = safe % 60;
+  return '${minutes.toString().padLeft(2, '0')}:${remaining.toString().padLeft(2, '0')}';
+}
+
 String trialText(int seconds) {
   if (seconds <= 0) return '体验已结束，基础桌宠仍可使用';
-  final minutes = seconds ~/ 60;
-  final remaining = seconds % 60;
-  return '完整功能体验剩余 ${minutes.toString().padLeft(2, '0')}:${remaining.toString().padLeft(2, '0')}';
+  return '完整体验还剩 ${trialClock(seconds)}';
 }
 
 void tabToAccount(BuildContext context) {

@@ -70,6 +70,7 @@ struct AppSettings: Codable {
     var dockIconVisible = true
     var positionX: CGFloat?
     var positionY: CGFloat?
+    var onboardingHintSeen = false
 
     init() {}
 
@@ -103,6 +104,7 @@ struct AppSettings: Codable {
         dockIconVisible = try values.decodeIfPresent(Bool.self, forKey: .dockIconVisible) ?? true
         positionX = try values.decodeIfPresent(CGFloat.self, forKey: .positionX)
         positionY = try values.decodeIfPresent(CGFloat.self, forKey: .positionY)
+        onboardingHintSeen = try values.decodeIfPresent(Bool.self, forKey: .onboardingHintSeen) ?? false
         normalize(resetClickThrough: true)
     }
 

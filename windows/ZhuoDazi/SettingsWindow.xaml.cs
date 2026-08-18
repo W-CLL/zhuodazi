@@ -28,6 +28,7 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         MainTabs.SelectionChanged += MainTabs_SelectionChanged;
         _controller.StateChanged += Controller_StateChanged;
+        _controller.TrialClockChanged += Controller_TrialClockChanged;
         _controller.Updates.StateChanged += Updates_StateChanged;
         Loaded += (_, _) =>
         {
@@ -57,6 +58,24 @@ public partial class SettingsWindow : Window
         else RefreshAll();
     }
 
+    private void Controller_TrialClockChanged()
+    {
+        if (!Dispatcher.CheckAccess()) Dispatcher.BeginInvoke(RefreshLicenseBanner);
+        else RefreshLicenseBanner();
+    }
+
+    private void RefreshLicenseBanner()
+    {
+        if (LicenseBannerText is null || LicenseStatusText is null) return;
+        LicenseBannerText.Text = _controller.LicenseSummary;
+        LicenseStatusText.Text = _controller.LicenseSummary;
+        if (TodayActivateButton is not null)
+        {
+            TodayActivateButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
+            TodayActivateButton.Content = _controller.IsTrialActive ? "体验中，也可现在激活" : "继续完整体验";
+        }
+    }
+
     private void Updates_StateChanged(UpdateState state)
     {
         if (!Dispatcher.CheckAccess()) Dispatcher.BeginInvoke(() => RenderUpdateState(state));
@@ -72,6 +91,11 @@ public partial class SettingsWindow : Window
         SizeValue.Text = $"{settings.Size} px";
         OpacitySlider.Value = settings.Opacity;
         OpacityValue.Text = $"{settings.Opacity}%";
+        CurrentPetPreview.FilePath = _controller.CurrentPetPath();
+        CurrentPetNameText.Text = _controller.LibraryName;
+        LicenseBannerText.Text = _controller.LicenseSummary;
+        TodayActivateButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
+        TodayActivateButton.Content = _controller.IsTrialActive ? "体验中，也可现在激活" : "继续完整体验";
         TopmostCheck.IsChecked = settings.AlwaysOnTop;
         StartWithWindowsCheck.IsChecked = settings.StartWithWindows;
         MirrorCheck.IsChecked = settings.Mirrored;
@@ -105,7 +129,7 @@ public partial class SettingsWindow : Window
             : libraryItems[0];
         LibrarySummary.Text = premium
             ? $"已绑定 {settings.Libraries.Count}/3 个目录 · 当前 {_controller.LibraryName} · {_controller.LibraryCount} 个 GIF"
-            : $"免费版正在使用内置资源库 · {_controller.LibraryCount} 个 GIF · 激活可导入外部目录";
+            : $"正在使用内置图鉴 · {_controller.LibraryCount} 个 GIF";
         LibraryPathText.Text = _controller.LibraryPath;
         DeleteLibraryButton.IsEnabled = settings.ActiveLibraryId is not null;
         RandomPetCheck.IsChecked = settings.RandomPetEnabled;
@@ -126,7 +150,7 @@ public partial class SettingsWindow : Window
         DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
         InteractionContentStatusText.Text = premium
             ? _controller.InteractionStatus
-            : "激活后可使用随机互动、在线内容和互动词包";
+            : "完整体验里可以补充线上内容和导入词包";
         SyncInteractionContentButton.IsEnabled = !_interactionContentLoading;
         DownloadInteractionPackButton.IsEnabled = !_interactionContentLoading;
 
@@ -148,7 +172,7 @@ public partial class SettingsWindow : Window
         ReminderList.SelectedItem = reminderItems.FirstOrDefault(item => item.Id == selectedReminderId);
         ReminderCountText.Text = premium
             ? settings.Reminders.Count == 0 ? "暂无提醒" : $"共 {settings.Reminders.Count} 个提醒"
-            : "激活后可创建提醒，并为提醒指定 GIF 表情";
+            : "完整体验里可以让桌宠到点来叫你";
         ReminderEmptyState.Visibility = settings.Reminders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var companionProfile = _controller.Companions.Profile;
@@ -156,7 +180,7 @@ public partial class SettingsWindow : Window
             CompanionNameText.Text = companionProfile?.DisplayName ?? string.Empty;
         CompanionCodeText.Text = companionProfile?.PairingCode ?? string.Empty;
         CompanionStatusText.Text = !_controller.HasActivatedLicense
-            ? "激活完整版本后可以绑定一位搭子"
+            ? "绑定一位熟人后，可以把当前 GIF 发到对方桌角。"
             : companionProfile is null
                 ? "正在连接搭子服务…"
                 : companionProfile.Partner is { } partner
@@ -165,6 +189,11 @@ public partial class SettingsWindow : Window
         CompanionPartnerText.Text = companionProfile?.Partner is { } currentPartner
             ? $"{currentPartner.DisplayName} · 收到的 GIF 会作为独立桌宠出现"
             : "尚未绑定";
+        CompanionEmptyHint.Visibility = companionProfile?.Partner is null ? Visibility.Visible : Visibility.Collapsed;
+        var sendPreviewPath = _controller.CurrentPetPath();
+        CompanionPreviewImage.FilePath = sendPreviewPath;
+        CompanionSendPreview.Visibility = companionProfile?.Partner is not null && File.Exists(sendPreviewPath)
+            ? Visibility.Visible : Visibility.Collapsed;
         var companionEnabled = _controller.HasActivatedLicense && !_companionLoading;
         CompanionNameText.IsEnabled = companionEnabled;
         SaveCompanionNameButton.IsEnabled = companionEnabled;
@@ -180,6 +209,7 @@ public partial class SettingsWindow : Window
         UnpairCompanionButton.IsEnabled = companionEnabled;
         CompanionActivateButton.Visibility = _controller.HasActivatedLicense
             ? Visibility.Collapsed : Visibility.Visible;
+        CompanionActivateButton.Content = _controller.IsTrialActive ? "体验结束后继续使用" : "继续完整体验后使用";
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
@@ -617,6 +647,17 @@ public partial class SettingsWindow : Window
         if (!string.IsNullOrWhiteSpace(CompanionCodeText.Text)) System.Windows.Clipboard.SetText(CompanionCodeText.Text);
     }
 
+    private void CopyCompanionShare_Click(object sender, RoutedEventArgs e)
+    {
+        var code = CompanionCodeText.Text.Trim();
+        if (string.IsNullOrWhiteSpace(code)) return;
+        var name = string.IsNullOrWhiteSpace(CompanionNameText.Text)
+            ? "我"
+            : CompanionNameText.Text.Trim();
+        System.Windows.Clipboard.SetText($"{name} 的桌搭子码是 {code}。打开「搭子」填进去，就能互相发 GIF 了。");
+        CompanionErrorText.Visibility = Visibility.Collapsed;
+    }
+
     private async void PairCompanion_Click(object sender, RoutedEventArgs e)
         => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text));
 
@@ -632,7 +673,7 @@ public partial class SettingsWindow : Window
 
     private void CompanionActivate_Click(object sender, RoutedEventArgs e)
     {
-        if (_controller.ShowActivation(this, "激活完整版本后可以使用搭子联机。")) _ = LoadCompanionAsync();
+        if (_controller.ShowActivation(this, "绑定一位熟人后，可以把当前 GIF 发到对方桌角。")) _ = LoadCompanionAsync();
     }
 
     private async Task RunCompanionActionAsync(Func<Task> action)
@@ -792,7 +833,17 @@ public partial class SettingsWindow : Window
     {
         public ReminderDefinition Reminder { get; }
         public string Id => Reminder.Id;
-        public string Display => $"{(Reminder.Enabled ? "●" : "○")} {Reminder.LocalTime:MM/dd HH:mm}  {Reminder.Message}";
+        public string Display
+        {
+            get
+            {
+                var when = Reminder.RepeatDaily
+                    ? $"每天 {Reminder.LocalTime:HH:mm}"
+                    : Reminder.LocalTime.ToString("M月d日 HH:mm", CultureInfo.GetCultureInfo("zh-CN"));
+                var state = Reminder.Enabled ? "下次" : "已关闭";
+                return $"{state} {when}  {Reminder.Message}";
+            }
+        }
         public ReminderListItem(ReminderDefinition reminder) => Reminder = reminder;
     }
 

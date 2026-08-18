@@ -44,12 +44,12 @@
     </Window.Resources>
     <Grid x:Name="Root" Background="Transparent">
         <Grid.RowDefinitions>
-            <RowDefinition x:Name="BubbleRow" Height="90" />
+            <RowDefinition x:Name="BubbleRow" Height="120" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
         <Border x:Name="InteractionCard" Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                MaxWidth="350" Margin="10,0,10,4" Padding="14,11" CornerRadius="6"
+                MaxWidth="350" Margin="10,0,10,4" Padding="14,13" CornerRadius="6"
                 Background="#F9FBFA" BorderBrush="#AFC1BB" BorderThickness="1"
                 Visibility="Collapsed">
             <Border.Effect>

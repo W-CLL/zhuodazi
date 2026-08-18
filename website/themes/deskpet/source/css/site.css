@@ -1833,6 +1833,10 @@ img {
   margin-top: 54px;
 }
 
+.download-grid-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .download-card {
   min-width: 0;
   padding: 32px;
@@ -1866,6 +1870,10 @@ img {
 
 .platform-mark-mac {
   background: var(--coral);
+}
+
+.platform-mark-android {
+  background: #3d8b6e;
 }
 
 .download-card-heading p,
@@ -1985,6 +1993,35 @@ img {
 .checksum p {
   margin: 12px 0 -4px;
   font-weight: 800;
+}
+
+.download-faq {
+  padding: 0 0 96px;
+}
+
+.download-faq-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 36px;
+}
+
+.download-faq-grid article {
+  padding: 22px 22px 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.download-faq-grid h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.download-faq-grid p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.7;
 }
 
 .install-guide {
@@ -2947,7 +2984,9 @@ img {
   }
 
   .client-shot-grid,
-  .download-grid {
+  .download-grid,
+  .download-grid-three,
+  .download-faq-grid {
     grid-template-columns: 1fr;
   }
 

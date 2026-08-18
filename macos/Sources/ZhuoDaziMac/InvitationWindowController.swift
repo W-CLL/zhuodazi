@@ -5,19 +5,19 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private let window: NSWindow
     private let input = NSTextField(string: "")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let contactButton = NSButton(title: "没有激活码？看看怎么支持作者  ›", target: nil, action: nil)
+    private let contactButton = NSButton(title: "还没有激活码", target: nil, action: nil)
     private let contactBox = NSBox()
     private var result: String?
 
     init(required: Bool, statusMessage: String? = nil, trialEnded: Bool = false) {
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 395),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 640),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
         super.init()
-        window.title = trialEnded ? "完整体验结束，基础陪伴继续" : (required ? "解锁桌搭子完整功能" : "更换激活码")
+        window.title = trialEnded ? "完整体验结束，基础陪伴继续" : (required ? "继续完整体验" : "更换激活码")
         window.isReleasedWhenClosed = false
         window.delegate = self
         buildInterface(required: required, statusMessage: statusMessage, trialEnded: trialEnded)
@@ -56,16 +56,16 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         ])
         window.contentView = root
 
-        let heading = NSTextField(labelWithString: trialEnded ? "五分钟体验结束啦" : (required ? "解锁桌搭子完整功能" : "更换激活码"))
+        let heading = NSTextField(labelWithString: trialEnded ? "五分钟体验结束啦" : (required ? "继续完整体验" : "更换激活码"))
         heading.font = .systemFont(ofSize: 23, weight: .bold)
         stack.addArrangedSubview(heading)
         let subtitle = NSTextField(wrappingLabelWithString: trialEnded
-            ? "桌搭子不会离开：基础陪伴继续免费；激活后可接着使用小剧场、提醒、互动词包和外部资源库。"
-            : (required ? "基础陪伴永久免费；激活后解锁小剧场、提醒、互动词包和资源库导入"
+            ? "桌搭子不会离开。刚才试过的玩法想接着用，填激活码就好；先留下桌宠也完全没问题。"
+            : (required ? "想给对方桌面发一张 GIF，或继续小剧场和提醒时，再输入激活码。"
             : "输入新的激活码以更新此设备的绑定"))
         subtitle.textColor = .secondaryLabelColor
-        subtitle.maximumNumberOfLines = 2
-        subtitle.widthAnchor.constraint(equalToConstant: 444).isActive = true
+        subtitle.maximumNumberOfLines = 3
+        subtitle.widthAnchor.constraint(equalToConstant: 484).isActive = true
         stack.addArrangedSubview(subtitle)
 
         let inputLabel = NSTextField(labelWithString: "6 位激活码")
@@ -76,7 +76,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         input.placeholderString = "请输入激活码"
         input.font = .monospacedSystemFont(ofSize: 22, weight: .semibold)
         input.alignment = .center
-        input.widthAnchor.constraint(equalToConstant: 444).isActive = true
+        input.widthAnchor.constraint(equalToConstant: 484).isActive = true
         input.heightAnchor.constraint(equalToConstant: 42).isActive = true
         stack.addArrangedSubview(input)
 
@@ -93,11 +93,12 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(contactButton)
 
         configureContactBox()
-        contactBox.isHidden = true
+        contactBox.isHidden = false
+        contactButton.isHidden = true
         stack.addArrangedSubview(contactBox)
 
         let website = NSButton(title: trialEnded ? "去官网看看玩法" : "去官网看看", target: self, action: #selector(openWebsite))
-        let cancel = NSButton(title: trialEnded ? "继续基础陪伴" : (required ? "继续使用免费版" : "取消"), target: self, action: #selector(cancelPrompt))
+        let cancel = NSButton(title: trialEnded ? "继续基础陪伴" : (required ? "先留下桌宠" : "取消"), target: self, action: #selector(cancelPrompt))
         let submit = NSButton(title: trialEnded ? "解锁完整功能" : "立即激活", target: self, action: #selector(submitPrompt))
         submit.keyEquivalent = "\r"
         submit.bezelColor = .controlAccentColor
@@ -110,7 +111,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         buttonContainer.addSubview(buttons)
         buttons.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            buttonContainer.widthAnchor.constraint(equalToConstant: 444),
+            buttonContainer.widthAnchor.constraint(equalToConstant: 484),
             buttonContainer.heightAnchor.constraint(equalToConstant: 34),
             buttons.trailingAnchor.constraint(equalTo: buttonContainer.trailingAnchor),
             buttons.centerYAnchor.constraint(equalTo: buttonContainer.centerYAnchor)
@@ -126,8 +127,8 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.fillColor = .controlBackgroundColor
         contactBox.cornerRadius = 8
         contactBox.contentViewMargins = NSSize(width: 14, height: 14)
-        contactBox.widthAnchor.constraint(equalToConstant: 444).isActive = true
-        contactBox.heightAnchor.constraint(equalToConstant: 250).isActive = true
+        contactBox.widthAnchor.constraint(equalToConstant: 484).isActive = true
+        contactBox.heightAnchor.constraint(equalToConstant: 236).isActive = true
 
         let qrView = NSImageView()
         qrView.imageScaling = .scaleProportionallyUpOrDown
@@ -135,16 +136,16 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         qrView.widthAnchor.constraint(equalToConstant: 200).isActive = true
         qrView.heightAnchor.constraint(equalToConstant: 200).isActive = true
 
-        let title = NSTextField(labelWithString: "扫码添加作者微信")
+        let title = NSTextField(labelWithString: "还没有激活码")
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-        let note = wrappingLabel("备注「桌搭子」，支付 6.68 元后领取激活码。")
+        let note = wrappingLabel("加作者微信，备注「桌搭子」，按提示领取激活码。一般当天回。")
         let accountTitle = NSTextField(labelWithString: "微信号")
         accountTitle.font = .systemFont(ofSize: 11)
         accountTitle.textColor = .secondaryLabelColor
         let account = NSTextField(labelWithString: "wcl_lcw627")
         account.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
         account.isSelectable = true
-        let support = wrappingLabel("这 6.68 元不是赎金，是给作者续一杯咖啡：赞助继续开发，桌搭子继续营业。想定制角色、动作或功能，也可以直接聊。")
+        let support = wrappingLabel("想定制角色、动作或功能，也可以直接聊。")
 
         let copy = NSStackView(views: [title, note, accountTitle, account, support])
         copy.orientation = .vertical
@@ -170,8 +171,8 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     @objc private func toggleContact() {
         let show = contactBox.isHidden
         contactBox.isHidden = !show
-        contactButton.title = show ? "收起联系方式  ‹" : "没有激活码？看看怎么支持作者  ›"
-        window.setContentSize(NSSize(width: 500, height: show ? 665 : 395))
+        contactButton.title = show ? "收起联系方式  ‹" : "还没有激活码"
+        window.setContentSize(NSSize(width: 540, height: show ? 680 : 640))
         window.center()
     }
 

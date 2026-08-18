@@ -1,5 +1,5 @@
 ---
 title: 下载桌搭子
 layout: download
-description: 下载桌搭子最新版 Windows 与 macOS 客户端，体验搭子 GIF 联机、桌宠互动、指定表情提醒、词包和小剧场。
+description: 下载桌搭子最新版 Windows、macOS 与 Android 客户端，把一只会回应的小伙伴放进桌面。
 ---

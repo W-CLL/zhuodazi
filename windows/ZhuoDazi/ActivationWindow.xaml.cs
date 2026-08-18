@@ -1,5 +1,5 @@
-using System.Net.Http;
 using System.Diagnostics;
+using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
 using ZhuoDazi.Services;
@@ -9,9 +9,11 @@ namespace ZhuoDazi;
 public partial class ActivationWindow : Window
 {
     private const string AllowedCharacters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    private const string AuthorWeChat = "wcl_lcw627";
     private readonly LicenseService _licenses;
     private readonly bool _replacingExisting;
     private bool _normalizing;
+    private string? _xianyuUrl;
 
     public ActivationWindow(
         LicenseService licenses,
@@ -22,19 +24,21 @@ public partial class ActivationWindow : Window
         _licenses = licenses;
         _replacingExisting = replacingExisting;
         InitializeComponent();
-        ContinueButton.Content = replacingExisting ? "取消" : "继续使用免费版";
+        ContinueButton.Content = replacingExisting ? "取消" : "先留下桌宠";
         if (trialEnded)
         {
             Title = "完整体验结束，基础陪伴继续";
             HeadingText.Text = "五分钟体验结束啦";
-            SubtitleText.Text = "桌搭子不会离开：基础陪伴继续免费；激活后可接着使用小剧场、提醒、互动词包和外部资源库。";
+            SubtitleText.Text = "桌搭子不会离开。刚才试过的玩法想接着用，填激活码就好；先留下桌宠也完全没问题。";
             WebsiteButton.Content = "去官网看看玩法";
             ContinueButton.Content = "继续基础陪伴";
             ActivateButton.Content = "解锁完整功能";
             ActivateButton.Width = 118;
+            TrialSummary.Visibility = Visibility.Visible;
         }
         StatusText.Text = initialStatus ?? string.Empty;
         ContentRendered += (_, _) => CodeTextBox.Focus();
+        Loaded += async (_, _) => await LoadXianyuLinkAsync();
     }
 
     private void CodeTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -93,16 +97,41 @@ public partial class ActivationWindow : Window
         ActivationProgress.Visibility = busy ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    private void ContactToggleButton_Click(object sender, RoutedEventArgs e)
+    private void CopyWeChat_Click(object sender, RoutedEventArgs e)
     {
-        var show = ContactPanel.Visibility != Visibility.Visible;
-        ContactPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        ContactToggleButton.Content = show ? "收起联系方式  ‹" : "没有激活码？看看怎么支持作者  ›";
-        Height = show ? 785 : 550;
+        System.Windows.Clipboard.SetText(AuthorWeChat);
+        StatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
+        StatusText.Text = "微信号已复制，备注「桌搭子」即可。";
+    }
+
+    private void Xianyu_Click(object sender, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(_xianyuUrl)) return;
+        Process.Start(new ProcessStartInfo(_xianyuUrl) { UseShellExecute = true });
     }
 
     private void Website_Click(object sender, RoutedEventArgs e)
         => Process.Start(new ProcessStartInfo("https://desktoppet.online/") { UseShellExecute = true });
 
     private void Continue_Click(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    private async Task LoadXianyuLinkAsync()
+    {
+        try
+        {
+            using var client = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(8));
+            using var response = await client.GetAsync(DeskPetApi.SiteSettings);
+            if (!response.IsSuccessStatusCode) return;
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            using var document = await System.Text.Json.JsonDocument.ParseAsync(stream);
+            if (!document.RootElement.TryGetProperty("xianyuUrl", out var urlElement)) return;
+            var url = urlElement.GetString();
+            if (string.IsNullOrWhiteSpace(url)) return;
+            _xianyuUrl = url;
+            XianyuButton.Visibility = Visibility.Visible;
+        }
+        catch
+        {
+        }
+    }
 }
