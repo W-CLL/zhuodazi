@@ -157,7 +157,7 @@ class HostSnapshot {
   int get libraryGifCount => _int('libraryGifCount', 0);
   String get wordPack => _string('wordPack', '');
   String get installationSuffix => _string('installationSuffix', '');
-  String get version => _string('version', '1.2.0');
+  String get version => _string('version', '1.3.0');
   bool get theaterEnabled => _bool('theaterEnabled');
   int get theaterInterval => _int('theaterInterval', 300);
   String get xianyuUrl => _string('xianyuUrl', '');
