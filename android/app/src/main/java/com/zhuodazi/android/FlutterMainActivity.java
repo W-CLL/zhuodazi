@@ -432,10 +432,10 @@ public final class FlutterMainActivity extends FlutterActivity {
             return;
         }
         Uri uri = FileProvider.getUriForFile(this, getPackageName() + ".update", apk);
-        Intent intent = new Intent(Intent.ACTION_VIEW)
-            .setDataAndType(uri, "application/vnd.android.package-archive")
-            .setClipData(ClipData.newRawUri("update", uri))
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(uri, "application/vnd.android.package-archive");
+        intent.setClipData(ClipData.newRawUri("update", uri));
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
         for (var resolve : getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)) {
             grantUriPermission(resolve.activityInfo.packageName, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION);
         }

@@ -34,14 +34,17 @@ final class ReminderStore {
         }
 
         JSONObject toJson() {
-            return new JSONObject()
-                .put("id", id)
-                .put("enabled", enabled)
-                .put("at", at)
-                .put("message", message)
-                .put("emotion", emotion)
-                .put("expressionPetId", expressionPetId == null ? "" : expressionPetId)
-                .put("repeatDaily", repeatDaily);
+            JSONObject value = new JSONObject();
+            try {
+                value.put("id", id);
+                value.put("enabled", enabled);
+                value.put("at", at);
+                value.put("message", message);
+                value.put("emotion", emotion);
+                value.put("expressionPetId", expressionPetId == null ? "" : expressionPetId);
+                value.put("repeatDaily", repeatDaily);
+            } catch (Exception ignored) { }
+            return value;
         }
 
         Map<String, Object> toMap() {

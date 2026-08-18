@@ -29,7 +29,12 @@ final class TheaterScriptStore {
         }
 
         JSONObject toJson() {
-            return new JSONObject().put("main", main).put("companion", companion);
+            JSONObject value = new JSONObject();
+            try {
+                value.put("main", main);
+                value.put("companion", companion);
+            } catch (Exception ignored) { }
+            return value;
         }
     }
 
@@ -47,7 +52,13 @@ final class TheaterScriptStore {
         JSONObject toJson() {
             JSONArray items = new JSONArray();
             for (Scene scene : scenes) items.put(scene.toJson());
-            return new JSONObject().put("id", id).put("name", name).put("scenes", items);
+            JSONObject value = new JSONObject();
+            try {
+                value.put("id", id);
+                value.put("name", name);
+                value.put("scenes", items);
+            } catch (Exception ignored) { }
+            return value;
         }
 
         java.util.Map<String, Object> toMap() {
