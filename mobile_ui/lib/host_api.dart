@@ -23,6 +23,27 @@ class PetItem {
   final String name;
 
   bool get isCustom => id.startsWith('@custom:');
+  bool get isLibrary => id.startsWith('library:');
+}
+
+class LibraryItem {
+  const LibraryItem({
+    required this.id,
+    required this.name,
+    required this.uri,
+    required this.gifCount,
+  });
+
+  final String id;
+  final String name;
+  final String uri;
+  final int gifCount;
+
+  String get detail {
+    if (gifCount < 0) return '已绑定，点选后扫描 GIF';
+    if (gifCount == 0) return '该目录没有找到 GIF';
+    return '已扫描 $gifCount 个 GIF';
+  }
 }
 
 class TheaterScriptItem {
@@ -132,9 +153,11 @@ class HostSnapshot {
   String get interactionMode => _string('interactionMode', 'standard');
   String get interactionSyncError => _string('interactionSyncError', '');
   String get activePet => _string('activePet', '');
+  String get activeLibrary => _string('activeLibrary', '');
+  int get libraryGifCount => _int('libraryGifCount', 0);
   String get wordPack => _string('wordPack', '');
   String get installationSuffix => _string('installationSuffix', '');
-  String get version => _string('version', '1.1.0');
+  String get version => _string('version', '1.2.0');
   bool get theaterEnabled => _bool('theaterEnabled');
   int get theaterInterval => _int('theaterInterval', 300);
   String get xianyuUrl => _string('xianyuUrl', '');
@@ -166,6 +189,31 @@ class HostSnapshot {
         })
         .where((pet) => pet.id.isNotEmpty)
         .toList(growable: false);
+  }
+
+  List<LibraryItem> get libraries {
+    final raw = _data['libraries'];
+    if (raw is! List) return const [];
+    return raw
+        .whereType<Map>()
+        .map((item) {
+          final value = Map<String, dynamic>.from(item);
+          return LibraryItem(
+            id: '${value['id'] ?? ''}',
+            name: '${value['name'] ?? '图鉴目录'}',
+            uri: '${value['uri'] ?? ''}',
+            gifCount: (value['gifCount'] as num?)?.toInt() ?? -1,
+          );
+        })
+        .where((library) => library.id.isNotEmpty)
+        .toList(growable: false);
+  }
+
+  LibraryItem? get selectedLibrary {
+    for (final library in libraries) {
+      if (library.id == activeLibrary) return library;
+    }
+    return null;
   }
 
   List<String> get wordPacks {
@@ -273,6 +321,14 @@ class HostApi {
       _channel.invokeMethod<void>('openAppSettings');
 
   Future<HostSnapshot> importGif() => _snapshotCall('importGif');
+
+  Future<HostSnapshot> importLibrary() => _snapshotCall('importLibrary');
+
+  Future<HostSnapshot> selectLibrary(String id) =>
+      _snapshotCall('selectLibrary', {'id': id});
+
+  Future<HostSnapshot> deleteLibrary(String id) =>
+      _snapshotCall('deleteLibrary', {'id': id});
 
   Future<HostSnapshot> deleteCustom(String petId) =>
       _snapshotCall('deleteCustom', {'petId': petId});

@@ -4,6 +4,7 @@ import android.content.Context;
 import android.graphics.ImageDecoder;
 import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
+import android.net.Uri;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -14,25 +15,43 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 final class PetRepository {
     static final int MAX_CUSTOM_PETS = 3;
     static final long MAX_GIF_BYTES = 8L * 1024 * 1024;
     private static final String CUSTOM_PREFIX = "@custom:";
+    private static final String LIBRARY_PREFIX = "library:";
     private final Context context;
     private final SettingsStore settings;
+    private final PetLibraryStore libraries;
+    private List<PetLibraryStore.LibraryGif> cachedLibraryGifs = List.of();
 
     PetRepository(Context context, SettingsStore settings) {
         this.context = context.getApplicationContext();
         this.settings = settings;
+        this.libraries = new PetLibraryStore(this.context, settings);
         migrateLegacyImport();
+        refreshLibraryCache();
+    }
+
+    PetLibraryStore libraries() { return libraries; }
+
+    void refreshLibraryCache() {
+        PetLibraryStore.Library active = libraries.activeLibrary();
+        cachedLibraryGifs = active == null ? List.of() : libraries.scan(active);
     }
 
     List<String> pets() {
         List<String> result = new ArrayList<>();
         for (int slot = 1; slot <= MAX_CUSTOM_PETS; slot++) {
             if (isValidCustomFile(customFile(slot))) result.add(customId(slot));
+        }
+        if (!cachedLibraryGifs.isEmpty()) {
+            for (PetLibraryStore.LibraryGif gif : cachedLibraryGifs) result.add(gif.id);
+            return result;
         }
         try {
             String[] names = context.getAssets().list("");
@@ -69,15 +88,22 @@ final class PetRepository {
 
     String displayName(String petId) {
         if (isCustom(petId)) return "我的 GIF " + customSlot(petId);
+        PetLibraryStore.LibraryGif libraryGif = libraryGif(petId);
+        if (libraryGif != null) return libraryGif.name;
         int dash = petId.indexOf('-');
         String number = dash > 0 ? petId.substring(0, dash) : petId.replace(".gif", "");
         return "月薪喵 " + number;
     }
 
     Drawable load(String petId) throws IOException {
-        ImageDecoder.Source source = isCustom(petId)
-            ? ImageDecoder.createSource(customFile(customSlot(petId)))
-            : ImageDecoder.createSource(context.getAssets(), petId);
+        ImageDecoder.Source source;
+        if (isCustom(petId)) {
+            source = ImageDecoder.createSource(customFile(customSlot(petId)));
+        } else if (isLibrary(petId)) {
+            source = ImageDecoder.createSource(context.getContentResolver(), libraryUri(petId));
+        } else {
+            source = ImageDecoder.createSource(context.getAssets(), petId);
+        }
         Drawable drawable = ImageDecoder.decodeDrawable(source);
         if (drawable instanceof AnimatedImageDrawable animated) {
             animated.setRepeatCount(AnimatedImageDrawable.REPEAT_INFINITE);
@@ -117,10 +143,52 @@ final class PetRepository {
         return petId != null && petId.matches("@custom:[1-3]");
     }
 
+    boolean isLibrary(String petId) {
+        return petId != null && petId.startsWith(LIBRARY_PREFIX);
+    }
+
+    private InputStream openGif(String petId) throws IOException {
+        if (isCustom(petId)) return new FileInputStream(customFile(customSlot(petId)));
+        if (isLibrary(petId)) {
+            InputStream input = context.getContentResolver().openInputStream(libraryUri(petId));
+            if (input == null) throw new IOException("无法读取目录中的 GIF");
+            return input;
+        }
+        return context.getAssets().open(petId);
+    }
+
+    private Uri libraryUri(String petId) throws IOException {
+        PetLibraryStore.LibraryGif gif = libraryGif(petId);
+        if (gif != null) return gif.uri;
+        String raw = PetLibraryStore.decodeId(petId);
+        if (raw.isEmpty()) throw new IOException("目录 GIF 无效");
+        return Uri.parse(raw);
+    }
+
+    private PetLibraryStore.LibraryGif libraryGif(String petId) {
+        if (!isLibrary(petId)) return null;
+        for (PetLibraryStore.LibraryGif gif : cachedLibraryGifs) {
+            if (gif.id.equals(petId)) return gif;
+        }
+        return null;
+    }
+
+    List<Map<String, Object>> libraryMaps() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        String activeId = settings.activeLibrary();
+        for (PetLibraryStore.Library library : libraries.libraries()) {
+            int count = library.id.equals(activeId) ? cachedLibraryGifs.size() : -1;
+            result.add(library.toMap(count));
+        }
+        return result;
+    }
+
+    int libraryGifCount() {
+        return cachedLibraryGifs.size();
+    }
+
     byte[] readGif(String petId, int maximumBytes) throws IOException {
-        try (InputStream input = isCustom(petId)
-                ? new FileInputStream(customFile(customSlot(petId)))
-                : context.getAssets().open(petId);
+        try (InputStream input = openGif(petId);
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             int count;

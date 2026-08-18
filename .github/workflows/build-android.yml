@@ -104,8 +104,8 @@ jobs:
       - name: Prepare package
         if: github.event_name != 'pull_request'
         run: |
-          cp "$APK_DIR/app-arm64-v8a-release.apk" ZhuoDazi-Android-1.1.0-arm64.apk
-          cp "$APK_DIR/app-armeabi-v7a-release.apk" ZhuoDazi-Android-1.1.0-armv7.apk
+          cp "$APK_DIR/app-arm64-v8a-release.apk" ZhuoDazi-Android-1.2.0-arm64.apk
+          cp "$APK_DIR/app-armeabi-v7a-release.apk" ZhuoDazi-Android-1.2.0-armv7.apk
 
       - name: Upload APK to Android draft release
         if: github.event_name != 'pull_request'
@@ -113,16 +113,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="android-v1.1.0"
-          asset_arm64="ZhuoDazi-Android-1.1.0-arm64.apk"
-          asset_armv7="ZhuoDazi-Android-1.1.0-armv7.apk"
+          tag="android-v1.2.0"
+          asset_arm64="ZhuoDazi-Android-1.2.0-arm64.apk"
+          asset_armv7="ZhuoDazi-Android-1.2.0-armv7.apk"
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --draft \
               --target "$GITHUB_SHA" \
-              --title "桌搭子 Android v1.1.0" \
-              --notes "Android 功能预览版：五栏应用界面、趣味互动、小剧场、提醒、检查更新与应用内安装、激活引导与闲鱼入口、悬浮桌宠中央菜单、触摸穿透、搭子配对和桌宠互发。ARM64 适用于绝大多数手机，ARMv7 仅用于较旧的 32 位设备。安装后需授予显示在其他应用上层权限。"
+              --title "桌搭子 Android v1.2.0" \
+              --notes "Android 试用版 1.2.0：在 1.1.0 基础上增加图鉴目录绑定（最多 3 个 GIF 文件夹，递归扫描最多 500 张并作为轮换池）。体验或正式激活后可用。ARM64 适用于绝大多数手机，ARMv7 仅用于较旧的 32 位设备。安装后需授予显示在其他应用上层权限。"
           fi
           gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
-          gh release delete-asset "$tag" "ZhuoDazi-Android-1.1.0.apk" --yes || true
-          gh release delete-asset "$tag" "ZhuoDazi-Android-1.1.0-debug.apk" --yes || true
+          gh release delete-asset "$tag" "ZhuoDazi-Android-1.2.0.apk" --yes || true
+          gh release delete-asset "$tag" "ZhuoDazi-Android-1.2.0-debug.apk" --yes || true

@@ -597,6 +597,10 @@ class PetPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
+        const SectionTitle(label: '图鉴目录'),
+        const SizedBox(height: 8),
+        LibraryPanel(controller: controller),
+        const SizedBox(height: 22),
         const SectionTitle(label: '外观'),
         const SizedBox(height: 8),
         Panel(
@@ -1714,6 +1718,112 @@ class _KeepPauseCard extends StatelessWidget {
   );
 }
 
+class LibraryPanel extends StatelessWidget {
+  const LibraryPanel({required this.controller, super.key});
+  final AppController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = controller.snapshot;
+    final libraries = snapshot.libraries;
+    final selected = snapshot.selectedLibrary;
+    final canBind = snapshot.premium && libraries.length < 3;
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          AdaptiveActionRow(
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  selected == null
+                      ? '当前使用内置图鉴'
+                      : selected.gifCount < 0
+                      ? '正在使用 ${selected.name}'
+                      : '正在使用 ${selected.name} · ${selected.gifCount} 个 GIF',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+              OutlinedButton.icon(
+                onPressed: canBind
+                    ? () => runAction(context, controller.importLibrary(), (_) {
+                        final count = controller.snapshot.libraryGifCount;
+                        if (count <= 0) return '目录已绑定，但没有找到 GIF';
+                        return '已绑定目录，扫描到 $count 个 GIF';
+                      })
+                    : null,
+                icon: Icon(
+                  snapshot.premium
+                      ? Icons.folder_open_outlined
+                      : Icons.lock_outline,
+                ),
+                label: Text(
+                  snapshot.premium
+                      ? (libraries.length >= 3 ? '已满 3 个目录' : '绑定目录')
+                      : '体验后可绑定',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            snapshot.premium
+                ? '选择手机里的 GIF 文件夹，目录中的动图都会进入轮换池，最多 3 个目录、每个最多 500 张。'
+                : '体验或正式激活后，可以把相册或文件里的整个 GIF 文件夹当作图鉴。',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          if (libraries.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final library in libraries)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                selected: library.id == snapshot.activeLibrary,
+                title: Text(library.name),
+                subtitle: Text(library.detail),
+                leading: Icon(
+                  library.id == snapshot.activeLibrary
+                      ? Icons.folder
+                      : Icons.folder_outlined,
+                  color: _brand,
+                ),
+                trailing: IconButton(
+                  tooltip: '删除所选',
+                  onPressed: () =>
+                      confirmDeleteLibrary(context, controller, library),
+                  icon: const Icon(Icons.delete_outline, color: _coral),
+                ),
+                onTap: snapshot.premium
+                    ? () => runAction(
+                        context,
+                        controller.selectLibrary(library.id),
+                        (_) => '已切换到 ${library.name}',
+                      )
+                    : null,
+              ),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: selected == null
+                    ? null
+                    : () => runAction(
+                        context,
+                        controller.selectLibrary('builtin'),
+                        (_) => '已切回内置图鉴',
+                      ),
+                icon: const Icon(Icons.pets_outlined),
+                label: const Text('使用内置图鉴'),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class TheaterPanel extends StatelessWidget {
   const TheaterPanel({required this.controller, super.key});
   final AppController controller;
@@ -2430,6 +2540,37 @@ Future<void> runAction<T>(
         ),
       );
     }
+  }
+}
+
+Future<void> confirmDeleteLibrary(
+  BuildContext context,
+  AppController controller,
+  LibraryItem library,
+) async {
+  final confirmed = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('删除图鉴目录'),
+      content: Text('解除绑定「${library.name}」？目录里的文件还在手机上，只是不再作为桌宠图鉴。'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('删除'),
+        ),
+      ],
+    ),
+  );
+  if (confirmed == true && context.mounted) {
+    await runAction(
+      context,
+      controller.deleteLibrary(library.id),
+      (_) => '已解除绑定',
+    );
   }
 }
 

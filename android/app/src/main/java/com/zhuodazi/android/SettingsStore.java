@@ -31,6 +31,8 @@ final class SettingsStore {
     static final String XIANYU_URL = "xianyu_url";
     static final String AUTO_CHECK_UPDATES = "auto_check_updates";
     static final String IGNORED_UPDATE_VERSION = "ignored_update_version";
+    static final String PET_LIBRARIES = "pet_libraries";
+    static final String ACTIVE_LIBRARY = "active_library";
 
     private final SharedPreferences values;
 
@@ -68,6 +70,8 @@ final class SettingsStore {
     String xianyuUrl() { return values.getString(XIANYU_URL, ""); }
     boolean autoCheckUpdates() { return values.getBoolean(AUTO_CHECK_UPDATES, true); }
     String ignoredUpdateVersion() { return values.getString(IGNORED_UPDATE_VERSION, ""); }
+    String petLibrariesJson() { return values.getString(PET_LIBRARIES, "[]"); }
+    String activeLibrary() { return values.getString(ACTIVE_LIBRARY, ""); }
 
     void putInt(String key, int value) { values.edit().putInt(key, value).apply(); }
     void putLong(String key, long value) { values.edit().putLong(key, value).apply(); }

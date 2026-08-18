@@ -29,6 +29,9 @@ void main() {
       <String, String>{'id': '001', 'name': '月薪喵'},
     ],
     'activePet': '001',
+    'libraries': <Map<String, Object>>[],
+    'activeLibrary': '',
+    'libraryGifCount': 0,
     'wordPacks': <String>['元气夸夸.json'],
     'theaterEnabled': false,
     'theaterInterval': 300,
@@ -149,6 +152,17 @@ void main() {
     await tester.tap(find.text('桌宠').last);
     await tester.pump();
     expect(find.text('激活后可导入'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('图鉴目录'),
+      180,
+      scrollable: find.descendant(
+        of: find.byType(PetPage),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('图鉴目录'), findsOneWidget);
+    expect(find.text('体验后可绑定'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('搭子').last);
@@ -190,6 +204,27 @@ void main() {
       calls.where((call) => call.method == 'checkUpdate').length,
       greaterThanOrEqualTo(2),
     );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('premium pet page can bind a library folder', (tester) async {
+    activated = true;
+    await pumpApp(tester, const Size(360, 800));
+    await tester.tap(find.text('桌宠').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('绑定目录'),
+      180,
+      scrollable: find.descendant(
+        of: find.byType(PetPage),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    await tester.pump();
+    expect(find.text('绑定目录'), findsOneWidget);
+    await tester.tap(find.text('绑定目录'));
+    await tester.pumpAndSettle();
+    expect(calls.any((call) => call.method == 'importLibrary'), isTrue);
     expect(tester.takeException(), isNull);
   });
 

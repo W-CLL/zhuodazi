@@ -40,6 +40,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private static final int REQUEST_GIF = 4302;
     private static final int REQUEST_NOTIFICATIONS = 4303;
     private static final int REQUEST_THEATER_SCRIPT = 4304;
+    private static final int REQUEST_LIBRARY = 4305;
     private static final String AUTHOR_WECHAT = "wcl_lcw627";
     private static final String WEBSITE_URL = "https://desktoppet.online/";
 
@@ -56,6 +57,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private MethodChannel channel;
     private MethodChannel.Result pendingImport;
     private MethodChannel.Result pendingTheaterImport;
+    private MethodChannel.Result pendingLibraryImport;
 
     @Override public void configureFlutterEngine(@NonNull FlutterEngine engine) {
         super.configureFlutterEngine(engine);
@@ -85,6 +87,9 @@ public final class FlutterMainActivity extends FlutterActivity {
                 case "requestNotificationPermission" -> requestNotificationPermission(result);
                 case "openAppSettings" -> openAppSettings(result);
                 case "importGif" -> importGif(result);
+                case "importLibrary" -> importLibrary(result);
+                case "selectLibrary" -> selectLibrary((String) call.argument("id"), result);
+                case "deleteLibrary" -> deleteLibrary((String) call.argument("id"), result);
                 case "deleteCustom" -> deleteCustom(call, result);
                 case "activate" -> activate((String) call.argument("code"), result);
                 case "checkTrial" -> checkTrial(result);
@@ -138,6 +143,9 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("randomPetInterval", settings.randomPetInterval());
         value.put("activePet", pets.selectedPet());
         value.put("pets", petMaps());
+        value.put("libraries", pets.libraryMaps());
+        value.put("activeLibrary", settings.activeLibrary());
+        value.put("libraryGifCount", pets.libraryGifCount());
         value.put("wordPacks", words.packs());
         value.put("wordPack", settings.wordPack());
         value.put("activated", licenses.isActivated());
@@ -300,6 +308,45 @@ public final class FlutterMainActivity extends FlutterActivity {
         Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT)
             .addCategory(Intent.CATEGORY_OPENABLE).setType("image/gif");
         startActivityForResult(intent, REQUEST_GIF);
+    }
+
+    private void importLibrary(MethodChannel.Result result) {
+        if (!licenses.hasPremiumAccess()) {
+            result.error("PREMIUM_REQUIRED", "体验或正式激活后才能绑定图鉴目录", null);
+            return;
+        }
+        if (pets.libraries().libraries().size() >= PetLibraryStore.MAX_LIBRARIES) {
+            result.error("LIMIT", "最多只能绑定 3 个图鉴目录", null);
+            return;
+        }
+        pendingLibraryImport = result;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, REQUEST_LIBRARY);
+    }
+
+    private void selectLibrary(String id, MethodChannel.Result result) {
+        if (id != null && !id.isEmpty() && !PetLibraryStore.BUILTIN_ID.equals(id)
+            && !licenses.hasPremiumAccess()) {
+            result.error("PREMIUM_REQUIRED", "体验或正式激活后才能使用外部图鉴", null);
+            return;
+        }
+        runAsync(result, () -> {
+            pets.libraries().select(id);
+            pets.refreshLibraryCache();
+            sendService(PetOverlayService.ACTION_REFRESH);
+            return snapshot();
+        });
+    }
+
+    private void deleteLibrary(String id, MethodChannel.Result result) {
+        runAsync(result, () -> {
+            pets.libraries().delete(id);
+            pets.refreshLibraryCache();
+            sendService(PetOverlayService.ACTION_REFRESH);
+            return snapshot();
+        });
     }
 
     private void deleteCustom(MethodCall call, MethodChannel.Result result) {
@@ -483,6 +530,10 @@ public final class FlutterMainActivity extends FlutterActivity {
             handleTheaterImportResult(resultCode, data);
             return;
         }
+        if (requestCode == REQUEST_LIBRARY) {
+            handleLibraryImportResult(resultCode, data);
+            return;
+        }
         if (requestCode != REQUEST_GIF || pendingImport == null) return;
         MethodChannel.Result result = pendingImport;
         pendingImport = null;
@@ -523,6 +574,28 @@ public final class FlutterMainActivity extends FlutterActivity {
                 runOnUiThread(() -> result.success(snapshot()));
             } catch (Exception error) {
                 pending.delete();
+                runOnUiThread(() -> result.error("IMPORT_ERROR", safeMessage(error), null));
+            }
+        });
+    }
+
+    private void handleLibraryImportResult(int resultCode, Intent data) {
+        if (pendingLibraryImport == null) return;
+        MethodChannel.Result result = pendingLibraryImport;
+        pendingLibraryImport = null;
+        if (resultCode != Activity.RESULT_OK || data == null || data.getData() == null) {
+            result.success(snapshot());
+            return;
+        }
+        Uri tree = data.getData();
+        executor.execute(() -> {
+            try {
+                int flags = data.getFlags();
+                pets.libraries().add(tree, flags);
+                pets.refreshLibraryCache();
+                sendService(PetOverlayService.ACTION_REFRESH);
+                runOnUiThread(() -> result.success(snapshot()));
+            } catch (Exception error) {
                 runOnUiThread(() -> result.error("IMPORT_ERROR", safeMessage(error), null));
             }
         });

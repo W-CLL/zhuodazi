@@ -106,9 +106,9 @@ final class NetworkClient {
     static String appVersion(Context context) {
         try {
             String version = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionName;
-            return version == null || version.trim().isEmpty() ? "1.1.0" : version;
+            return version == null || version.trim().isEmpty() ? "1.2.0" : version;
         }
-        catch (Exception ignored) { return "1.1.0"; }
+        catch (Exception ignored) { return "1.2.0"; }
     }
 
     static String errorMessage(byte[] bytes, int status) {

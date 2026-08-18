@@ -250,6 +250,7 @@ public final class PetOverlayService extends Service {
 
     private void createOverlay(boolean announce) {
         if (settings.petHidden() || overlay != null) return;
+        pets.refreshLibraryCache();
         Point bounds = screenBounds();
         int petSize = fittedPetSize(bounds, settings.sizeDp());
         int width = fitWindowWidth(bounds, Math.max(petSize + dp(12), dp(128)));
@@ -285,6 +286,7 @@ public final class PetOverlayService extends Service {
     }
 
     private void refreshOverlay() {
+        pets.refreshLibraryCache();
         if (overlay == null) return;
         int previousX = windowParams.x;
         int previousY = windowParams.y;

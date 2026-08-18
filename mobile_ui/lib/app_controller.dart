@@ -108,6 +108,30 @@ class AppController extends ChangeNotifier {
     });
   }
 
+  Future<void> importLibrary() async {
+    await _guard(() async {
+      snapshot = await _api.importLibrary();
+      _rememberTrial(snapshot);
+      await _loadActivePet();
+    });
+  }
+
+  Future<void> selectLibrary(String id) async {
+    await _guard(() async {
+      snapshot = await _api.selectLibrary(id);
+      _rememberTrial(snapshot);
+      await _loadActivePet();
+    });
+  }
+
+  Future<void> deleteLibrary(String id) async {
+    await _guard(() async {
+      snapshot = await _api.deleteLibrary(id);
+      _rememberTrial(snapshot);
+      await _loadActivePet();
+    });
+  }
+
   Future<void> deleteCustom(String petId) async {
     await _guard(() async {
       snapshot = await _api.deleteCustom(petId);
