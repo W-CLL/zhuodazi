@@ -2753,6 +2753,25 @@ img {
   color: var(--ink);
 }
 
+.article-content figure {
+  margin: 8px 0 36px;
+}
+
+.article-content figure img {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 18px;
+  background: #edf4f0;
+}
+
+.article-content figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .archive-page {
   padding: 100px 0 118px;
 }
