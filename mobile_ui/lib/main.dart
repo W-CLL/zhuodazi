@@ -183,7 +183,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
-      _controller.refresh(checkTrial: true);
+      _controller.onAppResumed();
     }
   }
 
@@ -336,19 +336,62 @@ class HomePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = controller.snapshot;
+    final trial = !snapshot.activated && controller.liveTrialSeconds > 0;
+    final actions = <Widget>[
+      QuickAction(
+        icon: Icons.shuffle_rounded,
+        label: '切换形象',
+        onTap: () => runAction(
+          context,
+          controller.service('next'),
+          (_) => '已换好桌宠',
+        ),
+      ),
+      QuickAction(
+        icon: Icons.touch_app_outlined,
+        label: '说句话',
+        onTap: () => runAction(
+          context,
+          controller.service('interact'),
+          (_) => '桌宠回应你了',
+        ),
+      ),
+      QuickAction(
+        icon: Icons.theater_comedy_outlined,
+        label: '小剧场',
+        onTap: () => startTheater(context, controller),
+      ),
+      QuickAction(
+        icon: Icons.send_outlined,
+        label: '发给搭子',
+        onTap: () => sendHomeGif(context, controller),
+      ),
+    ];
+    if (!trial) {
+      actions.insert(0, actions.removeLast());
+    }
     return PageScroll(
       onRefresh: controller.refresh,
       children: [
-        const PageIntro(title: '今天也一起', subtitle: '先让桌宠出来，再随手发一张给搭子。'),
+        PageIntro(
+          title: '今天也一起',
+          subtitle: !snapshot.overlayAllowed
+              ? (trial
+                  ? '先打开悬浮窗，桌宠才会出来演一次来访。发给对象需要激活。'
+                  : '先打开悬浮窗，桌宠才会待在屏幕边角。')
+              : trial
+              ? '先让桌宠出来，等它演一次来访。发给对象需要激活。'
+              : '先让桌宠出来，再随手发一张给搭子。',
+        ),
         PetStage(snapshot: snapshot, gif: controller.petGif, height: 206),
         const SizedBox(height: 14),
-        if (!snapshot.activated && controller.liveTrialSeconds > 0) ...[
+        if (trial) ...[
           Panel(
             color: _mint,
             child: StatusLine(
               icon: Icons.timer_outlined,
               title: '完整体验还剩 ${trialClock(controller.liveTrialSeconds)}',
-              detail: '先拖一拖、换一只。发 GIF 给搭子需要正式激活。',
+              detail: '先看着它来串门。发给对象需要正式激活。',
               color: _brand,
             ),
           ),
@@ -358,38 +401,7 @@ class HomePage extends StatelessWidget {
         const SizedBox(height: 22),
         const SectionTitle(label: '常用操作'),
         const SizedBox(height: 9),
-        AdaptiveActionRow(
-          children: [
-            QuickAction(
-              icon: Icons.send_outlined,
-              label: '发给搭子',
-              onTap: () => sendHomeGif(context, controller),
-            ),
-            QuickAction(
-              icon: Icons.theater_comedy_outlined,
-              label: '小剧场',
-              onTap: () => startTheater(context, controller),
-            ),
-            QuickAction(
-              icon: Icons.touch_app_outlined,
-              label: '说句话',
-              onTap: () => runAction(
-                context,
-                controller.service('interact'),
-                (_) => '桌宠回应你了',
-              ),
-            ),
-            QuickAction(
-              icon: Icons.shuffle_rounded,
-              label: '切换形象',
-              onTap: () => runAction(
-                context,
-                controller.service('next'),
-                (_) => '已换好桌宠',
-              ),
-            ),
-          ],
-        ),
+        AdaptiveActionRow(children: actions),
       ],
     );
   }
@@ -406,10 +418,12 @@ class _HomeStatus extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const StatusLine(
+            StatusLine(
               icon: Icons.layers_outlined,
-              title: '先打开悬浮窗，桌宠才会出现',
-              detail: '桌搭子要待在其他应用上面。授权后回到这里，它就会待在屏幕边角。',
+              title: '先打开悬浮窗，才会看到来访',
+              detail: controller.snapshot.activated
+                  ? '安卓要把桌宠贴在别的应用上面。打开后回到这里，它会自己出来。'
+                  : '安卓要把桌宠贴在别的应用上面。打开后回到这里，它会自己出来；过几秒会有一只来串门。',
               color: _coral,
             ),
             const SizedBox(height: 14),
@@ -431,10 +445,12 @@ class _HomeStatus extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const StatusLine(
+            StatusLine(
               icon: Icons.bedtime_outlined,
               title: '桌宠还在等你',
-              detail: '启动后会待在屏幕边角。点它打开菜单，也可以从这里发给搭子。',
+              detail: controller.snapshot.activated
+                  ? '启动后会待在屏幕边角。点它打开菜单，也可以从这里发给搭子。'
+                  : '启动后会待在屏幕边角。过几秒会有一只来串门（演示）。',
               color: _brand,
             ),
             const SizedBox(height: 14),
@@ -452,10 +468,13 @@ class _HomeStatus extends StatelessWidget {
       );
     }
     final inactiveTouch = snapshot.hidden || snapshot.clickThrough;
+    final trial = !snapshot.activated && controller.liveTrialSeconds > 0;
     final detail = snapshot.hidden
         ? '桌宠仍在后台运行，随时可以恢复显示。'
         : snapshot.clickThrough
         ? '当前触摸会直接交给桌宠下方的应用。'
+        : trial
+        ? '点桌宠打开菜单。过几秒会有一只来串门（演示）。'
         : '点桌宠打开菜单，或直接把当前形象发给搭子。';
     return Panel(
       child: Column(
@@ -474,9 +493,17 @@ class _HomeStatus extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => sendHomeGif(context, controller),
-                icon: const Icon(Icons.send_outlined),
-                label: const Text('发给搭子'),
+                onPressed: () => trial
+                    ? runAction(
+                        context,
+                        controller.service('next'),
+                        (_) => '已换好桌宠',
+                      )
+                    : sendHomeGif(context, controller),
+                icon: Icon(
+                  trial ? Icons.shuffle_rounded : Icons.send_outlined,
+                ),
+                label: Text(trial ? '换一只' : '发给搭子'),
               ),
             ),
             const SizedBox(height: 9),
@@ -986,13 +1013,13 @@ class _CompanionPageState extends State<CompanionPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  trial ? '体验期先看看怎么发' : '正式激活后可以互发',
+                  trial ? '体验期先看着来访' : '正式激活后可以互发',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 5),
                 Text(
                   trial
-                      ? '现在可以先启动桌宠、换一只、点它说话。把当前 GIF 发给另一台设备，需要正式激活。'
+                      ? '桌宠出来后，系统会先演一次来访。想让对象也派一只过来，激活后换一对码。'
                       : '激活后即可配对，把当前桌宠发给搭子。Android 设备单独计为一台。',
                 ),
                 const SizedBox(height: 14),

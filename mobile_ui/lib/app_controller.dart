@@ -22,6 +22,7 @@ class AppController extends ChangeNotifier {
   int _trialSecondsAtSync = 0;
   Timer? _trialTimer;
   bool _autoChecked = false;
+  bool _awaitingOverlayGrant = false;
 
   int get liveTrialSeconds {
     if (snapshot.activated) return 0;
@@ -93,7 +94,25 @@ class AppController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> requestOverlayPermission() => _api.requestOverlayPermission();
+  Future<void> requestOverlayPermission() async {
+    _awaitingOverlayGrant = true;
+    await _api.requestOverlayPermission();
+    await refresh();
+    await startPetAfterOverlayGrant();
+  }
+
+  Future<void> onAppResumed() async {
+    await refresh(checkTrial: true);
+    await startPetAfterOverlayGrant();
+  }
+
+  Future<void> startPetAfterOverlayGrant() async {
+    if (!_awaitingOverlayGrant) return;
+    if (!snapshot.overlayAllowed) return;
+    _awaitingOverlayGrant = false;
+    if (snapshot.running) return;
+    await service('start');
+  }
 
   Future<void> requestNotificationPermission() =>
       _api.requestNotificationPermission();

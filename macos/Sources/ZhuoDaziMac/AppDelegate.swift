@@ -127,6 +127,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startOnboardingIfNeeded() {
         guard !settings.onboardingHintSeen else { return }
+        if licenses.isTrialActive, !settings.demoVisitSeen {
+            petController.showBubble("先待一会儿，马上有人来串门。")
+            return
+        }
         settings.onboardingHintSeen = true
         settingsStore.save(settings)
         let steps = [
@@ -141,10 +145,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func markOnboardingSeen() {
+        guard !settings.onboardingHintSeen else { return }
+        settings.onboardingHintSeen = true
+        settingsStore.save(settings)
+    }
+
     private func scheduleDemoVisitIfNeeded() {
         guard !settings.demoVisitSeen, licenses.isTrialActive else { return }
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(55))
+            try? await Task.sleep(for: .seconds(12))
             await self?.showDemoVisitIfNeeded()
         }
     }
@@ -157,13 +167,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         guard let url = petController.demoVisitGIFURL() else {
             settings.demoVisitSeen = true
+            markOnboardingSeen()
             settingsStore.save(settings)
             return
         }
         settings.demoVisitSeen = true
+        markOnboardingSeen()
         settingsStore.save(settings)
         await petController.showVisitor(at: url, senderName: "桌搭子")
-        petController.showBubble("想让对象也派一只过来，激活后换一对码。")
+        petController.showBubble("刚才那只是演示。想让对象也派一只过来，激活后换一对码。")
     }
 
     private func scheduleTrialCheck(_ remainingSeconds: Int) {

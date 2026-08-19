@@ -282,7 +282,13 @@ public final class PetOverlayService extends Service {
         windowManager.addView(overlay, windowParams);
         currentPet = pets.selectedPet();
         loadCurrentPet();
-        if (announce) say("idle", "我来啦。点一下，菜单会自己冒出来。", 4800);
+        if (announce) {
+            if (licenses.isTrialActive() && !settings.demoVisitSeen()) {
+                say("idle", "先待一会儿，马上有人来串门。", 4800);
+            } else {
+                say("idle", "我来啦。点一下，菜单会自己冒出来。", 4800);
+            }
+        }
         restartSchedules();
         scheduleDemoVisit();
     }
@@ -1073,7 +1079,7 @@ public final class PetOverlayService extends Service {
             return;
         }
         demoVisitScheduled = true;
-        handler.postDelayed(this::showDemoVisitIfNeeded, 55_000L);
+        handler.postDelayed(this::showDemoVisitIfNeeded, 12_000L);
     }
 
     private void showDemoVisitIfNeeded() {
@@ -1088,7 +1094,7 @@ public final class PetOverlayService extends Service {
             settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, true);
             showVisitor(new CompanionService.Visit("demo-visit", "桌搭子", file));
             handler.postDelayed(() -> {
-                if (overlay != null) say("idle", "想让对象也派一只过来，激活后换一对码。", 4800);
+                if (overlay != null) say("idle", "刚才那只是演示。想让对象也派一只过来，激活后换一对码。", 5200);
             }, 10_400);
         } catch (Exception ignored) {
             settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, false);

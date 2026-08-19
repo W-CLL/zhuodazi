@@ -58,6 +58,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private MethodChannel.Result pendingImport;
     private MethodChannel.Result pendingTheaterImport;
     private MethodChannel.Result pendingLibraryImport;
+    private boolean startAfterOverlayGrant;
 
     @Override public void configureFlutterEngine(@NonNull FlutterEngine engine) {
         super.configureFlutterEngine(engine);
@@ -271,12 +272,28 @@ public final class FlutterMainActivity extends FlutterActivity {
 
     private void requestOverlayPermission(MethodChannel.Result result) {
         if (Settings.canDrawOverlays(this)) {
+            startPetIfNeeded();
             result.success(true);
             return;
         }
+        startAfterOverlayGrant = true;
         startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
             Uri.parse("package:" + getPackageName())));
         result.success(false);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (startAfterOverlayGrant && Settings.canDrawOverlays(this)) {
+            startAfterOverlayGrant = false;
+            startPetIfNeeded();
+        }
+    }
+
+    private void startPetIfNeeded() {
+        if (!Settings.canDrawOverlays(this) || settings.running()) return;
+        sendService(PetOverlayService.ACTION_START);
     }
 
     private void requestNotificationPermission(MethodChannel.Result result) {

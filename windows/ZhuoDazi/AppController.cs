@@ -26,7 +26,7 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trialDisplayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly DispatcherTimer _demoVisitTimer = new() { Interval = TimeSpan.FromSeconds(55) };
+    private readonly DispatcherTimer _demoVisitTimer = new() { Interval = TimeSpan.FromSeconds(12) };
     private readonly CompanionVisitorQueue _visitorQueue = new();
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
@@ -87,7 +87,9 @@ public sealed class AppController : IDisposable
         _reminderTimer.Tick += (_, _) => CheckReminders();
         _idleTimer.Tick += (_, _) =>
         {
-            if (!_interactionActive) _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
+            if (_interactionActive || _visitorQueue.IsShowing) return;
+            if (IsTrialActive && !Settings.DemoVisitSeen) return;
+            _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
         };
         _theaterTimer.Tick += async (_, _) =>
         {
@@ -220,6 +222,11 @@ public sealed class AppController : IDisposable
     public void StartOnboardingIfNeeded()
     {
         if (Settings.OnboardingHintSeen || _petWindow is null) return;
+        if (IsTrialActive && !Settings.DemoVisitSeen)
+        {
+            _petWindow.ShowReaction("先待一会儿，马上有人来串门。");
+            return;
+        }
         var steps = new[]
         {
             "拖我、点我，右键还有更多。",
@@ -265,6 +272,7 @@ public sealed class AppController : IDisposable
         if (source is null)
         {
             Settings.DemoVisitSeen = true;
+            MarkOnboardingSeen();
             Save();
             return;
         }
@@ -277,10 +285,11 @@ public sealed class AppController : IDisposable
             _visitorQueue.Enqueue([new CompanionVisit("demo-visit", "桌搭子", copy)]);
             copy = null;
             Settings.DemoVisitSeen = true;
+            MarkOnboardingSeen();
             Save();
             await _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
             if (!_disposed && !IsExiting && _petWindow is { IsVisible: true })
-                _petWindow.ShowReaction("想让对象也派一只过来，激活后换一对码。");
+                _petWindow.ShowReaction("刚才那只是演示。想让对象也派一只过来，激活后换一对码。");
         }
         catch
         {

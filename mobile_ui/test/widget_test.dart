@@ -115,13 +115,15 @@ void main() {
     await tester.pump();
     await tester.tap(sendHome, warnIfMissed: false);
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
   }
 
   testWidgets('renders the Android companion shell', (tester) async {
     await pumpApp(tester, const Size(360, 800));
     expect(find.text('桌搭子'), findsOneWidget);
     expect(find.text('今天也一起'), findsOneWidget);
-    expect(find.text('发给搭子'), findsWidgets);
+    expect(find.text('先打开悬浮窗，才会看到来访'), findsOneWidget);
+    expect(find.text('去打开悬浮窗'), findsOneWidget);
     expect(find.text('首页'), findsWidgets);
 
     final destinations = tester
@@ -167,7 +169,7 @@ void main() {
 
     await tester.tap(find.text('搭子').last);
     await tester.pump();
-    expect(find.text('体验期先看看怎么发'), findsOneWidget);
+    expect(find.text('体验期先看着来访'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('我的').last);
@@ -228,11 +230,50 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('trial home leads with visit, not send', (tester) async {
+    overlayAllowed = true;
+    running = true;
+    await pumpApp(tester, const Size(360, 800));
+    expect(find.textContaining('等它演一次来访'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '换一只'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '发给搭子'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.widgetWithText(QuickAction, '发给搭子'),
+      180,
+      scrollable: find.descendant(
+        of: find.byType(HomePage),
+        matching: find.byType(Scrollable),
+      ),
+    );
+    expect(find.widgetWithText(QuickAction, '发给搭子'), findsOneWidget);
+  });
+
   testWidgets('home send path asks for overlay first', (tester) async {
     await pumpApp(tester, const Size(360, 800));
+    expect(find.text('先打开悬浮窗，才会看到来访'), findsOneWidget);
     await tapHomeSend(tester);
     expect(
       calls.any((call) => call.method == 'requestOverlayPermission'),
+      isTrue,
+    );
+  });
+
+  testWidgets('granting overlay starts the pet', (tester) async {
+    await pumpApp(tester, const Size(360, 800));
+    await tester.tap(find.widgetWithText(FilledButton, '去打开悬浮窗'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 320));
+    expect(
+      calls.any((call) => call.method == 'requestOverlayPermission'),
+      isTrue,
+    );
+    expect(
+      calls.any(
+        (call) =>
+            call.method == 'serviceAction' &&
+            call.arguments is Map &&
+            call.arguments['action'] == 'start',
+      ),
       isTrue,
     );
   });
@@ -268,6 +309,14 @@ void main() {
       await pumpApp(tester, size);
       expect(tester.takeException(), isNull);
       if (size.height >= 700) {
+        await tester.scrollUntilVisible(
+          find.widgetWithText(QuickAction, '发给搭子'),
+          180,
+          scrollable: find.descendant(
+            of: find.byType(HomePage),
+            matching: find.byType(Scrollable),
+          ),
+        );
         expect(find.widgetWithText(QuickAction, '发给搭子'), findsOneWidget);
         await tapHomeSend(tester);
         expect(tester.takeException(), isNull);
