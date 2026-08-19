@@ -1299,7 +1299,7 @@ class AccountPage extends StatelessWidget {
                       snapshot.activated
                           ? '此设备已激活'
                           : trialEnded
-                          ? '五分钟体验结束啦'
+                          ? '一天体验结束啦'
                           : '体验与激活',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),

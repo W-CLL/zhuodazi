@@ -366,7 +366,11 @@ class AppController extends ChangeNotifier {
 
 String trialClock(int seconds) {
   final safe = seconds < 0 ? 0 : seconds;
-  final minutes = safe ~/ 60;
+  final hours = safe ~/ 3600;
+  final minutes = (safe % 3600) ~/ 60;
   final remaining = safe % 60;
+  if (hours > 0) {
+    return '$hours:${minutes.toString().padLeft(2, '0')}:${remaining.toString().padLeft(2, '0')}';
+  }
   return '${minutes.toString().padLeft(2, '0')}:${remaining.toString().padLeft(2, '0')}';
 }

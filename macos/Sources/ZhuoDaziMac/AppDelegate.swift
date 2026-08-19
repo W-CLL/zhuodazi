@@ -168,7 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func scheduleTrialCheck(_ remainingSeconds: Int) {
         trialTimer?.invalidate()
-        trialTimer = Timer.scheduledTimer(withTimeInterval: Double(max(1, min(300, remainingSeconds))), repeats: false) { [weak self] _ in
+        trialTimer = Timer.scheduledTimer(withTimeInterval: Double(max(1, min(24 * 60 * 60, remainingSeconds))), repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 guard !self.licenses.isActivated else { return }
@@ -181,7 +181,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 } catch { }
                 self.licenses.endTrial()
                 self.petController.refreshPremiumAccess()
-                self.petController.showBubble("五分钟完整体验结束啦，基础陪伴继续。")
+                self.petController.showBubble("一天完整体验结束啦，基础陪伴继续。")
                 self.settingsWindow?.refreshAccessState()
                 if await ActivationPrompts.activate(
                     licenses: self.licenses,

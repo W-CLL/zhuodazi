@@ -59,7 +59,7 @@ final class LicenseService {
         JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.TRIAL, body,
             this, NetworkClient.Auth.NONE);
         int seconds = response.optInt("remainingSeconds", -1);
-        if (seconds < 0 || seconds > 300) throw new IllegalStateException("体验服务返回的数据无效");
+        if (seconds < 0 || seconds > 24 * 60 * 60) throw new IllegalStateException("体验服务返回的数据无效");
         boolean allowed = response.optBoolean("allowed") && seconds > 0;
         settings.setTrialRemaining(allowed ? seconds : 0);
         return new TrialStatus(allowed, seconds);

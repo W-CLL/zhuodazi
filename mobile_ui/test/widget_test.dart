@@ -16,7 +16,7 @@ void main() {
     'running': running,
     'activated': activated,
     'premium': activated,
-    'trialSeconds': activated ? 0 : 300,
+    'trialSeconds': activated ? 0 : 86400,
     'hidden': false,
     'clickThrough': false,
     'notificationAllowed': true,

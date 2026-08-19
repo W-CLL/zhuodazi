@@ -11,7 +11,7 @@ Android 版使用原生 Java 实现，通过系统“显示在其他应用上层
 - 10 个内置桌宠、随机/手动换宠、最多 3 个自定义 GIF
 - 图鉴目录：体验或正式激活后可用系统文件选择器绑定最多 3 个 GIF 文件夹，递归扫描最多 500 张并作为轮换池
 - 大小、透明度、镜像、性格、互动频率、词包和换宠间隔
-- Android Keystore 加密的独立设备身份、5 分钟体验与正式激活
+- Android Keystore 加密的独立设备身份、1 天体验与正式激活
 - 搭子昵称、配对码、配对/解除配对、当前 GIF 互发与来访展示
 - 开机后恢复桌宠
 - 激活页引导：微信二维码、复制微信号、官网和闲鱼跳转
@@ -27,11 +27,11 @@ Android 不支持 Windows 托盘、全局鼠标追逐和 WPF 窗口模型。提�
 
 ### GitHub Actions
 
-推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.3.1.apk` 上传到 `android-v1.3.1` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
+推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.3.2.apk` 上传到 `android-v1.3.2` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
 
 工作流会执行 Android Lint、APK 编译和 v2 签名验证。仓库当前的 Actions Artifact 存储额度已满，因此和 Windows/macOS 构建一样直接使用 GitHub Release 保存安装包。
 
-v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。当前试用包是 v1.3.1（versionCode 5）。
+v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。当前试用包是 v1.3.2（versionCode 6）。
 
 ### 本地构建
 

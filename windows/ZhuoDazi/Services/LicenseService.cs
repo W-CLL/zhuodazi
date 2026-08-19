@@ -141,7 +141,7 @@ public sealed class LicenseService : IDisposable
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException(TryReadError(responseBytes) ?? "试用时间校验失败，请稍后重试。");
             var result = JsonSerializer.Deserialize<TrialResponse>(responseBytes, JsonOptions);
-            if (result is null || result.RemainingSeconds is < 0 or > 300)
+            if (result is null || result.RemainingSeconds is < 0 or > 24 * 60 * 60)
                 throw new InvalidOperationException("试用服务返回的数据无效。");
             _trialActive = result.Allowed && result.RemainingSeconds > 0;
             _remainingTrialSeconds = _trialActive ? result.RemainingSeconds : 0;

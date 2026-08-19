@@ -153,7 +153,7 @@ final class LicenseService {
             throw LicenseError.server(Self.readError(data) ?? "试用时间校验失败，请稍后重试")
         }
         guard let result = try? JSONDecoder().decode(TrialResponse.self, from: data),
-              (0...300).contains(result.remainingSeconds) else {
+              (0...86400).contains(result.remainingSeconds) else {
             throw LicenseError.invalidResponse
         }
         trialActive = result.allowed && result.remainingSeconds > 0

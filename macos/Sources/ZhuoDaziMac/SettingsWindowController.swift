@@ -603,7 +603,7 @@ final class SettingsWindowController: NSWindowController {
     private func refreshUpdateState() {
         activationLabel.stringValue = licenses.isActivated
             ? licenses.summary
-            : licenses.hasPremiumAccess ? "五分钟完整功能体验中" : "免费版 - 激活可解锁完整功能"
+            : licenses.hasPremiumAccess ? "一天完整功能体验中" : "免费版 - 激活可解锁完整功能"
         let status = updates.status
         updateLabel.stringValue = "当前版本 v\(AppVersion.current) - \(status.message)"
         updateProgress.doubleValue = Double(status.progress)

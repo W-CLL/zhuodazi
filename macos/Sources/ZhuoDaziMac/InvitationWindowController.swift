@@ -56,7 +56,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         ])
         window.contentView = root
 
-        let heading = NSTextField(labelWithString: trialEnded ? "五分钟体验结束啦" : (required ? "继续完整体验" : "更换激活码"))
+        let heading = NSTextField(labelWithString: trialEnded ? "一天体验结束啦" : (required ? "继续完整体验" : "更换激活码"))
         heading.font = .systemFont(ofSize: 23, weight: .bold)
         stack.addArrangedSubview(heading)
         let subtitle = NSTextField(wrappingLabelWithString: trialEnded

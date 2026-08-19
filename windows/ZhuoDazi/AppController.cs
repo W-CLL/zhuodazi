@@ -1325,7 +1325,10 @@ public sealed class AppController : IDisposable
     private static string FormatTrialClock(int seconds)
     {
         seconds = Math.Max(0, seconds);
-        return $"{seconds / 60}:{seconds % 60:00}";
+        var hours = seconds / 3600;
+        var minutes = seconds % 3600 / 60;
+        var remainder = seconds % 60;
+        return hours > 0 ? $"{hours}:{minutes:00}:{remainder:00}" : $"{minutes}:{remainder:00}";
     }
 
     private void RefreshTray()
