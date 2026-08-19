@@ -229,6 +229,20 @@ final class PetRepository {
         return target;
     }
 
+    File copyDemoVisitGif() throws IOException {
+        String current = selectedPet();
+        String visitor = "";
+        for (String petId : pets()) {
+            if (!petId.equals(current)) {
+                visitor = petId;
+                break;
+            }
+        }
+        if (visitor.isEmpty()) visitor = current;
+        if (visitor.isEmpty()) throw new IOException("没有可用于演示的桌宠");
+        return saveInboxGif("demo-visit", readGif(visitor, (int) MAX_GIF_BYTES));
+    }
+
     private File customFile(int slot) {
         return new File(context.getFilesDir(), "pets/custom_" + slot + ".gif");
     }

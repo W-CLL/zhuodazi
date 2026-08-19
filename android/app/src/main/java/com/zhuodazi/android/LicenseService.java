@@ -20,7 +20,8 @@ final class LicenseService {
     }
 
     boolean isActivated() { return secureStore.record().isActivated(); }
-    boolean hasPremiumAccess() { return isActivated() || settings.trialActive(); }
+    boolean isTrialActive() { return !isActivated() && settings.trialActive(); }
+    boolean hasPremiumAccess() { return isActivated() || isTrialActive(); }
     String installationId() { return secureStore.record().installationId; }
     String licenseSuffix() {
         String id = secureStore.record().licenseId;

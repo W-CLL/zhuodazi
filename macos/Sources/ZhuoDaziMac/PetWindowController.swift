@@ -25,6 +25,7 @@ final class PetWindowController {
         set { update { $0.clickThrough = newValue } }
     }
     var isVisible: Bool { window.isVisible }
+    var isBusyWithScene: Bool { theaterTask != nil || visitorWindow != nil || interactionActive }
     var canRandomizePet: Bool { petURLs.count > 1 }
     var currentSettings: AppSettings { settings }
     var interactionStatus: String { interactions.statusSummary }
@@ -137,6 +138,10 @@ final class PetWindowController {
         window.orderOut(nil)
     }
     func showBubble(_ text: String) { petView.showBubble(text) }
+
+    func demoVisitGIFURL() -> URL? {
+        petURLs.first { $0 != currentPetURL } ?? currentPetURL ?? petURLs.first
+    }
 
     func showVisitor(at url: URL, senderName: String) async {
         guard window.isVisible, theaterTask == nil, visitorWindow == nil else { return }

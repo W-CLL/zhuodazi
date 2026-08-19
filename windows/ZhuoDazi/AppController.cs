@@ -26,6 +26,7 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trialDisplayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly DispatcherTimer _demoVisitTimer = new() { Interval = TimeSpan.FromSeconds(55) };
     private readonly CompanionVisitorQueue _visitorQueue = new();
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
@@ -109,6 +110,11 @@ public sealed class AppController : IDisposable
             await PollCompanionAsync();
         };
         _trialDisplayTimer.Tick += (_, _) => RefreshTrialDisplay();
+        _demoVisitTimer.Tick += async (_, _) =>
+        {
+            _demoVisitTimer.Stop();
+            await ShowDemoVisitIfNeededAsync();
+        };
     }
 
     public void Start()
@@ -139,6 +145,7 @@ public sealed class AppController : IDisposable
         Save();
         RefreshTrialDisplay();
         StartOnboardingIfNeeded();
+        ScheduleDemoVisitIfNeeded();
         _ = _analytics.TrackStartupAsync();
         if (Settings.AutoCheckUpdates)
         {
@@ -235,6 +242,67 @@ public sealed class AppController : IDisposable
         ShowStep();
         timer.Tick += (_, _) => ShowStep();
         timer.Start();
+    }
+
+    private void ScheduleDemoVisitIfNeeded()
+    {
+        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive) return;
+        _demoVisitTimer.Stop();
+        _demoVisitTimer.Start();
+    }
+
+    private async Task ShowDemoVisitIfNeededAsync()
+    {
+        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive) return;
+        if (_theaterActive || _interactionActive || _visitorQueue.IsShowing
+            || _petWindow is not { IsVisible: true })
+        {
+            ScheduleDemoVisitIfNeeded();
+            return;
+        }
+
+        var source = PickDemoVisitGif();
+        if (source is null)
+        {
+            Settings.DemoVisitSeen = true;
+            Save();
+            return;
+        }
+
+        string? copy = null;
+        try
+        {
+            copy = Path.Combine(Path.GetTempPath(), $"zhuodazi-demo-visit-{Guid.NewGuid():N}.gif");
+            File.Copy(source, copy, true);
+            _visitorQueue.Enqueue([new CompanionVisit("demo-visit", "桌搭子", copy)]);
+            copy = null;
+            Settings.DemoVisitSeen = true;
+            Save();
+            await _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
+            if (!_disposed && !IsExiting && _petWindow is { IsVisible: true })
+                _petWindow.ShowReaction("想让对象也派一只过来，激活后换一对码。");
+        }
+        catch
+        {
+            if (copy is not null) try { File.Delete(copy); } catch { }
+            Settings.DemoVisitSeen = false;
+            ScheduleDemoVisitIfNeeded();
+        }
+    }
+
+    private string? PickDemoVisitGif()
+    {
+        var current = CurrentPetPath();
+        var candidates = _libraryFiles
+            .Where(path => !string.Equals(path, current, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(path, _activeLibraryPetPath, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (candidates.Count == 0)
+            candidates = _library.Scan(null)
+                .Where(path => !string.Equals(path, current, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        if (candidates.Count == 0) return _libraryFiles.FirstOrDefault() ?? current;
+        return candidates[_random.Next(candidates.Count)];
     }
 
     public void ShowTrayMenu() => _trayMenu?.Show(Forms.Cursor.Position);
@@ -1352,6 +1420,7 @@ public sealed class AppController : IDisposable
         _interactionSyncTimer.Stop();
         _companionTimer.Stop();
         _trialDisplayTimer.Stop();
+        _demoVisitTimer.Stop();
         _theaterCancellation?.Cancel();
         Updates.StateChanged -= OnUpdateStateChanged;
         Updates.Dispose();

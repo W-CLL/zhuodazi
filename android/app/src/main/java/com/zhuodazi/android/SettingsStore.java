@@ -33,6 +33,7 @@ final class SettingsStore {
     static final String IGNORED_UPDATE_VERSION = "ignored_update_version";
     static final String PET_LIBRARIES = "pet_libraries";
     static final String ACTIVE_LIBRARY = "active_library";
+    static final String DEMO_VISIT_SEEN = "demo_visit_seen";
 
     private final SharedPreferences values;
 
@@ -72,6 +73,7 @@ final class SettingsStore {
     String ignoredUpdateVersion() { return values.getString(IGNORED_UPDATE_VERSION, ""); }
     String petLibrariesJson() { return values.getString(PET_LIBRARIES, "[]"); }
     String activeLibrary() { return values.getString(ACTIVE_LIBRARY, ""); }
+    boolean demoVisitSeen() { return values.getBoolean(DEMO_VISIT_SEEN, false); }
 
     void putInt(String key, int value) { values.edit().putInt(key, value).apply(); }
     void putLong(String key, long value) { values.edit().putLong(key, value).apply(); }

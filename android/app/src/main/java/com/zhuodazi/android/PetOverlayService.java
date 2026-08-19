@@ -104,6 +104,7 @@ public final class PetOverlayService extends Service {
     private int motionVersion;
     private CompanionService.Visit pendingVisit;
     private File visitorFile;
+    private boolean demoVisitScheduled;
 
     private final Runnable wanderTask = new Runnable() {
         @Override public void run() {
@@ -283,6 +284,7 @@ public final class PetOverlayService extends Service {
         loadCurrentPet();
         if (announce) say("idle", "我来啦。点一下，菜单会自己冒出来。", 4800);
         restartSchedules();
+        scheduleDemoVisit();
     }
 
     private void refreshOverlay() {
@@ -1063,6 +1065,34 @@ public final class PetOverlayService extends Service {
             visitorParams.x = SettingsStore.clamp(visitorParams.x, 0, Math.max(0, bounds.x - visitorParams.width));
             visitorParams.y = SettingsStore.clamp(visitorParams.y, 0, maxWindowY(bounds, visitorParams.height));
             try { windowManager.updateViewLayout(visitorOverlay, visitorParams); } catch (Exception ignored) { }
+        }
+    }
+
+    private void scheduleDemoVisit() {
+        if (demoVisitScheduled || settings.demoVisitSeen() || !licenses.isTrialActive()) {
+            return;
+        }
+        demoVisitScheduled = true;
+        handler.postDelayed(this::showDemoVisitIfNeeded, 55_000L);
+    }
+
+    private void showDemoVisitIfNeeded() {
+        demoVisitScheduled = false;
+        if (settings.demoVisitSeen() || !licenses.isTrialActive()) return;
+        if (overlay == null || settings.petHidden() || theaterActive || visitorOverlay != null) {
+            scheduleDemoVisit();
+            return;
+        }
+        try {
+            File file = pets.copyDemoVisitGif();
+            settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, true);
+            showVisitor(new CompanionService.Visit("demo-visit", "桌搭子", file));
+            handler.postDelayed(() -> {
+                if (overlay != null) say("idle", "想让对象也派一只过来，激活后换一对码。", 4800);
+            }, 10_400);
+        } catch (Exception ignored) {
+            settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, false);
+            handler.postDelayed(this::scheduleDemoVisit, 20_000L);
         }
     }
 

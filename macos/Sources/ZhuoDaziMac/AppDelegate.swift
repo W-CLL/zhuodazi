@@ -112,6 +112,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         startCompanionPolling()
         startReminderChecks()
         startOnboardingIfNeeded()
+        scheduleDemoVisitIfNeeded()
         analytics.trackStartup()
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -138,6 +139,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.petController.showBubble(step)
             }
         }
+    }
+
+    private func scheduleDemoVisitIfNeeded() {
+        guard !settings.demoVisitSeen, licenses.isTrialActive else { return }
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(55))
+            await self?.showDemoVisitIfNeeded()
+        }
+    }
+
+    private func showDemoVisitIfNeeded() async {
+        guard !settings.demoVisitSeen, licenses.isTrialActive else { return }
+        guard petController.isVisible, !petController.isBusyWithScene else {
+            scheduleDemoVisitIfNeeded()
+            return
+        }
+        guard let url = petController.demoVisitGIFURL() else {
+            settings.demoVisitSeen = true
+            settingsStore.save(settings)
+            return
+        }
+        settings.demoVisitSeen = true
+        settingsStore.save(settings)
+        await petController.showVisitor(at: url, senderName: "桌搭子")
+        petController.showBubble("想让对象也派一只过来，激活后换一对码。")
     }
 
     private func scheduleTrialCheck(_ remainingSeconds: Int) {

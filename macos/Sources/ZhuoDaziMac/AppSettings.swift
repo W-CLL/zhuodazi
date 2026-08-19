@@ -71,6 +71,7 @@ struct AppSettings: Codable {
     var positionX: CGFloat?
     var positionY: CGFloat?
     var onboardingHintSeen = false
+    var demoVisitSeen = false
 
     init() {}
 
@@ -105,6 +106,7 @@ struct AppSettings: Codable {
         positionX = try values.decodeIfPresent(CGFloat.self, forKey: .positionX)
         positionY = try values.decodeIfPresent(CGFloat.self, forKey: .positionY)
         onboardingHintSeen = try values.decodeIfPresent(Bool.self, forKey: .onboardingHintSeen) ?? false
+        demoVisitSeen = try values.decodeIfPresent(Bool.self, forKey: .demoVisitSeen) ?? false
         normalize(resetClickThrough: true)
     }
 

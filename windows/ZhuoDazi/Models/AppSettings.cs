@@ -97,6 +97,9 @@ public sealed class AppSettings
     [JsonPropertyName("onboardingHintSeen")]
     public bool OnboardingHintSeen { get; set; }
 
+    [JsonPropertyName("demoVisitSeen")]
+    public bool DemoVisitSeen { get; set; }
+
     public void Normalize()
     {
         Pets = (Pets ?? []).Where(item => !string.IsNullOrWhiteSpace(item.Id)
