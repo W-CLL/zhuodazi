@@ -42,6 +42,7 @@ public sealed class AppController : IDisposable
     private bool _interactionSyncing;
     private bool _interactionSyncRequested;
     private bool _companionSyncing;
+    private bool _trialVisitBusy;
     private bool _disposed;
 
     public AppSettings Settings { get; }
@@ -429,6 +430,35 @@ public sealed class AppController : IDisposable
         await Companions.UnpairAsync(cancellationToken);
         RefreshTray();
         StateChanged?.Invoke();
+    }
+
+    public async Task PlayTrialVisitAsync(string category)
+    {
+        if (!IsTrialActive)
+        {
+            ShowActivation(_settingsWindow, "体验结束后，点一下发给对象才需要激活。");
+            return;
+        }
+        if (_trialVisitBusy || _visitorQueue.IsShowing)
+        {
+            _petWindow?.ShowReaction("来访还在演，稍等一下。");
+            return;
+        }
+        _trialVisitBusy = true;
+        try
+        {
+            var visit = await Companions.PlayTrialVisitAsync(category);
+            _visitorQueue.Enqueue([visit]);
+            await _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
+        }
+        catch (Exception error)
+        {
+            _petWindow?.ShowReaction(NetworkConnectionErrors.ForUser(error, "暂时叫不来，请稍后重试。"));
+        }
+        finally
+        {
+            _trialVisitBusy = false;
+        }
     }
 
     public async Task SendCurrentGifToCompanionAsync(CancellationToken cancellationToken = default)
@@ -1349,15 +1379,24 @@ public sealed class AppController : IDisposable
         _trayMenu.Items.Add(_petWindow?.IsVisible == true ? "隐藏桌宠" : "显示桌宠", null, (_, _) => TogglePetVisibility());
         _trayMenu.Items.Add("随机换一只", null, (_, _) => RandomizePet()).Enabled = _libraryFiles.Count > 0;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
-        var sendLabel = partner is null ? "发给搭子（先绑定）" : $"发给 {partner.DisplayName}";
-        _trayMenu.Items.Add(sendLabel, null, async (_, _) =>
+        if (IsTrialActive)
         {
-            try { await SendCurrentGifToCompanionAsync(); }
-            catch (Exception error)
+            _trayMenu.Items.Add("模仿女友来访", null, async (_, _) => await PlayTrialVisitAsync("girlfriend"));
+            _trayMenu.Items.Add("模仿好友来访", null, async (_, _) => await PlayTrialVisitAsync("friend"));
+            _trayMenu.Items.Add("模仿搭子来访", null, async (_, _) => await PlayTrialVisitAsync("companion"));
+        }
+        else
+        {
+            var sendLabel = partner is null ? "发给搭子（先绑定）" : $"发给 {partner.DisplayName}";
+            _trayMenu.Items.Add(sendLabel, null, async (_, _) =>
             {
-                _petWindow?.ShowReaction(NetworkConnectionErrors.ForUser(error, "暂时发送不了，请稍后重试。"));
-            }
-        }).Enabled = _licenses.IsActivated && partner is not null && File.Exists(CurrentPetPath());
+                try { await SendCurrentGifToCompanionAsync(); }
+                catch (Exception error)
+                {
+                    _petWindow?.ShowReaction(NetworkConnectionErrors.ForUser(error, "暂时发送不了，请稍后重试。"));
+                }
+            }).Enabled = _licenses.IsActivated && partner is not null && File.Exists(CurrentPetPath());
+        }
         _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
         _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());

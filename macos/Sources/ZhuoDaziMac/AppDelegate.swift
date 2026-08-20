@@ -38,6 +38,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var randomizeNowItem: NSMenuItem!
     private var theaterItem: NSMenuItem!
     private var sendCompanionItem: NSMenuItem!
+    private var girlfriendVisitItem: NSMenuItem!
+    private var friendVisitItem: NSMenuItem!
+    private var companionVisitItem: NSMenuItem!
+    private var trialVisitBusy = false
     private var topmostItem: NSMenuItem!
     private var clickThroughItem: NSMenuItem!
     private var reminderTimer: Timer?
@@ -220,6 +224,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "检查更新", action: #selector(checkUpdates), keyEquivalent: "")
         menu.addItem(withTitle: "搭子联机…", action: #selector(openCompanion), keyEquivalent: "")
         sendCompanionItem = menu.addItem(withTitle: "发送当前 GIF 给搭子", action: #selector(sendCompanionGIF), keyEquivalent: "")
+        girlfriendVisitItem = menu.addItem(withTitle: "模仿女友来访", action: #selector(playGirlfriendVisit), keyEquivalent: "")
+        friendVisitItem = menu.addItem(withTitle: "模仿好友来访", action: #selector(playFriendVisit), keyEquivalent: "")
+        companionVisitItem = menu.addItem(withTitle: "模仿搭子来访", action: #selector(playCompanionVisit), keyEquivalent: "")
         menu.addItem(.separator())
         visibilityItem = menu.addItem(withTitle: "隐藏桌搭子", action: #selector(toggleVisibility(_:)), keyEquivalent: "")
         mouseItem = menu.addItem(withTitle: "跟随鼠标", action: #selector(toggleMouseInteraction(_:)), keyEquivalent: "")
@@ -259,6 +266,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
         theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场"
+        let trial = licenses.isTrialActive
+        girlfriendVisitItem.isHidden = !trial
+        friendVisitItem.isHidden = !trial
+        companionVisitItem.isHidden = !trial
+        sendCompanionItem.isHidden = trial
         if let partner = companions?.profile?.partner {
             sendCompanionItem.title = "发送当前 GIF 给 \(partner.displayName)"
             sendCompanionItem.isEnabled = licenses.isActivated && petController.currentGIFURL != nil
@@ -330,6 +342,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             )
         }
         companionWindow?.showWindow(nil)
+    }
+
+    @objc private func playGirlfriendVisit() { playTrialVisit(category: "girlfriend") }
+    @objc private func playFriendVisit() { playTrialVisit(category: "friend") }
+    @objc private func playCompanionVisit() { playTrialVisit(category: "companion") }
+
+    private func playTrialVisit(category: String) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard licenses.isTrialActive else {
+                petController.showBubble("体验结束后，点一下发给对象才需要激活。")
+                return
+            }
+            guard !trialVisitBusy else {
+                petController.showBubble("来访还在演，稍等一下。")
+                return
+            }
+            trialVisitBusy = true
+            defer { trialVisitBusy = false }
+            do {
+                let visit = try await companions.playTrialVisit(category: category)
+                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName)
+                try? FileManager.default.removeItem(at: visit.fileURL)
+            } catch {
+                presentFriendlyError(error, title: "暂时叫不来")
+            }
+        }
     }
 
     @objc private func sendCompanionGIF() {

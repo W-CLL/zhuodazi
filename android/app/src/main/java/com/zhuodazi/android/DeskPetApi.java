@@ -16,6 +16,7 @@ final class DeskPetApi {
     static final String COMPANION = "/api/companion";
     static final String COMPANION_PAIR = "/api/companion/pair";
     static final String COMPANION_DELIVERIES = "/api/companion/deliveries";
+    static final String TRIAL_VISIT_PLAY = "/api/trial/visit-stickers/play";
     static final String ANALYTICS_EVENTS = "/api/analytics/events";
     static final String COMPANION_DOWNLOAD_PREFIX = "/api/companion/";
     static final String SITE_SETTINGS = "/api/public/site-settings";

@@ -89,6 +89,34 @@ public sealed class CompanionService : IDisposable
         return response.RecipientName;
     }
 
+    public async Task<CompanionVisit> PlayTrialVisitAsync(string category, CancellationToken cancellationToken = default)
+    {
+        using var playRequest = CreateJsonRequest(HttpMethod.Post, DeskPetApi.TrialVisitPlay, new { category });
+        var sticker = await SendJsonAsync<TrialVisitResponse>(playRequest, cancellationToken);
+        if (string.IsNullOrWhiteSpace(sticker.Id) || string.IsNullOrWhiteSpace(sticker.DownloadPath))
+            throw new InvalidOperationException("来访表情无效。");
+        Directory.CreateDirectory(_inboxDirectory);
+        var filePath = Path.Combine(_inboxDirectory, $"{sticker.Id}.gif");
+        if (!DeskPetHttp.TryCreateTrialVisitFileUrl(sticker.DownloadPath, out var downloadUri)
+            || downloadUri is null)
+            throw new InvalidOperationException("来访下载地址无效。");
+        using var downloadRequest = CreateRequest(HttpMethod.Get, downloadUri.AbsoluteUri);
+        using var response = await _httpClient.SendAsync(
+            downloadRequest,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException(await ReadErrorAsync(response, cancellationToken));
+        var length = response.Content.Headers.ContentLength;
+        if (length is null or < 10 or > MaximumGifBytes)
+            throw new InvalidOperationException("收到的 GIF 大小无效。");
+        await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
+        await using (var destination = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
+            await source.CopyToAsync(destination, cancellationToken);
+        ValidateDownloadedGif(filePath, sticker.Sha256);
+        return new CompanionVisit(sticker.Id, sticker.SenderName, filePath);
+    }
+
     public async Task<IReadOnlyList<CompanionVisit>> ReceiveAsync(CancellationToken cancellationToken = default)
     {
         using var listRequest = CreateRequest(HttpMethod.Get, DeliveriesUrl);
@@ -192,6 +220,12 @@ public sealed class CompanionService : IDisposable
 
     private sealed record SendResponse(
         [property: JsonPropertyName("recipientName")] string RecipientName);
+
+    private sealed record TrialVisitResponse(
+        [property: JsonPropertyName("id")] string Id,
+        [property: JsonPropertyName("senderName")] string SenderName,
+        [property: JsonPropertyName("sha256")] string Sha256,
+        [property: JsonPropertyName("downloadPath")] string DownloadPath);
 
     private sealed record DeliveryListResponse(
         [property: JsonPropertyName("deliveries")] List<DeliveryItem> Deliveries);

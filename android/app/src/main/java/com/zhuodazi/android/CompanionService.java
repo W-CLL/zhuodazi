@@ -61,6 +61,24 @@ final class CompanionService {
         return recipient;
     }
 
+    Visit playTrialVisit(String category) throws Exception {
+        JSONObject body = new JSONObject().put("category", category == null ? "" : category);
+        JSONObject json = NetworkClient.json(context, "POST", DeskPetApi.TRIAL_VISIT_PLAY, body,
+            licenses, NetworkClient.Auth.PREMIUM);
+        String id = json.optString("id");
+        String sender = json.optString("senderName", "桌搭子");
+        String hash = json.optString("sha256");
+        String downloadPath = json.optString("downloadPath");
+        if (!id.matches("[A-Za-z0-9._:-]{1,128}") || !hash.matches("(?i)[0-9a-f]{64}")
+            || !downloadPath.matches("/api/trial/visit-stickers/[0-9a-fA-F-]{36}/file")) {
+            throw new IOException("来访表情无效");
+        }
+        byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
+            licenses, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
+        validateGif(gif, hash);
+        return new Visit(id, sender, pets.saveInboxGif(id, gif));
+    }
+
     List<Visit> receive() throws Exception {
         JSONObject response = NetworkClient.json(context, "GET", DeskPetApi.COMPANION_DELIVERIES, null,
             licenses, NetworkClient.Auth.ACTIVATED);

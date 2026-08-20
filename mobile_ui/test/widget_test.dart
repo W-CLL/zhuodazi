@@ -102,7 +102,7 @@ void main() {
   }
 
   Future<void> tapHomeSend(WidgetTester tester) async {
-    final sendHome = find.widgetWithText(QuickAction, '发给搭子');
+    final sendHome = find.widgetWithText(QuickAction, '女友来访');
     await tester.scrollUntilVisible(
       sendHome,
       180,
@@ -234,18 +234,13 @@ void main() {
     overlayAllowed = true;
     running = true;
     await pumpApp(tester, const Size(360, 800));
-    expect(find.textContaining('等它演一次来访'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '换一只'), findsOneWidget);
+    expect(find.textContaining('叫人来串门'), findsWidgets);
+    expect(find.widgetWithText(FilledButton, '女友来访'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '发给搭子'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.widgetWithText(QuickAction, '发给搭子'),
-      180,
-      scrollable: find.descendant(
-        of: find.byType(HomePage),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    expect(find.widgetWithText(QuickAction, '发给搭子'), findsOneWidget);
+    expect(find.widgetWithText(QuickAction, '女友来访'), findsOneWidget);
+    expect(find.widgetWithText(QuickAction, '好友来访'), findsOneWidget);
+    expect(find.widgetWithText(QuickAction, '搭子来访'), findsOneWidget);
+    expect(find.widgetWithText(QuickAction, '发给搭子'), findsNothing);
   });
 
   testWidgets('home send path asks for overlay first', (tester) async {
@@ -278,7 +273,7 @@ void main() {
     );
   });
 
-  testWidgets('home send path starts the pet then explains activation', (
+  testWidgets('home send path starts the pet then plays a trial visit', (
     tester,
   ) async {
     overlayAllowed = true;
@@ -294,7 +289,15 @@ void main() {
       ),
       isTrue,
     );
-    expect(find.textContaining('正式激活'), findsWidgets);
+    expect(
+      calls.any(
+        (call) =>
+            call.method == 'serviceAction' &&
+            call.arguments is Map &&
+            call.arguments['action'] == 'trialVisitGirlfriend',
+      ),
+      isTrue,
+    );
   });
 
   for (final size in const [
@@ -310,14 +313,14 @@ void main() {
       expect(tester.takeException(), isNull);
       if (size.height >= 700) {
         await tester.scrollUntilVisible(
-          find.widgetWithText(QuickAction, '发给搭子'),
+          find.widgetWithText(QuickAction, '女友来访'),
           180,
           scrollable: find.descendant(
             of: find.byType(HomePage),
             matching: find.byType(Scrollable),
           ),
         );
-        expect(find.widgetWithText(QuickAction, '发给搭子'), findsOneWidget);
+        expect(find.widgetWithText(QuickAction, '女友来访'), findsOneWidget);
         await tapHomeSend(tester);
         expect(tester.takeException(), isNull);
       }

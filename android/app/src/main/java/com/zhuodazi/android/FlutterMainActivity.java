@@ -225,6 +225,9 @@ public final class FlutterMainActivity extends FlutterActivity {
             case "next" -> PetOverlayService.ACTION_NEXT;
             case "interact" -> PetOverlayService.ACTION_INTERACT;
             case "send" -> PetOverlayService.ACTION_SEND_COMPANION;
+            case "trialVisitGirlfriend" -> PetOverlayService.ACTION_TRIAL_VISIT;
+            case "trialVisitFriend" -> PetOverlayService.ACTION_TRIAL_VISIT;
+            case "trialVisitCompanion" -> PetOverlayService.ACTION_TRIAL_VISIT;
             case "theater" -> PetOverlayService.ACTION_THEATER;
             case "show" -> PetOverlayService.ACTION_SHOW;
             case "hide" -> PetOverlayService.ACTION_HIDE;
@@ -235,12 +238,26 @@ public final class FlutterMainActivity extends FlutterActivity {
             result.error("OVERLAY_PERMISSION", "请先授予悬浮窗权限", null);
             return;
         }
-        sendService(nativeAction);
+        if (PetOverlayService.ACTION_TRIAL_VISIT.equals(nativeAction)) {
+            String category = switch (action) {
+                case "trialVisitFriend" -> "friend";
+                case "trialVisitCompanion" -> "companion";
+                default -> "girlfriend";
+            };
+            sendService(nativeAction, category);
+        } else {
+            sendService(nativeAction);
+        }
         result.success(snapshot());
     }
 
     private void sendService(String action) {
+        sendService(action, null);
+    }
+
+    private void sendService(String action, String visitCategory) {
         Intent intent = new Intent(this, PetOverlayService.class).setAction(action);
+        if (visitCategory != null) intent.putExtra(PetOverlayService.EXTRA_VISIT_CATEGORY, visitCategory);
         try {
             if (PetOverlayService.ACTION_START.equals(action)) startForegroundService(intent);
             else if (PetOverlayService.ACTION_STOP.equals(action) || settings.running()) startService(intent);

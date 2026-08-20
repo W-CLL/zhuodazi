@@ -35,6 +35,9 @@ final class PetOverlayView extends FrameLayout {
     static final String MENU_INTERACT = "interact";
     static final String MENU_THEATER = "theater";
     static final String MENU_SEND = "send";
+    static final String MENU_GIRLFRIEND_VISIT = "girlfriend_visit";
+    static final String MENU_FRIEND_VISIT = "friend_visit";
+    static final String MENU_COMPANION_VISIT = "companion_visit";
     static final String MENU_NEXT = "next";
     static final String MENU_CLICK_THROUGH = "click_through";
     static final String MENU_HIDE = "hide";
@@ -42,6 +45,8 @@ final class PetOverlayView extends FrameLayout {
     private final ImageView petImage;
     private final TextView bubble;
     private final LinearLayout quickMenu;
+    private final LinearLayout visitRow;
+    private final View companionVisitButton;
     private final LinearLayout interactionCard;
     private final TextView interactionTitle;
     private final TextView interactionMessage;
@@ -49,6 +54,7 @@ final class PetOverlayView extends FrameLayout {
     private final int bubbleHeight;
     private MenuListener menuListener;
     private InteractionListener interactionListener;
+    private boolean trialVisitVisible;
 
     PetOverlayView(Context context, int petSize, int windowWidth, int windowHeight) {
         super(context);
@@ -94,8 +100,17 @@ final class PetOverlayView extends FrameLayout {
         secondRow.addView(menuAction("换一只", MENU_NEXT));
         secondRow.addView(menuAction("发给搭子", MENU_SEND));
         quickMenu.addView(secondRow, menuRowParams());
+        visitRow = menuRow();
+        visitRow.addView(menuAction("女友来访", MENU_GIRLFRIEND_VISIT));
+        visitRow.addView(menuAction("好友来访", MENU_FRIEND_VISIT));
+        quickMenu.addView(visitRow, menuRowParams());
+        LinearLayout companionVisitRow = menuRow();
+        companionVisitButton = menuAction("搭子来访", MENU_COMPANION_VISIT);
+        companionVisitRow.addView(companionVisitButton);
+        companionVisitRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
+        quickMenu.addView(companionVisitRow, menuRowParams());
+        setTrialVisitVisible(false);
         LinearLayout thirdRow = menuRow();
-        thirdRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
         thirdRow.addView(menuAction("隐藏桌宠", MENU_HIDE));
         quickMenu.addView(thirdRow, menuRowParams());
         quickMenu.setVisibility(View.GONE);
@@ -262,9 +277,15 @@ final class PetOverlayView extends FrameLayout {
 
     void dismissInteraction() { completeInteraction(null); }
 
+    void setTrialVisitVisible(boolean visible) {
+        trialVisitVisible = visible;
+        visitRow.setVisibility(visible ? View.VISIBLE : View.GONE);
+        companionVisitButton.setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+
     int preferredMenuWidth() { return dp(188); }
 
-    int preferredMenuHeight() { return dp(220); }
+    int preferredMenuHeight() { return trialVisitVisible ? dp(320) : dp(220); }
 
     private void completeInteraction(String value) {
         InteractionListener listener = interactionListener;

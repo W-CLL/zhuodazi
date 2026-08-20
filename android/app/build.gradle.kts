@@ -55,8 +55,8 @@ android {
         applicationId = "com.zhuodazi.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 8
-        versionName = "1.3.4"
+        versionCode = 9
+        versionName = "1.3.5"
     }
 
     sourceSets["main"].assets.srcDirs(

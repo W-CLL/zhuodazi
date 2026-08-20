@@ -87,9 +87,7 @@ jobs:
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
           notes="$(cat <<EOF
-          ${APP_VERSION}：一组购买码最多填两台，电脑和手机填同一组码。体验期开场先讲来访，约 12 秒后本地演示一次。配对和发给搭子仍需激活。
-
-          本 Release 同时包含 Windows x64 安装包、Windows 便携包、macOS Apple 芯片包和 macOS Intel 芯片包。
+          体验的时候点一下，就会有人来串门。
           EOF
           )"
           state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"

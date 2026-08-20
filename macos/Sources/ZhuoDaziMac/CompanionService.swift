@@ -102,6 +102,28 @@ final class CompanionService {
         return result.recipientName
     }
 
+    func playTrialVisit(category: String) async throws -> CompanionVisit {
+        let sticker: TrialVisitResponse = try await sendJSON(jsonRequest(
+            method: "POST",
+            url: DeskPetApi.trialVisitPlay,
+            body: ["category": category]
+        ))
+        guard let downloadURL = trialVisitFileURL(sticker.downloadPath) else {
+            throw CompanionError.invalidResponse
+        }
+        try FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
+        let (data, response) = try await session.data(for: request(method: "GET", url: downloadURL))
+        try check(response: response, data: data)
+        try validateGIF(data)
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        guard digest.caseInsensitiveCompare(sticker.sha256) == .orderedSame else {
+            throw CompanionError.invalidResponse
+        }
+        let fileURL = inboxURL.appendingPathComponent("\(sticker.id).gif")
+        try data.write(to: fileURL, options: .atomic)
+        return CompanionVisit(id: sticker.id, senderName: sticker.senderName, fileURL: fileURL)
+    }
+
     func receive() async throws -> [CompanionVisit] {
         let pending: DeliveryList = try await sendJSON(request(method: "GET", url: Self.deliveriesURL))
         guard !pending.deliveries.isEmpty else { return [] }
@@ -142,7 +164,7 @@ final class CompanionService {
     private func jsonRequest(method: String, url: URL, body: [String: String]) -> URLRequest {
         var request = request(method: method, url: url)
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try? JSONEncoder().encode(body)
+        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
         return request
     }
 
@@ -164,6 +186,23 @@ final class CompanionService {
         }
     }
 
+    private func trialVisitFileURL(_ downloadPath: String) -> URL? {
+        let prefix = "/api/trial/visit-stickers/"
+        let suffix = "/file"
+        guard downloadPath.hasPrefix(prefix), downloadPath.hasSuffix(suffix) else { return nil }
+        let id = String(downloadPath.dropFirst(prefix.count).dropLast(suffix.count))
+        guard UUID(uuidString: id) != nil else { return nil }
+        guard let url = URL(string: downloadPath, relativeTo: LicenseService.serviceBaseURL)?.absoluteURL,
+              url.host == DeskPetApi.host,
+              url.scheme?.lowercased() == "https",
+              url.path == downloadPath,
+              url.query == nil,
+              url.fragment == nil else {
+            return nil
+        }
+        return url
+    }
+
     private func validateGIF(_ data: Data) throws {
         guard data.count >= 10, data.count <= Self.maximumGIFBytes else { throw CompanionError.invalidGIF }
         let bytes = [UInt8](data.prefix(10))
@@ -177,6 +216,12 @@ final class CompanionService {
     }
 
     private struct SendResponse: Decodable { let recipientName: String }
+    private struct TrialVisitResponse: Decodable {
+        let id: String
+        let senderName: String
+        let sha256: String
+        let downloadPath: String
+    }
     private struct DeliveryList: Decodable { let deliveries: [DeliveryItem] }
     private struct DeliveryItem: Decodable {
         let id: String

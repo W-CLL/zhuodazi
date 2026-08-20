@@ -42,6 +42,8 @@ public final class PetOverlayService extends Service {
     static final String ACTION_INTERACT = "com.zhuodazi.android.INTERACT";
     static final String ACTION_REACT = "com.zhuodazi.android.REACT";
     static final String ACTION_SEND_COMPANION = "com.zhuodazi.android.SEND_COMPANION";
+    static final String ACTION_TRIAL_VISIT = "com.zhuodazi.android.TRIAL_VISIT";
+    static final String EXTRA_VISIT_CATEGORY = "visit_category";
     static final String ACTION_SHOW = "com.zhuodazi.android.SHOW";
     static final String ACTION_HIDE = "com.zhuodazi.android.HIDE";
     static final String ACTION_CLICK_THROUGH = "com.zhuodazi.android.CLICK_THROUGH";
@@ -87,6 +89,7 @@ public final class PetOverlayService extends Service {
     private int windowDownY;
     private boolean dragging;
     private boolean companionBusy;
+    private boolean trialVisitBusy;
     private boolean theaterActive;
     private boolean theaterVisitor;
     private int theaterVersion;
@@ -227,6 +230,7 @@ public final class PetOverlayService extends Service {
             if (overlay == null && !settings.petHidden()) createOverlay(false);
             if (ACTION_NEXT.equals(action)) nextPet();
             else if (ACTION_SEND_COMPANION.equals(action)) sendToCompanion();
+            else if (ACTION_TRIAL_VISIT.equals(action)) playTrialVisit(intent.getStringExtra(EXTRA_VISIT_CATEGORY));
             else if (ACTION_THEATER.equals(action)) startTheater(true);
             else if (ACTION_REFRESH.equals(action)) refreshOverlay();
         }
@@ -274,6 +278,7 @@ public final class PetOverlayService extends Service {
         windowParams.x = SettingsStore.clamp(settings.positionX(bounds.x - width), 0, Math.max(0, bounds.x - width));
         windowParams.y = SettingsStore.clamp(settings.positionY(bounds.y / 2), 0, maxWindowY(bounds, height));
         overlay.setOnTouchListener((view, event) -> handleTouch(event));
+        overlay.setTrialVisitVisible(licenses.isTrialActive());
         overlay.setMenuListener(action -> {
             overlay.hideQuickMenu();
             collapseMenuWindow();
@@ -352,6 +357,9 @@ public final class PetOverlayService extends Service {
             case PetOverlayView.MENU_INTERACT -> startRandomInteraction(true);
             case PetOverlayView.MENU_THEATER -> startTheater(true);
             case PetOverlayView.MENU_SEND -> sendToCompanion();
+            case PetOverlayView.MENU_GIRLFRIEND_VISIT -> playTrialVisit("girlfriend");
+            case PetOverlayView.MENU_FRIEND_VISIT -> playTrialVisit("friend");
+            case PetOverlayView.MENU_COMPANION_VISIT -> playTrialVisit("companion");
             case PetOverlayView.MENU_NEXT -> nextPet();
             case PetOverlayView.MENU_CLICK_THROUGH -> enableClickThrough();
             case PetOverlayView.MENU_HIDE -> hidePet();
@@ -1024,6 +1032,29 @@ public final class PetOverlayService extends Service {
                 loadCurrentPet();
             }, 6000);
         } catch (Exception ignored) { }
+    }
+
+    private void playTrialVisit(String category) {
+        if (!licenses.isTrialActive()) {
+            sayText("体验结束后，点一下发给对象才需要激活。", 5200);
+            return;
+        }
+        if (trialVisitBusy || visitorOverlay != null) {
+            sayText("来访还在演，稍等一下。", 3600);
+            return;
+        }
+        trialVisitBusy = true;
+        sayText("正在叫人过来…", 3600);
+        networkExecutor.execute(() -> {
+            try {
+                CompanionService.Visit visit = companions.playTrialVisit(category);
+                handler.post(() -> receiveVisit(visit));
+            } catch (Exception error) {
+                handler.post(() -> sayText(safeMessage(error), 6500));
+            } finally {
+                trialVisitBusy = false;
+            }
+        });
     }
 
     private void sendToCompanion() {
