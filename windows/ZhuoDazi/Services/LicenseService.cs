@@ -40,7 +40,13 @@ public sealed class LicenseService : IDisposable
             return Math.Max(0, _remainingTrialSeconds - elapsed);
         }
     }
+    public int DeviceCount { get; private set; }
+    public bool AlreadyActivated { get; private set; }
     public string Summary => IsActivated ? $"此设备已完成绑定 · {LicenseId[^8..]}" : "此设备尚未绑定";
+    public string ActivationSuccessMessage =>
+        DeviceCount >= 2
+            ? "这台也连上了，搭子码和另一台是同一对。"
+            : "这组码也可以填到另一台电脑或手机。";
 
     public LicenseService()
     {
@@ -104,6 +110,8 @@ public sealed class LicenseService : IDisposable
                 throw new InvalidOperationException("激活服务返回的授权无效。");
             candidate.LicenseId = result.LicenseId;
             candidate.ActivatedAt = result.ActivatedAt;
+            DeviceCount = result.DeviceCount is > 0 and <= 2 ? result.DeviceCount : 1;
+            AlreadyActivated = result.AlreadyActivated;
             _record = candidate;
             Save();
         }
@@ -251,6 +259,12 @@ public sealed class LicenseService : IDisposable
 
         [JsonPropertyName("activatedAt")]
         public string? ActivatedAt { get; set; }
+
+        [JsonPropertyName("deviceCount")]
+        public int DeviceCount { get; set; }
+
+        [JsonPropertyName("alreadyActivated")]
+        public bool AlreadyActivated { get; set; }
     }
 
     private sealed class TrialResponse

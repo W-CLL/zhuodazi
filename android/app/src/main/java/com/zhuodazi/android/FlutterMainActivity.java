@@ -151,6 +151,7 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("wordPack", settings.wordPack());
         value.put("activated", licenses.isActivated());
         value.put("premium", licenses.hasPremiumAccess());
+        value.put("deviceCount", licenses.deviceCount());
         value.put("trialSeconds", licenses.trialRemainingSeconds());
         value.put("installationSuffix", lastEight(licenses.installationId()));
         value.put("version", NetworkClient.appVersion(this));

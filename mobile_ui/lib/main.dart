@@ -999,7 +999,7 @@ class _CompanionPageState extends State<CompanionPage> {
         children: [
           const PageIntro(
             title: '搭子联机',
-            subtitle: '配对后，两台设备可以互发当前桌宠。',
+            subtitle: '电脑和手机填同一组激活码后，搭子码是同一对。',
           ),
           Panel(
             color: trial ? _mint : _coralSoft,
@@ -1020,7 +1020,7 @@ class _CompanionPageState extends State<CompanionPage> {
                 Text(
                   trial
                       ? '桌宠出来后，系统会先演一次来访。想让对象也派一只过来，激活后换一对码。'
-                      : '激活后即可配对，把当前桌宠发给搭子。Android 设备单独计为一台。',
+                      : '激活后即可配对，把当前桌宠发给搭子。这组码也可以填到电脑上。',
                 ),
                 const SizedBox(height: 14),
                 FilledButton.icon(
@@ -1052,7 +1052,7 @@ class _CompanionPageState extends State<CompanionPage> {
       final connectionError = widget.controller.companionError;
       return PageScroll(
         children: [
-          const PageIntro(title: '搭子联机', subtitle: '配对后互相发送当前桌宠。'),
+          const PageIntro(title: '搭子联机', subtitle: '电脑和手机是同一对搭子码，不用重新绑定。'),
           Panel(
             child: Column(
               children: [
@@ -1104,7 +1104,7 @@ class _CompanionPageState extends State<CompanionPage> {
     }
     return PageScroll(
       children: [
-        const PageIntro(title: '搭子联机', subtitle: '配对后互相发送当前桌宠。'),
+        const PageIntro(title: '搭子联机', subtitle: '电脑和手机是同一对搭子码，不用重新绑定。'),
         const SectionTitle(label: '我的资料'),
         const SizedBox(height: 8),
         Panel(
@@ -1303,8 +1303,10 @@ class AccountPage extends StatelessWidget {
         PageIntro(
           title: '我的',
           subtitle: snapshot.activated
-              ? '这台 Android 已经解锁完整功能。'
-              : '想给搭子发一张 GIF，或继续小剧场和提醒时，再输入激活码。',
+              ? (snapshot.deviceCount >= 2
+                  ? '这台也连上了，搭子码和另一台是同一对。'
+                  : '这组码也可以填到另一台电脑或手机。')
+              : '一组码最多填两台。电脑激活后，手机再填同一组码也能进同一个账号。',
         ),
         Panel(
           color: snapshot.activated ? _mint : _coralSoft,
@@ -1324,7 +1326,7 @@ class AccountPage extends StatelessWidget {
                   children: [
                     Text(
                       snapshot.activated
-                          ? '此设备已激活'
+                          ? (snapshot.deviceCount >= 2 ? '第二台已连上' : '此设备已激活')
                           : trialEnded
                           ? '一天体验结束啦'
                           : '体验与激活',
@@ -1420,7 +1422,7 @@ class AccountPage extends StatelessWidget {
                     final copy = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('加作者微信，备注「桌搭子」，按提示领取激活码。一般当天回。'),
+                        const Text('加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。'),
                         const SizedBox(height: 10),
                         const Text('微信号', style: TextStyle(color: _muted, fontSize: 12)),
                         SelectableText(
@@ -1691,7 +1693,9 @@ class AccountPage extends StatelessWidget {
       await runAction(
         context,
         controller.activate(code),
-        (_) => '此 Android 设备已激活',
+        (_) => controller.snapshot.deviceCount >= 2
+            ? '这台也连上了，搭子码和另一台是同一对。'
+            : '这组码也可以填到另一台电脑或手机。',
       );
     }
   }

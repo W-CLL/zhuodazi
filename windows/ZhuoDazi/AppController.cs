@@ -180,7 +180,7 @@ public sealed class AppController : IDisposable
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
         {
-            _petWindow?.ShowReaction("新的激活码已经绑定完成。");
+            _petWindow?.ShowReaction(_licenses.ActivationSuccessMessage);
             RefreshPremiumAccess();
         }
         StateChanged?.Invoke();

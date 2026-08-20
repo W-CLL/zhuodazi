@@ -141,6 +141,7 @@ class HostSnapshot {
   bool get startOnBoot => _bool('startOnBoot');
   bool get activated => _bool('activated');
   bool get premium => _bool('premium');
+  int get deviceCount => _int('deviceCount', 1);
   int get sizeDp => _int('sizeDp', 96);
   int get opacity => _int('opacity', 100);
   int get randomPetInterval => _int('randomPetInterval', 300);

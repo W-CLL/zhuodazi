@@ -12,6 +12,8 @@ private struct LicenseRecord: Codable {
 private struct ActivationResponse: Decodable {
     let licenseId: String
     let activatedAt: String?
+    let deviceCount: Int?
+    let alreadyActivated: Bool?
 }
 
 struct TrialStatus {
@@ -52,6 +54,8 @@ final class LicenseService {
     private var trialActive = false
     private var remainingTrialSeconds = 0
     private var trialCheckedAt = Date.distantPast
+    private(set) var deviceCount = 1
+    private(set) var alreadyActivated = false
 
     var isActivated: Bool {
         guard let identifier = record.licenseId else { return false }
@@ -69,6 +73,12 @@ final class LicenseService {
     var summary: String {
         guard let identifier = record.licenseId, isActivated else { return "此设备尚未绑定" }
         return "已完成绑定 - \(identifier.suffix(8))"
+    }
+
+    var activationSuccessMessage: String {
+        deviceCount >= 2
+            ? "这台也连上了，搭子码和另一台是同一对。"
+            : "这组码也可以填到另一台电脑或手机。"
     }
 
     var interactionCacheKey: String {
@@ -127,6 +137,12 @@ final class LicenseService {
         record = candidate
         record.licenseId = result.licenseId
         record.activatedAt = result.activatedAt
+        if let count = result.deviceCount, (1...2).contains(count) {
+            deviceCount = count
+        } else {
+            deviceCount = 1
+        }
+        alreadyActivated = result.alreadyActivated ?? false
         try save()
     }
 

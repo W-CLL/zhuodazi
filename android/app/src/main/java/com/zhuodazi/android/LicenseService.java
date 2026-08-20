@@ -12,6 +12,7 @@ final class LicenseService {
     private final Context context;
     private final SettingsStore settings;
     private final SecureLicenseStore secureStore;
+    private int lastDeviceCount = 1;
 
     LicenseService(Context context) {
         this.context = context.getApplicationContext();
@@ -27,6 +28,7 @@ final class LicenseService {
         String id = secureStore.record().licenseId;
         return id.length() < 8 ? "" : id.substring(id.length() - 8);
     }
+    int deviceCount() { return lastDeviceCount; }
     long trialRemainingSeconds() {
         return Math.max(0L, (settings.trialExpiresAt() - System.currentTimeMillis() + 999L) / 1000L);
     }
@@ -44,6 +46,8 @@ final class LicenseService {
         String licenseId = response.optString("licenseId");
         try { UUID.fromString(licenseId); }
         catch (Exception error) { throw new IllegalStateException("激活服务返回的授权无效"); }
+        int deviceCount = response.optInt("deviceCount", 1);
+        lastDeviceCount = deviceCount >= 1 && deviceCount <= 2 ? deviceCount : 1;
         secureStore.activate(licenseId, response.optString("activatedAt"));
         settings.setTrialRemaining(0);
     }

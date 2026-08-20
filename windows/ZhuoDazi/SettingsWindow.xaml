@@ -797,7 +797,7 @@
                         <Border Style="{StaticResource SurfacePanel}" Padding="20">
                             <StackPanel>
                                 <TextBlock Text="我的搭子" Style="{StaticResource SectionTitle}" />
-                                <TextBlock x:Name="CompanionEmptyHint" Text="两个人各自打开「搭子」，交换 8 位码，一张 GIF 就会出现在对方桌角。"
+                                <TextBlock x:Name="CompanionEmptyHint" Text="电脑和手机是同一对搭子码，不用重新绑定。两个人各自打开「搭子」，交换 8 位码，一张 GIF 就会出现在对方桌角。"
                                            Style="{StaticResource Hint}" Margin="0,0,0,14" Visibility="Collapsed" />
                                 <TextBlock x:Name="CompanionPartnerText" Text="尚未绑定" FontSize="14" Foreground="{StaticResource InkBrush}" Margin="0,0,0,14" />
                                 <Grid x:Name="PairCompanionPanel">

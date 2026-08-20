@@ -116,7 +116,9 @@ final class CompanionWindowController: NSWindowController {
             sendButton.isHidden = false
             unpairButton.isHidden = false
         } else {
-            status.stringValue = profile == nil ? "正在连接搭子服务…" : "分享搭子码，或输入对方的搭子码"
+            status.stringValue = profile == nil
+                ? "正在连接搭子服务…"
+                : "电脑和手机是同一对搭子码，不用重新绑定。分享给对方，或输入对方的搭子码。"
             pairField.isHidden = false
             pairButton.isHidden = false
             sendButton.isHidden = true

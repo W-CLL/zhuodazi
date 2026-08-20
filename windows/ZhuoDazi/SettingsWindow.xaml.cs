@@ -185,7 +185,7 @@ public partial class SettingsWindow : Window
                 ? "正在连接搭子服务…"
                 : companionProfile.Partner is { } partner
                 ? $"已和 {partner.DisplayName} 绑定"
-                : "分享搭子码，或输入对方的搭子码";
+                : "电脑和手机是同一对搭子码，不用重新绑定。分享给对方，或输入对方的搭子码";
         CompanionPartnerText.Text = companionProfile?.Partner is { } currentPartner
             ? $"{currentPartner.DisplayName} · 收到的 GIF 会作为独立桌宠出现"
             : "尚未绑定";

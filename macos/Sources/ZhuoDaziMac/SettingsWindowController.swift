@@ -17,7 +17,7 @@ enum ActivationPrompts {
                 try await licenses.activate(code, replacingExisting: replacingExisting)
                 let success = NSAlert()
                 success.messageText = "设备已完成绑定"
-                success.informativeText = licenses.summary
+                success.informativeText = licenses.activationSuccessMessage
                 success.runModal()
                 return true
             } catch {

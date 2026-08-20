@@ -61,14 +61,14 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(heading)
         let subtitle = NSTextField(wrappingLabelWithString: trialEnded
             ? "桌搭子不会离开。刚才试过的玩法想接着用，填激活码就好；先留下桌宠也完全没问题。"
-            : (required ? "想给对方桌面发一张 GIF，或继续小剧场和提醒时，再输入激活码。"
+            : (required ? "一组码最多填两台。电脑激活后，手机再填同一组码也能进同一个账号。"
             : "输入新的激活码以更新此设备的绑定"))
         subtitle.textColor = .secondaryLabelColor
         subtitle.maximumNumberOfLines = 3
         subtitle.widthAnchor.constraint(equalToConstant: 484).isActive = true
         stack.addArrangedSubview(subtitle)
 
-        let inputLabel = NSTextField(labelWithString: "6 位激活码")
+        let inputLabel = NSTextField(labelWithString: "6 位激活码（电脑和手机填同一组）")
         inputLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         inputLabel.setContentHuggingPriority(.required, for: .vertical)
         stack.setCustomSpacing(24, after: subtitle)
@@ -138,7 +138,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
 
         let title = NSTextField(labelWithString: "还没有激活码")
         title.font = .systemFont(ofSize: 15, weight: .semibold)
-        let note = wrappingLabel("加作者微信，备注「桌搭子」，按提示领取激活码。一般当天回。")
+        let note = wrappingLabel("加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。")
         let accountTitle = NSTextField(labelWithString: "微信号")
         accountTitle.font = .systemFont(ofSize: 11)
         accountTitle.textColor = .secondaryLabelColor
