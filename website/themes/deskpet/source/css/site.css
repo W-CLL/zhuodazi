@@ -3158,6 +3158,10 @@ img {
 }
 
 @media (max-width: 900px) {
+  .site-header {
+    backdrop-filter: none;
+  }
+
   .site-shell {
     width: min(calc(100% - 36px), var(--shell));
   }
