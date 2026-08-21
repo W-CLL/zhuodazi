@@ -4,15 +4,15 @@
     <div class="hero-copy reveal">
       <p class="eyebrow"><span></span> 给情侣 / 搭子的桌面小玩具</p>
       <h1>桌搭子</h1>
-      <p class="hero-lead">想起对方，就派一张 GIF 去桌面串个门。查岗、抱抱、催下班，不必一直聊天。</p>
+      <p class="hero-lead">想起对方，就派一张 GIF；想刷一会儿，开右下角。</p>
       <div class="hero-actions">
         <a class="button button-primary" href="<%= url_for('/download/') %>">下载桌搭子 <span aria-hidden="true">↓</span></a>
-        <a class="button button-secondary" href="#play">看看怎么玩</a>
+        <a class="button button-secondary" href="#play">看看两种玩法</a>
       </div>
       <div class="hero-notes" aria-label="产品特性">
         <span>Windows / macOS / Android</span>
         <span>装上就能先养一只</span>
-        <span>v3.2.1 新增摸鱼模式</span>
+        <span>完整版可开摸鱼模式</span>
       </div>
     </div>
     <div class="desktop-scene reveal" aria-label="原桌宠与搭子发来的 GIF 同时出现在桌面上的示意">
@@ -72,6 +72,67 @@
   </div>
 </section>
 
+<section class="fish-story" id="moyu" aria-labelledby="fish-story-title">
+  <div class="site-shell">
+    <div class="companion-story-heading reveal">
+      <div>
+        <p class="section-kicker">右下角这一幕</p>
+        <h2 id="fish-story-title">放大后的视频，请进右下角坐一会儿。</h2>
+      </div>
+      <p>先把抖音首页视频放大，打开摸鱼壳，把窗口拖进去。它待在右下角，看起来像广告弹窗；文案浮在画面上，不挤位子。</p>
+    </div>
+
+    <div class="fish-story-layout reveal">
+      <div class="fish-desktop" aria-label="抖音视频被装入电脑右下角广告壳的示意">
+        <span class="fish-desktop-label">桌搭子的右下角</span>
+        <div class="fish-ad-window">
+          <div class="fish-ad-bar">
+            <strong>广告</strong>
+            <span aria-hidden="true">—　□　×</span>
+          </div>
+          <div class="fish-ad-content">
+            <img src="<%= url_for('/images/collection/bubu-phone.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="玩手机的白熊桌宠" loading="lazy" decoding="async">
+            <div class="fish-ad-copy">
+              <small>桌搭子摸鱼模式</small>
+              <strong>刷一会儿，也别离开桌面。</strong>
+              <span>文案浮在画面上，不挤视频。</span>
+            </div>
+            <b class="fish-ad-status">播放中</b>
+          </div>
+        </div>
+        <div class="fish-taskbar" aria-hidden="true"><i></i><i></i><i></i><b>14:30</b></div>
+      </div>
+
+      <div class="fish-steps" aria-label="开启摸鱼模式的三个步骤">
+        <article>
+          <span>01</span>
+          <div><h3>先放大视频</h3><p>在抖音桌面端首页，把视频放到最大。</p></div>
+        </article>
+        <article>
+          <span>02</span>
+          <div><h3>打开摸鱼壳</h3><p>像广告弹窗那样，停在电脑右下角。</p></div>
+        </article>
+        <article>
+          <span>03</span>
+          <div><h3>把窗口拖进去</h3><p>进去后仍能上下滑、点击和自动播放。</p></div>
+        </article>
+      </div>
+    </div>
+
+    <div class="fish-story-footer reveal">
+      <div>
+        <div class="companion-facts" aria-label="摸鱼模式特性">
+          <span>文案浮着不挤画面</span>
+          <span>可挪、可缩、可先藏</span>
+          <span>关掉壳，视频一起走</span>
+        </div>
+        <p class="fish-accessibility">Windows 与 macOS 完整版可用。macOS 首次请允许辅助功能，授权后重新打开即可。</p>
+      </div>
+      <a class="button button-primary" href="<%= url_for('/download/') %>">下载电脑版 <span aria-hidden="true">↓</span></a>
+    </div>
+  </div>
+</section>
+
 <section class="features" id="features" aria-labelledby="features-title">
   <div class="site-shell">
     <div class="section-heading reveal">
@@ -95,9 +156,9 @@
         <p>把透明 GIF 放进来，今天换谁都行。</p>
       </article>
       <article class="feature reveal">
-        <div class="feature-media"><span class="feature-index">04</span><img src="<%= url_for('/images/collection/bubu-phone.gif') %>" width="112" height="112" alt="玩手机的白熊桌宠" loading="lazy" decoding="async"></div>
-        <h3>打开摸鱼模式</h3>
-        <p>把抖音拖进广告壳，照常上下滑动和播放。</p>
+        <div class="feature-media"><span class="feature-index">04</span><img src="<%= url_for('/images/collection/bubu-remind.gif') %>" width="112" height="112" alt="带着下班表情来叫你的白熊" loading="lazy" decoding="async"></div>
+        <h3>到点换个表情来叫你</h3>
+        <p>提醒不必弹窗。它带着那张图出现就行。</p>
       </article>
     </div>
   </div>
