@@ -277,6 +277,8 @@ public partial class SettingsWindow : Window
     private void ClickThroughButton_Click(object sender, RoutedEventArgs e)
         => _controller.SetClickThrough(!_controller.Settings.ClickThrough);
 
+    private void OpenFakeAd_Click(object sender, RoutedEventArgs e) => _controller.ShowFakeAdWindow();
+
     private void PersonalityCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_refreshing || PersonalityCombo.SelectedItem is not ComboBoxItem item) return;

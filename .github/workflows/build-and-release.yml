@@ -87,7 +87,7 @@ jobs:
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
           notes="$(cat <<EOF
-          体验的时候点一下，就会有人来串门。
+          新增 Windows 与 macOS 摸鱼广告壳，可将抖音窗口伪装成右下角广告弹窗。
           EOF
           )"
           state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"

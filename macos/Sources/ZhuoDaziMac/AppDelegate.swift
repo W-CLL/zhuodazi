@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var companions: CompanionService!
     private var updates: UpdateService!
     private var settingsWindow: SettingsWindowController?
+    private var fakeAdWindow: FakeAdWindowController?
     private var companionWindow: CompanionWindowController?
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
@@ -41,6 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var girlfriendVisitItem: NSMenuItem!
     private var friendVisitItem: NSMenuItem!
     private var companionVisitItem: NSMenuItem!
+    private var fishModeItem: NSMenuItem!
     private var trialVisitBusy = false
     private var topmostItem: NSMenuItem!
     private var clickThroughItem: NSMenuItem!
@@ -108,6 +110,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        fakeAdWindow?.close()
     }
 
     private func startPet() {
@@ -223,6 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "功能设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(withTitle: "检查更新", action: #selector(checkUpdates), keyEquivalent: "")
         menu.addItem(withTitle: "搭子联机…", action: #selector(openCompanion), keyEquivalent: "")
+        fishModeItem = menu.addItem(withTitle: "摸鱼广告", action: #selector(openFishMode), keyEquivalent: "")
         sendCompanionItem = menu.addItem(withTitle: "发送当前 GIF 给搭子", action: #selector(sendCompanionGIF), keyEquivalent: "")
         girlfriendVisitItem = menu.addItem(withTitle: "模仿女友来访", action: #selector(playGirlfriendVisit), keyEquivalent: "")
         friendVisitItem = menu.addItem(withTitle: "模仿好友来访", action: #selector(playFriendVisit), keyEquivalent: "")
@@ -266,6 +273,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
         theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场"
+        fishModeItem.title = licenses.isActivated ? "摸鱼广告" : "摸鱼广告（激活后可用）"
+        fishModeItem.isEnabled = licenses.isActivated
         let trial = licenses.isTrialActive
         girlfriendVisitItem.isHidden = !trial
         friendVisitItem.isHidden = !trial
@@ -293,7 +302,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 licenses: licenses,
                 updates: updates,
                 dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) },
-                openCompanion: { [weak self] in self?.openCompanion() }
+                openCompanion: { [weak self] in self?.openCompanion() },
+                openFakeAd: { [weak self] in self?.openFishMode() }
             )
         }
         settingsWindow?.showWindow(nil)
@@ -328,6 +338,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         showCompanionWindow()
+    }
+
+    @objc private func openFishMode() {
+        guard licenses.isActivated else {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if await ActivationPrompts.activate(
+                    licenses: licenses,
+                    required: true,
+                    statusMessage: "激活完整版本后可以使用摸鱼广告。"
+                ) {
+                    petController.refreshPremiumAccess()
+                    settingsWindow?.refreshAccessState()
+                    refreshMenuState()
+                    openFishMode()
+                }
+            }
+            return
+        }
+        if fakeAdWindow == nil { fakeAdWindow = FakeAdWindowController() }
+        fakeAdWindow?.show()
     }
 
     private func showCompanionWindow() {

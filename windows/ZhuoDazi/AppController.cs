@@ -33,6 +33,7 @@ public sealed class AppController : IDisposable
     private PetWindow? _petWindow;
     private PetWindow? _companionWindow;
     private SettingsWindow? _settingsWindow;
+    private FakeAdWindow? _fakeAdWindow;
     private Forms.NotifyIcon? _tray;
     private Forms.ContextMenuStrip? _trayMenu;
     private CancellationTokenSource? _theaterCancellation;
@@ -208,6 +209,7 @@ public sealed class AppController : IDisposable
             _companionTimer.Start();
             _ = RefreshCompanionAsync();
         }
+        else if (_fakeAdWindow is not null) _fakeAdWindow.Close();
         if (!string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
         RefreshTrialDisplay();
         SaveAndRefresh();
@@ -316,6 +318,23 @@ public sealed class AppController : IDisposable
     }
 
     public void ShowTrayMenu() => _trayMenu?.Show(Forms.Cursor.Position);
+
+    public void ShowFakeAdWindow()
+    {
+        if (!_licenses.IsActivated)
+        {
+            ShowActivation(_settingsWindow, "激活完整版本后可以使用摸鱼广告。请输入激活码后再打开。");
+            return;
+        }
+        if (_fakeAdWindow is null)
+        {
+            _fakeAdWindow = new FakeAdWindow(this);
+            _fakeAdWindow.Closed += (_, _) => _fakeAdWindow = null;
+        }
+        _fakeAdWindow.Show();
+        if (_fakeAdWindow.WindowState == WindowState.Minimized) _fakeAdWindow.WindowState = WindowState.Normal;
+        _fakeAdWindow.Activate();
+    }
 
     public string? CurrentPetPath()
     {
@@ -773,6 +792,7 @@ public sealed class AppController : IDisposable
         _theaterCancellation?.Cancel();
         if (_companionWindow?.IsLoaded == true) _companionWindow.Close();
         _visitorQueue.CloseActive();
+        _fakeAdWindow?.Close();
         _settingsWindow?.Close();
         _petWindow?.Close();
         System.Windows.Application.Current.Shutdown();
@@ -1399,6 +1419,7 @@ public sealed class AppController : IDisposable
         }
         _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
         _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
+        _trayMenu.Items.Add("摸鱼广告（激活后可用）", null, (_, _) => ShowFakeAdWindow()).Enabled = _licenses.IsActivated;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("始终置顶", null, (_, _) => SetAlwaysOnTop(!Settings.AlwaysOnTop)) { Checked = Settings.AlwaysOnTop });
         var clickThroughItem = new Forms.ToolStripMenuItem(

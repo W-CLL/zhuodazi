@@ -35,6 +35,7 @@ final class SettingsWindowController: NSWindowController {
     private let feedbackService: FeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private let openCompanion: () -> Void
+    private let openFakeAd: () -> Void
     private var refreshing = false
     private var editingReminderId: String?
     private var feedbackLoading = false
@@ -112,7 +113,8 @@ final class SettingsWindowController: NSWindowController {
         licenses: LicenseService,
         updates: UpdateService,
         dockVisibilityChanged: @escaping (Bool) -> Void,
-        openCompanion: @escaping () -> Void
+        openCompanion: @escaping () -> Void,
+        openFakeAd: @escaping () -> Void
     ) {
         self.petController = petController
         self.licenses = licenses
@@ -120,6 +122,7 @@ final class SettingsWindowController: NSWindowController {
         self.feedbackService = FeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
+        self.openFakeAd = openFakeAd
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -225,6 +228,10 @@ final class SettingsWindowController: NSWindowController {
         theaterIntervalPopup.action = #selector(behaviorChanged(_:))
         let play = NSButton(title: "立即上演", target: self, action: #selector(startTheater))
         stack.addArrangedSubview(labeledRow("小剧场间隔", controls: [theaterIntervalPopup, play]))
+        stack.addArrangedSubview(separator())
+        addSection("摸鱼模式", to: stack)
+        stack.addArrangedSubview(hint("打开广告壳后，将抖音窗口拖入其中；首次使用需要允许辅助功能权限。"))
+        stack.addArrangedSubview(NSButton(title: "打开摸鱼广告", target: self, action: #selector(openFakeAdAction)))
         return page
     }
 
@@ -1130,6 +1137,8 @@ final class SettingsWindowController: NSWindowController {
     @objc func checkForUpdatesFromMenu() { checkForUpdates() }
 
     @objc private func openCompanionAction() { openCompanion() }
+
+    @objc private func openFakeAdAction() { openFakeAd() }
 
     func refreshAccessState() { refresh() }
 

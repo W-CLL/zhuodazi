@@ -8,8 +8,10 @@ namespace ZhuoDazi;
 public partial class App : System.Windows.Application
 {
     private const string ShowSettingsSignalName = "Local\\ZhuoDazi.Native.ShowSettings";
+    private const string ShowFakeAdSignalName = "Local\\ZhuoDazi.Native.ShowFakeAd";
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _showSettingsSignal;
+    private EventWaitHandle? _showFakeAdSignal;
     private Thread? _signalThread;
     private ActivationWindow? _activationWindow;
     private LicenseService? _licenseService;
@@ -37,7 +39,14 @@ public partial class App : System.Windows.Application
         _singleInstanceMutex = new Mutex(true, "Local\\ZhuoDazi.Native.Singleton", out var ownsMutex);
         if (!ownsMutex)
         {
-            try { EventWaitHandle.OpenExisting(ShowSettingsSignalName).Set(); } catch { }
+            try
+            {
+                var signal = e.Args.Any(arg => arg.Equals("--fake-ad", StringComparison.OrdinalIgnoreCase))
+                    ? ShowFakeAdSignalName
+                    : ShowSettingsSignalName;
+                EventWaitHandle.OpenExisting(signal).Set();
+            }
+            catch { }
             Shutdown();
             return;
         }
@@ -65,6 +74,8 @@ public partial class App : System.Windows.Application
             if (freeModeMessage is not null) Controller.RefreshPremiumAccess(freeModeMessage);
             if (e.Args.Any(arg => arg.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
                 Controller.ShowSettings();
+            if (e.Args.Any(arg => arg.Equals("--fake-ad", StringComparison.OrdinalIgnoreCase)))
+                Controller.ShowFakeAdWindow();
         }
         catch (Exception error)
         {
@@ -79,8 +90,10 @@ public partial class App : System.Windows.Application
         _stopping = true;
         _trialTimer?.Stop();
         _showSettingsSignal?.Set();
+        _showFakeAdSignal?.Set();
         _signalThread?.Join(TimeSpan.FromSeconds(1));
         _showSettingsSignal?.Dispose();
+        _showFakeAdSignal?.Dispose();
         Controller?.Dispose();
         _licenseService?.Dispose();
         if (_singleInstanceMutex is not null)
@@ -138,12 +151,15 @@ public partial class App : System.Windows.Application
     private void StartSettingsSignalListener()
     {
         _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsSignalName);
+        _showFakeAdSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowFakeAdSignalName);
         _signalThread = new Thread(() =>
         {
+            var handles = new WaitHandle[] { _showSettingsSignal, _showFakeAdSignal };
             while (!_stopping)
             {
-                _showSettingsSignal.WaitOne();
-                if (!_stopping) Dispatcher.BeginInvoke(() =>
+                var signaled = WaitHandle.WaitAny(handles, TimeSpan.FromMilliseconds(400));
+                if (_stopping) return;
+                if (signaled == 0) Dispatcher.BeginInvoke(() =>
                 {
                     if (_activationWindow?.IsVisible == true)
                     {
@@ -152,6 +168,7 @@ public partial class App : System.Windows.Application
                     }
                     Controller?.ShowSettings();
                 });
+                else if (signaled == 1) Dispatcher.BeginInvoke(() => Controller?.ShowFakeAdWindow());
             }
         })
         {
