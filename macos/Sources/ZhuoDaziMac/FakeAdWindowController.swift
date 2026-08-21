@@ -253,7 +253,7 @@ final class FakeAdWindowController: NSObject, NSWindowDelegate {
             let bundle = (application.bundleIdentifier ?? "").lowercased()
             return name.contains("抖音") || name.contains("douyin") || bundle.contains("douyin")
         }
-        return applications.flatMap { application in
+        return applications.flatMap { application -> [(NSRunningApplication, AXUIElement, String)] in
             let element = AXUIElementCreateApplication(application.processIdentifier)
             guard let windows: [AXUIElement] = axValue(element, kAXWindowsAttribute as CFString) else { return [] }
             return windows.enumerated().filter { axFrame($0.element) != nil }.map { (application, $0.element, "\(application.processIdentifier)-\($0.offset)") }
