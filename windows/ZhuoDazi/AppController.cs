@@ -209,7 +209,7 @@ public sealed class AppController : IDisposable
             _companionTimer.Start();
             _ = RefreshCompanionAsync();
         }
-        else if (_fakeAdWindow is not null) _fakeAdWindow.Close();
+        if (!HasPremiumAccess && _fakeAdWindow is not null) _fakeAdWindow.Close();
         if (!string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
         RefreshTrialDisplay();
         SaveAndRefresh();
@@ -321,11 +321,7 @@ public sealed class AppController : IDisposable
 
     public void ShowFakeAdWindow()
     {
-        if (!_licenses.IsActivated)
-        {
-            ShowActivation(_settingsWindow, "激活完整版本后可以使用摸鱼广告。请输入激活码后再打开。");
-            return;
-        }
+        if (!RequestPremiumAccess("摸鱼模式")) return;
         if (_fakeAdWindow is null)
         {
             _fakeAdWindow = new FakeAdWindow(this);
@@ -1419,7 +1415,10 @@ public sealed class AppController : IDisposable
         }
         _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
         _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
-        _trayMenu.Items.Add("摸鱼广告（激活后可用）", null, (_, _) => ShowFakeAdWindow()).Enabled = _licenses.IsActivated;
+        var fishModeLabel = _licenses.IsActivated
+            ? "摸鱼广告"
+            : IsTrialActive ? "摸鱼广告（体验中）" : "摸鱼广告（激活后继续）";
+        _trayMenu.Items.Add(fishModeLabel, null, (_, _) => ShowFakeAdWindow());
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("始终置顶", null, (_, _) => SetAlwaysOnTop(!Settings.AlwaysOnTop)) { Checked = Settings.AlwaysOnTop });
         var clickThroughItem = new Forms.ToolStripMenuItem(

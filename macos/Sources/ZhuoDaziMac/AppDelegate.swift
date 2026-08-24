@@ -202,13 +202,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 } catch { }
                 self.licenses.endTrial()
+                self.fakeAdWindow?.close()
+                self.fakeAdWindow = nil
                 self.petController.refreshPremiumAccess()
                 self.petController.showBubble("一天完整体验结束啦，基础陪伴继续。")
                 self.settingsWindow?.refreshAccessState()
                 if await ActivationPrompts.activate(
                     licenses: self.licenses,
                     required: true,
-                    statusMessage: "刚才试过的互动和小剧场还可以接着用。想慢慢玩，先留下基础陪伴也完全没问题。",
+                    statusMessage: "刚才试过的互动、小剧场和摸鱼模式，激活后都可以继续使用。",
                     trialEnded: true
                 ) {
                     self.petController.refreshPremiumAccess()
@@ -273,8 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
         theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场"
-        fishModeItem.title = licenses.isActivated ? "摸鱼广告" : "摸鱼广告（激活后可用）"
-        fishModeItem.isEnabled = licenses.isActivated
+        fishModeItem.title = licenses.isActivated
+            ? "摸鱼广告"
+            : licenses.isTrialActive ? "摸鱼广告（体验中）" : "摸鱼广告（激活后继续）"
+        fishModeItem.isEnabled = true
         let trial = licenses.isTrialActive
         girlfriendVisitItem.isHidden = !trial
         friendVisitItem.isHidden = !trial
@@ -341,13 +345,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFishMode() {
-        guard licenses.isActivated else {
+        guard licenses.hasPremiumAccess else {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if await ActivationPrompts.activate(
                     licenses: licenses,
                     required: true,
-                    statusMessage: "激活完整版本后可以使用摸鱼广告。"
+                    statusMessage: "摸鱼模式可完整体验一天，激活后可以继续使用。"
                 ) {
                     petController.refreshPremiumAccess()
                     settingsWindow?.refreshAccessState()

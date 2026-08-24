@@ -230,7 +230,7 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(labeledRow("小剧场间隔", controls: [theaterIntervalPopup, play]))
         stack.addArrangedSubview(separator())
         addSection("摸鱼模式", to: stack)
-        stack.addArrangedSubview(hint("打开广告壳后，将抖音窗口拖入其中；首次使用需要允许辅助功能权限。"))
+        stack.addArrangedSubview(hint("一天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。"))
         stack.addArrangedSubview(NSButton(title: "打开摸鱼广告", target: self, action: #selector(openFakeAdAction)))
         return page
     }

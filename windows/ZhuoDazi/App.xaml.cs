@@ -144,7 +144,7 @@ public partial class App : System.Windows.Application
 
         _licenseService.EndTrial();
         Controller?.RefreshPremiumAccess("一天完整体验结束啦，基础陪伴继续。");
-        ShowActivation("刚才试过的互动和小剧场还可以接着用。想慢慢玩，先留下基础陪伴也完全没问题。", trialEnded: true);
+        ShowActivation("刚才试过的互动、小剧场和摸鱼模式，激活后都可以继续使用。", trialEnded: true);
         Controller?.RefreshPremiumAccess();
     }
 
