@@ -80,8 +80,8 @@ final class CompanionService {
         if (target.isEmpty() || target.length() > 128) throw new IllegalArgumentException("请选择一位在线用户");
         byte[] gif = pets.readGif(pets.selectedPet(), MAXIMUM_GIF_BYTES);
         String path = DeskPetApi.COMPANION_HALL_DELIVERIES + "/"
-            + java.net.URLEncoder.encode(target, StandardCharsets.UTF_8).replace("+", "%20")
-            + "?message=" + URLEncoder.encode(message == null ? "" : message.trim(), StandardCharsets.UTF_8).replace("+", "%20");
+            + URLEncoder.encode(target, "UTF-8").replace("+", "%20")
+            + "?message=" + URLEncoder.encode(message == null ? "" : message.trim(), "UTF-8").replace("+", "%20");
         byte[] response = NetworkClient.request(context, "POST", path, gif, "image/gif", licenses,
             NetworkClient.Auth.ACTIVATED, NetworkClient.DEFAULT_MAX_RESPONSE);
         JSONObject json = new JSONObject(new String(response, StandardCharsets.UTF_8));
