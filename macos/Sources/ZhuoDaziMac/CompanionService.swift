@@ -121,6 +121,8 @@ final class CompanionService {
               fileSize >= 10, fileSize <= Self.maximumGIFBytes else {
             throw CompanionError.invalidGIF
         }
+        let data = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        try validateGIF(data)
         guard var components = URLComponents(url: Self.hallDeliveriesURL
             .appendingPathComponent(recipientId), resolvingAgainstBaseURL: false) else {
             throw CompanionError.invalidResponse
@@ -129,7 +131,7 @@ final class CompanionService {
         guard let uploadURL = components.url else { throw CompanionError.invalidResponse }
         var upload = request(method: "POST", url: uploadURL)
         upload.setValue("image/gif", forHTTPHeaderField: "Content-Type")
-        upload.httpBody = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        upload.httpBody = data
         let result: SendResponse = try await sendJSON(upload)
         return result.recipientName
     }

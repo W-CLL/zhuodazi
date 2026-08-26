@@ -15,6 +15,7 @@ final class CompanionWindowController: NSWindowController {
     private let sendButton = NSButton(title: "发送当前 GIF", target: nil, action: nil)
     private let unpairButton = NSButton(title: "解除绑定", target: nil, action: nil)
     private let hallToggle = NSButton(checkboxWithTitle: "允许陌生人看到我在线", target: nil, action: nil)
+    private let hallStatus = NSTextField(wrappingLabelWithString: "")
     private let hallPopup = NSPopUpButton()
     private let hallMessage = NSTextField(string: "")
     private let hallRefreshButton = NSButton(title: "刷新大厅", target: nil, action: nil)
@@ -105,6 +106,10 @@ final class CompanionWindowController: NSWindowController {
         hallToggle.target = self
         hallToggle.action = #selector(hallToggleAction)
         stack.addArrangedSubview(hallToggle)
+        hallStatus.textColor = .secondaryLabelColor
+        hallStatus.maximumNumberOfLines = 2
+        hallStatus.widthAnchor.constraint(equalToConstant: 460).isActive = true
+        stack.addArrangedSubview(hallStatus)
         hallPopup.widthAnchor.constraint(equalToConstant: 300).isActive = true
         hallMessage.placeholderString = "给对方留一句话（可选）"
         hallMessage.widthAnchor.constraint(equalToConstant: 300).isActive = true
@@ -139,14 +144,28 @@ final class CompanionWindowController: NSWindowController {
         let profile = service.profile
         nameField.stringValue = profile?.displayName ?? nameField.stringValue
         codeField.stringValue = profile?.pairingCode ?? ""
-        hallToggle.state = profile?.hallEnabled == true ? .on : .off
+        if !loading {
+            hallToggle.state = profile?.hallEnabled == true ? .on : .off
+        }
         hallToggle.isEnabled = isActivated() && !loading
+        let hallEnabled = profile?.hallEnabled == true
+        if !hallEnabled {
+            hallStatus.stringValue = "开启后你会出现在陌生人大厅，也能看到其他在线用户。"
+        } else if service.hallPeople.isEmpty {
+            hallStatus.stringValue = currentGIFURL() == nil
+                ? "大厅已开启，当前没有可发送的 GIF；在线用户出现后即可发送。"
+                : "大厅已开启，暂时没有在线陌生人；保持窗口打开即可收到新用户。"
+        } else if currentGIFURL() == nil {
+            hallStatus.stringValue = "已有在线陌生人，但当前没有可发送的 GIF。"
+        } else {
+            hallStatus.stringValue = "大厅已开启，选择一位在线用户即可发送当前表情。"
+        }
         hallPopup.removeAllItems()
         for person in service.hallPeople {
             hallPopup.addItem(withTitle: person.displayName)
             hallPopup.lastItem?.representedObject = person.id
         }
-        hallPopup.isEnabled = profile?.hallEnabled == true && !loading && !service.hallPeople.isEmpty
+        hallPopup.isEnabled = hallEnabled && !loading && !service.hallPeople.isEmpty
         hallMessage.isEnabled = hallPopup.isEnabled
         hallRefreshButton.isEnabled = isActivated() && !loading
         hallSendButton.isEnabled = hallPopup.isEnabled && currentGIFURL() != nil && !loading
@@ -210,7 +229,12 @@ final class CompanionWindowController: NSWindowController {
     }
 
     @objc private func hallToggleAction() {
-        run { try await self.service.setHallEnabled(self.hallToggle.state == .on) }
+        let enabled = hallToggle.state == .on
+        run {
+            _ = try await self.service.setHallEnabled(enabled)
+            if enabled { _ = try await self.service.refreshHall() }
+            return ()
+        }
     }
 
     @objc private func sendHallAction() {
