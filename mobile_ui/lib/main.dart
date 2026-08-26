@@ -1667,10 +1667,6 @@ class AccountPage extends StatelessWidget {
                 controller.update.message,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-              if (controller.update.notes.isNotEmpty) ...[
-                const SizedBox(height: 6),
-                Text(controller.update.notes),
-              ],
               if (controller.update.downloading ||
                   controller.update.downloaded) ...[
                 const SizedBox(height: 12),

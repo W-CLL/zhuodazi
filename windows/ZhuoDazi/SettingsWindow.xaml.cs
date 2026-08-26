@@ -243,8 +243,6 @@ public partial class SettingsWindow : Window
     private void RenderUpdateState(UpdateState state)
     {
         UpdateStatusText.Text = state.Message;
-        UpdateNotesText.Visibility = state.Manifest is null ? Visibility.Collapsed : Visibility.Visible;
-        UpdateNotesText.Text = state.Manifest?.Notes ?? string.Empty;
         UpdateProgress.Visibility = state.Phase is UpdatePhase.Downloading or UpdatePhase.Downloaded
             ? Visibility.Visible : Visibility.Collapsed;
         UpdateProgress.Value = state.Progress;

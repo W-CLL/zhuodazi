@@ -86,10 +86,7 @@ jobs:
         run: |
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
-          notes="$(cat <<EOF
-          摸鱼模式现可在一天完整体验期内使用，激活后继续使用。
-          EOF
-          )"
+          notes="建议更新到最新版本，获得更稳定的使用体验。"
           state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
           if [[ "$state" == "false" ]]; then
             application_changes="$(git diff --name-only "$tag" "$TARGET_SHA" -- windows macos)"

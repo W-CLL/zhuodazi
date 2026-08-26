@@ -948,7 +948,6 @@
                             </Border>
                             <StackPanel Grid.Column="1">
                                 <TextBlock x:Name="UpdateStatusText" FontSize="14" FontWeight="SemiBold" Text="可以检查更新" Foreground="{StaticResource InkBrush}" />
-                                <TextBlock x:Name="UpdateNotesText" Margin="0,8,0,0" Style="{StaticResource Hint}" Visibility="Collapsed" />
                                 <ProgressBar x:Name="UpdateProgress" Height="6" Margin="0,14,0,0" Minimum="0" Maximum="100" Visibility="Collapsed" />
                             </StackPanel>
                         </Grid>
