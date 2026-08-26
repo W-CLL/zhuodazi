@@ -10,11 +10,20 @@ struct CompanionProfile: Decodable {
     let displayName: String
     let pairingCode: String
     let partner: CompanionPartner?
+    let hallEnabled: Bool
+    let online: Bool
+}
+
+struct CompanionHallPerson: Decodable {
+    let id: String
+    let displayName: String
+    let online: Bool
 }
 
 struct CompanionVisit {
     let id: String
     let senderName: String
+    let message: String
     let fileURL: URL
 }
 
@@ -37,12 +46,15 @@ final class CompanionService {
     private static let companionURL = DeskPetApi.companion
     private static let pairURL = DeskPetApi.companionPair
     private static let deliveriesURL = DeskPetApi.companionDeliveries
+    private static let hallURL = DeskPetApi.companionHall
+    private static let hallDeliveriesURL = DeskPetApi.companionHallDeliveries
     private static let maximumGIFBytes = 8 * 1024 * 1024
 
     private let licenses: LicenseService
     private let session: URLSession
     private let inboxURL: URL
     private(set) var profile: CompanionProfile?
+    private(set) var hallPeople: [CompanionHallPerson] = []
 
     init(licenses: LicenseService) {
         self.licenses = licenses
@@ -87,6 +99,41 @@ final class CompanionService {
         return result
     }
 
+    func refreshHall() async throws -> [CompanionHallPerson] {
+        let result: HallResponse = try await sendJSON(request(method: "GET", url: Self.hallURL))
+        hallPeople = result.people.filter(\.online)
+        return hallPeople
+    }
+
+    func setHallEnabled(_ enabled: Bool) async throws -> CompanionProfile {
+        let result: CompanionProfile = try await sendJSON(jsonRequest(
+            method: "PATCH", url: Self.hallURL, body: ["enabled": enabled]
+        ))
+        profile = result
+        if !enabled { hallPeople = [] }
+        return result
+    }
+
+    func sendToHall(fileURL: URL, recipientId: String, message: String) async throws -> String {
+        guard !recipientId.isEmpty else { throw CompanionError.server("请选择一位在线用户") }
+        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
+        guard values.isRegularFile == true, let fileSize = values.fileSize,
+              fileSize >= 10, fileSize <= Self.maximumGIFBytes else {
+            throw CompanionError.invalidGIF
+        }
+        guard var components = URLComponents(url: Self.hallDeliveriesURL
+            .appendingPathComponent(recipientId), resolvingAgainstBaseURL: false) else {
+            throw CompanionError.invalidResponse
+        }
+        components.queryItems = [URLQueryItem(name: "message", value: String(message.prefix(120)))]
+        guard let uploadURL = components.url else { throw CompanionError.invalidResponse }
+        var upload = request(method: "POST", url: uploadURL)
+        upload.setValue("image/gif", forHTTPHeaderField: "Content-Type")
+        upload.httpBody = try Data(contentsOf: fileURL, options: .mappedIfSafe)
+        let result: SendResponse = try await sendJSON(upload)
+        return result.recipientName
+    }
+
     func sendCurrentGIF(_ fileURL: URL) async throws -> String {
         let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
         guard values.isRegularFile == true, let fileSize = values.fileSize,
@@ -121,7 +168,7 @@ final class CompanionService {
         }
         let fileURL = inboxURL.appendingPathComponent("\(sticker.id).gif")
         try data.write(to: fileURL, options: .atomic)
-        return CompanionVisit(id: sticker.id, senderName: sticker.senderName, fileURL: fileURL)
+        return CompanionVisit(id: sticker.id, senderName: sticker.senderName, message: "", fileURL: fileURL)
     }
 
     func receive() async throws -> [CompanionVisit] {
@@ -147,7 +194,7 @@ final class CompanionService {
                 .appendingPathComponent("acknowledge")
             let (_, acknowledgeResponse) = try await session.data(for: request(method: "POST", url: acknowledgeURL))
             try check(response: acknowledgeResponse, data: Data())
-            visits.append(CompanionVisit(id: item.id, senderName: item.senderName, fileURL: fileURL))
+            visits.append(CompanionVisit(id: item.id, senderName: item.senderName, message: item.message, fileURL: fileURL))
         }
         return visits
     }
@@ -161,7 +208,7 @@ final class CompanionService {
         return request
     }
 
-    private func jsonRequest(method: String, url: URL, body: [String: String]) -> URLRequest {
+    private func jsonRequest(method: String, url: URL, body: [String: Any]) -> URLRequest {
         var request = request(method: method, url: url)
         request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
@@ -228,6 +275,8 @@ final class CompanionService {
         let senderName: String
         let sha256: String
         let downloadPath: String
+        let message: String
     }
+    private struct HallResponse: Decodable { let enabled: Bool; let people: [CompanionHallPerson] }
     private struct ErrorResponse: Decodable { let error: String }
 }

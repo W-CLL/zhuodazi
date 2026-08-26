@@ -1152,7 +1152,10 @@ public final class PetOverlayService extends Service {
             visitorOverlay = new PetOverlayView(this, petSize, width, height);
             visitorFile = visit.file();
             visitorOverlay.setPet(drawable, 1f, false, -facing);
-            visitorOverlay.say(visit.senderName() + " 来串门啦！");
+            String reaction = visit.message() == null || visit.message().trim().isEmpty()
+                ? visit.senderName() + " 来串门啦！"
+                : visit.senderName() + "：" + visit.message().trim();
+            visitorOverlay.say(reaction);
             visitorParams = new WindowManager.LayoutParams(width, height,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE

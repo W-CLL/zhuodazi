@@ -53,7 +53,10 @@ internal sealed class CompanionVisitorQueue
                 var top = Math.Clamp(main.Top, area.Top, Math.Max(area.Top, area.Bottom - visitor.Height));
                 visitor.Place(new Point(left, top));
                 visitor.Show();
-                visitor.ShowReaction($"{visit.SenderName} 来串门啦");
+                var reaction = string.IsNullOrWhiteSpace(visit.Message)
+                    ? $"{visit.SenderName} 来串门啦"
+                    : $"{visit.SenderName}：{visit.Message}";
+                visitor.ShowReaction(reaction);
                 try { await Task.Delay(TimeSpan.FromSeconds(10)); }
                 finally
                 {

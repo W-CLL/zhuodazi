@@ -11,6 +11,8 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 final class CompanionService {
     private static final int MAXIMUM_GIF_BYTES = 8 * 1024 * 1024;
@@ -51,6 +53,43 @@ final class CompanionService {
             licenses, NetworkClient.Auth.ACTIVATED));
     }
 
+    Hall refreshHall() throws Exception {
+        JSONObject json = NetworkClient.json(context, "GET", DeskPetApi.COMPANION_HALL, null,
+            licenses, NetworkClient.Auth.ACTIVATED);
+        JSONArray peopleJson = json.optJSONArray("people");
+        List<HallPerson> people = new ArrayList<>();
+        if (peopleJson != null) {
+            for (int index = 0; index < peopleJson.length(); index++) {
+                JSONObject item = peopleJson.optJSONObject(index);
+                if (item == null) continue;
+                String id = item.optString("id").trim();
+                String name = item.optString("displayName", "桌搭子").trim();
+                if (!id.isEmpty() && !name.isEmpty()) people.add(new HallPerson(id, name, item.optBoolean("online", true)));
+            }
+        }
+        return new Hall(json.optBoolean("enabled", false), people);
+    }
+
+    Profile setHallEnabled(boolean enabled) throws Exception {
+        return parseProfile(NetworkClient.json(context, "PATCH", DeskPetApi.COMPANION_HALL,
+            new JSONObject().put("enabled", enabled), licenses, NetworkClient.Auth.ACTIVATED));
+    }
+
+    String sendToHall(String recipientId, String message) throws Exception {
+        String target = recipientId == null ? "" : recipientId.trim();
+        if (target.isEmpty() || target.length() > 128) throw new IllegalArgumentException("请选择一位在线用户");
+        byte[] gif = pets.readGif(pets.selectedPet(), MAXIMUM_GIF_BYTES);
+        String path = DeskPetApi.COMPANION_HALL_DELIVERIES + "/"
+            + java.net.URLEncoder.encode(target, StandardCharsets.UTF_8).replace("+", "%20")
+            + "?message=" + URLEncoder.encode(message == null ? "" : message.trim(), StandardCharsets.UTF_8).replace("+", "%20");
+        byte[] response = NetworkClient.request(context, "POST", path, gif, "image/gif", licenses,
+            NetworkClient.Auth.ACTIVATED, NetworkClient.DEFAULT_MAX_RESPONSE);
+        JSONObject json = new JSONObject(new String(response, StandardCharsets.UTF_8));
+        String recipient = json.optString("recipientName");
+        if (recipient.trim().isEmpty()) throw new IOException("搭子服务返回的数据无效");
+        return recipient;
+    }
+
     String sendCurrentGif() throws Exception {
         byte[] gif = pets.readGif(pets.selectedPet(), MAXIMUM_GIF_BYTES);
         byte[] response = NetworkClient.request(context, "POST", DeskPetApi.COMPANION_DELIVERIES, gif,
@@ -76,7 +115,7 @@ final class CompanionService {
         byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
             licenses, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
         validateGif(gif, hash);
-        return new Visit(id, sender, pets.saveInboxGif(id, gif));
+        return new Visit(id, sender, "", pets.saveInboxGif(id, gif));
     }
 
     List<Visit> receive() throws Exception {
@@ -90,6 +129,7 @@ final class CompanionService {
             if (item == null) continue;
             String id = item.optString("id");
             String sender = item.optString("senderName", "搭子");
+            String message = item.optString("message", "");
             String hash = item.optString("sha256");
             String downloadPath = item.optString("downloadPath");
             if (!id.matches("[A-Za-z0-9._:-]{1,128}") || !hash.matches("(?i)[0-9a-f]{64}")
@@ -100,7 +140,7 @@ final class CompanionService {
             File file = pets.saveInboxGif(id, gif);
             NetworkClient.json(context, "POST", DeskPetApi.COMPANION_DELIVERIES + "/" + id + "/acknowledge",
                 null, licenses, NetworkClient.Auth.ACTIVATED);
-            visits.add(new Visit(id, sender, file));
+            visits.add(new Visit(id, sender, message, file));
         }
         return visits;
     }
@@ -118,7 +158,8 @@ final class CompanionService {
         if (pairingCode.length() != 6 && pairingCode.length() != 8) {
             throw new IOException("搭子服务未返回有效配对码，请稍后重试");
         }
-        return new Profile(displayName, pairingCode, partner);
+        return new Profile(displayName, pairingCode, partner,
+            payload.optBoolean("hallEnabled", false), payload.optBoolean("online", false));
     }
 
     private static void validateGif(byte[] bytes, String expectedHash) throws Exception {
@@ -135,6 +176,12 @@ final class CompanionService {
     }
 
     record Partner(String displayName, String pairedAt) { }
-    record Profile(String displayName, String pairingCode, Partner partner) { }
-    record Visit(String id, String senderName, File file) { }
+    record Profile(String displayName, String pairingCode, Partner partner, boolean hallEnabled, boolean online) { }
+    record Hall(boolean enabled, List<HallPerson> people) { }
+    record HallPerson(String id, String displayName, boolean online) { }
+    record Visit(String id, String senderName, String message, File file) {
+        Visit(String id, String senderName, File file) {
+            this(id, senderName, "", file);
+        }
+    }
 }

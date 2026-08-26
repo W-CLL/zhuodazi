@@ -827,6 +827,43 @@
                                            TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
+
+                        <Border Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,16,0,0">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="桌宠大厅" Style="{StaticResource SectionTitle}" />
+                                        <TextBlock x:Name="CompanionHallStatusText" Text="关闭大厅后，你不会出现在陌生人列表里。" Style="{StaticResource Hint}" />
+                                    </StackPanel>
+                                    <Button x:Name="RefreshHallButton" Grid.Column="1" Content="刷新大厅" VerticalAlignment="Center" Click="RefreshHall_Click" />
+                                </Grid>
+                                <CheckBox x:Name="CompanionHallEnabledCheck" Content="允许陌生人看到我在线" Click="CompanionHallEnabled_Click" />
+                                <TextBlock Text="在线用户" Style="{StaticResource FieldLabel}" Margin="0,14,0,7" />
+                                <ListBox x:Name="CompanionHallList" Height="164" SelectionChanged="CompanionHallList_SelectionChanged">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Background="{StaticResource SoftBrush}" CornerRadius="5" Padding="10" Margin="0,0,0,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding DisplayName}" FontSize="14" Foreground="{StaticResource InkBrush}" />
+                                                        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Hint}" />
+                                                    </StackPanel>
+                                                    <Ellipse Grid.Column="1" Width="9" Height="9" Fill="#55A982" VerticalAlignment="Center" Margin="12,0,2,0" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock x:Name="CompanionHallEmptyText" Text="暂时没有在线陌生人" Style="{StaticResource Hint}" Margin="0,8,0,0" />
+                                <Grid Margin="0,12,0,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="CompanionHallMessageText" MaxLength="120" ToolTip="给对方留一句话" />
+                                    <Button x:Name="SendHallButton" Grid.Column="1" Content="发一只表情" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="SendHall_Click" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

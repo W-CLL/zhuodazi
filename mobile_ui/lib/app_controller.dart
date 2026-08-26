@@ -14,6 +14,7 @@ class AppController extends ChangeNotifier {
   UpdateState update = UpdateState.idle();
   Uint8List? petGif;
   Map<String, dynamic>? companion;
+  Map<String, dynamic>? companionHall;
   bool loading = true;
   bool busy = false;
   bool companionLoading = false;
@@ -268,6 +269,7 @@ class AppController extends ChangeNotifier {
     try {
       await _guard(() async {
         companion = await _api.companionRefresh();
+        companionHall = await _api.companionHallRefresh();
       });
     } catch (error) {
       companionError = readableHostError(error);
@@ -300,6 +302,27 @@ class AppController extends ChangeNotifier {
     var recipient = '';
     await _guard(() async {
       recipient = await _api.companionSend();
+    });
+    return recipient;
+  }
+
+  Future<void> setCompanionHall(bool enabled) async {
+    await _guard(() async {
+      companion = await _api.companionHallSet(enabled);
+      companionHall = await _api.companionHallRefresh();
+    });
+  }
+
+  Future<void> refreshCompanionHall() async {
+    await _guard(() async {
+      companionHall = await _api.companionHallRefresh();
+    });
+  }
+
+  Future<String> sendCompanionHall(String recipientId, String message) async {
+    var recipient = '';
+    await _guard(() async {
+      recipient = await _api.companionHallSend(recipientId, message);
     });
     return recipient;
   }

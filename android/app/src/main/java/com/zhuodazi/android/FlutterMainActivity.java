@@ -112,6 +112,11 @@ public final class FlutterMainActivity extends FlutterActivity {
                     () -> profileMap(companions.pair((String) call.argument("code"))));
                 case "companionUnpair" -> runAsync(result, () -> profileMap(companions.unpair()));
                 case "companionSend" -> runAsync(result, companions::sendCurrentGif);
+                case "companionHallRefresh" -> runAsync(result, () -> hallMap(companions.refreshHall()));
+                case "companionHallSet" -> runAsync(result,
+                    () -> profileMap(companions.setHallEnabled(Boolean.TRUE.equals(call.argument("enabled")))));
+                case "companionHallSend" -> runAsync(result,
+                    () -> companions.sendToHall((String) call.argument("recipientId"), (String) call.argument("message")));
                 default -> result.notImplemented();
             }
         } catch (Exception error) {
@@ -549,6 +554,8 @@ public final class FlutterMainActivity extends FlutterActivity {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("displayName", profile.displayName());
         result.put("pairingCode", profile.pairingCode());
+        result.put("hallEnabled", profile.hallEnabled());
+        result.put("online", profile.online());
         if (profile.partner() == null) result.put("partner", null);
         else {
             Map<String, String> partner = new LinkedHashMap<>();
@@ -556,6 +563,21 @@ public final class FlutterMainActivity extends FlutterActivity {
             partner.put("pairedAt", profile.partner().pairedAt());
             result.put("partner", partner);
         }
+        return result;
+    }
+
+    private Map<String, Object> hallMap(CompanionService.Hall hall) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("enabled", hall.enabled());
+        List<Map<String, Object>> people = new ArrayList<>();
+        for (CompanionService.HallPerson person : hall.people()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("id", person.id());
+            item.put("displayName", person.displayName());
+            item.put("online", person.online());
+            people.add(item);
+        }
+        result.put("people", people);
         return result;
     }
 

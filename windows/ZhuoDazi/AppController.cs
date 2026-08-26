@@ -423,6 +423,22 @@ public sealed class AppController : IDisposable
         StateChanged?.Invoke();
     }
 
+    public async Task<IReadOnlyList<CompanionHallPerson>> RefreshCompanionHallAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!_licenses.IsActivated) return [];
+        var people = await Companions.RefreshHallAsync(cancellationToken);
+        StateChanged?.Invoke();
+        return people;
+    }
+
+    public async Task SetCompanionHallEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        if (!_licenses.IsActivated) throw new InvalidOperationException("激活完整版本后可以使用搭子联机。");
+        await Companions.SetHallEnabledAsync(enabled, cancellationToken);
+        StateChanged?.Invoke();
+    }
+
     public async Task UpdateCompanionNameAsync(string displayName, CancellationToken cancellationToken = default)
     {
         if (!_licenses.IsActivated) throw new InvalidOperationException("激活完整版本后可以使用搭子联机。");
@@ -488,6 +504,23 @@ public sealed class AppController : IDisposable
             throw new InvalidOperationException("当前桌宠没有可发送的 GIF。");
         var recipient = await Companions.SendCurrentGifAsync(path, cancellationToken);
         _petWindow?.ShowReaction($"已经去找 {recipient} 啦。");
+    }
+
+    public async Task SendCurrentGifToHallAsync(
+        string recipientId,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        if (!_licenses.IsActivated)
+        {
+            ShowActivation(_settingsWindow, "打开大厅和陌生人互动前，请先激活完整版本。");
+            return;
+        }
+        var path = CurrentPetPath();
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            throw new InvalidOperationException("当前桌宠没有可发送的 GIF。");
+        var recipient = await Companions.SendCurrentGifToHallAsync(path, recipientId, message, cancellationToken);
+        _petWindow?.ShowReaction($"已经给 {recipient} 发去一只表情啦。");
     }
 
     public async Task<int> SyncInteractionContentAsync(CancellationToken cancellationToken = default)

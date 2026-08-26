@@ -996,11 +996,14 @@ class CompanionPage extends StatefulWidget {
 class _CompanionPageState extends State<CompanionPage> {
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
+  final _hallMessageController = TextEditingController();
+  String? _selectedHallId;
   bool _requested = false;
   @override
   void dispose() {
     _nameController.dispose();
     _codeController.dispose();
+    _hallMessageController.dispose();
     super.dispose();
   }
 
@@ -1113,6 +1116,18 @@ class _CompanionPageState extends State<CompanionPage> {
       );
     }
     final partner = profile['partner'] as Map?;
+    final hall = widget.controller.companionHall;
+    final hallEnabled = profile['hallEnabled'] == true;
+    final hallPeople = (hall?['people'] as List?)
+            ?.whereType<Map>()
+            .map((item) => Map<String, dynamic>.from(item))
+            .where((item) => item['online'] != false)
+            .toList() ??
+        <Map<String, dynamic>>[];
+    if (_selectedHallId != null &&
+        !hallPeople.any((item) => item['id'] == _selectedHallId)) {
+      _selectedHallId = null;
+    }
     if (_nameController.text.isEmpty) {
       _nameController.text = '${profile['displayName'] ?? ''}';
     }
@@ -1296,6 +1311,98 @@ class _CompanionPageState extends State<CompanionPage> {
               ],
             ),
           ),
+        const SizedBox(height: 22),
+        const SectionTitle(label: '桌宠大厅'),
+        const SizedBox(height: 8),
+        Panel(
+          color: hallEnabled ? _mint : _surface,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('允许陌生人看到我在线'),
+                subtitle: Text(
+                  hallEnabled ? '开启后，在线用户可以向你发送表情。' : '关闭后，你不会出现在陌生人列表里。',
+                ),
+                value: hallEnabled,
+                onChanged: widget.controller.busy
+                    ? null
+                    : (enabled) => runAction(
+                        context,
+                        widget.controller.setCompanionHall(enabled),
+                        (_) => enabled ? '大厅已开启' : '大厅已关闭',
+                      ),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      hallPeople.isEmpty ? '暂时没有在线陌生人' : '在线用户 · ${hallPeople.length}',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: widget.controller.busy
+                        ? null
+                        : () => runAction(
+                            context,
+                            widget.controller.refreshCompanionHall(),
+                            (_) => '大厅已刷新',
+                          ),
+                    icon: const Icon(Icons.refresh),
+                    tooltip: '刷新大厅',
+                  ),
+                ],
+              ),
+              if (hallEnabled && hallPeople.isNotEmpty)
+                ...hallPeople.map(
+                  (person) => RadioListTile<String>(
+                    contentPadding: EdgeInsets.zero,
+                    value: '${person['id']}',
+                    groupValue: _selectedHallId,
+                    onChanged: (value) => setState(() => _selectedHallId = value),
+                    title: Text('${person['displayName'] ?? '桌搭子'}'),
+                    subtitle: const Text('在线，可以收到你的表情'),
+                    secondary: const Icon(Icons.circle, color: _brand, size: 12),
+                  ),
+                ),
+              if (hallEnabled) ...[
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _hallMessageController,
+                  maxLength: 120,
+                  decoration: const InputDecoration(
+                    labelText: '给对方留一句话（可选）',
+                    counterText: '',
+                  ),
+                ),
+                const SizedBox(height: 9),
+                SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: _selectedHallId == null || widget.controller.busy
+                        ? null
+                        : () => runAction<String>(
+                            context,
+                            widget.controller.sendCompanionHall(
+                              _selectedHallId!,
+                              _hallMessageController.text.trim(),
+                            ),
+                            (recipient) {
+                              _hallMessageController.clear();
+                              return '已发送给 $recipient';
+                            },
+                          ),
+                    icon: const Icon(Icons.send_outlined),
+                    label: const Text('发送当前桌宠'),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }

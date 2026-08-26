@@ -19,6 +19,7 @@ public partial class SettingsWindow : Window
     private bool _feedbackLoading;
     private bool _interactionContentLoading;
     private bool _companionLoading;
+    private bool _hallLoading;
     private string? _editingReminderId;
 
     public SettingsWindow(AppController controller)
@@ -210,6 +211,27 @@ public partial class SettingsWindow : Window
         CompanionActivateButton.Visibility = _controller.HasActivatedLicense
             ? Visibility.Collapsed : Visibility.Visible;
         CompanionActivateButton.Content = _controller.IsTrialActive ? "体验结束后继续使用" : "继续完整体验后使用";
+
+        var hallEnabled = companionEnabled && companionProfile?.HallEnabled == true;
+        CompanionHallEnabledCheck.IsChecked = companionProfile?.HallEnabled == true;
+        CompanionHallEnabledCheck.IsEnabled = companionEnabled && !_hallLoading;
+        RefreshHallButton.IsEnabled = companionEnabled && !_hallLoading;
+        CompanionHallStatusText.Text = hallEnabled
+            ? $"大厅已开启 · 当前 {_controller.Companions.HallPeople.Count} 人在线"
+            : "关闭大厅后，你不会出现在陌生人列表里。";
+        var selectedHallId = (CompanionHallList.SelectedItem as HallListItem)?.Id;
+        var hallItems = _controller.Companions.HallPeople
+            .Select(person => new HallListItem(person))
+            .ToList();
+        CompanionHallList.ItemsSource = hallItems;
+        CompanionHallList.SelectedItem = hallItems.FirstOrDefault(item => item.Id == selectedHallId);
+        CompanionHallList.IsEnabled = hallEnabled && !_hallLoading;
+        CompanionHallEmptyText.Visibility = hallItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        CompanionHallMessageText.IsEnabled = hallEnabled;
+        SendHallButton.IsEnabled = hallEnabled
+            && CompanionHallList.SelectedItem is HallListItem
+            && File.Exists(_controller.CurrentPetPath())
+            && !_hallLoading;
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
@@ -626,7 +648,11 @@ public partial class SettingsWindow : Window
         _companionLoading = true;
         CompanionErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
-        try { await _controller.RefreshCompanionAsync(); }
+        try
+        {
+            await _controller.RefreshCompanionAsync();
+            await LoadHallAsync();
+        }
         catch (Exception error)
         {
             CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "暂时无法连接搭子服务。");
@@ -640,6 +666,49 @@ public partial class SettingsWindow : Window
     }
 
     private async void RefreshCompanion_Click(object sender, RoutedEventArgs e) => await LoadCompanionAsync();
+
+    private async void RefreshHall_Click(object sender, RoutedEventArgs e) => await LoadHallAsync();
+
+    private async Task LoadHallAsync()
+    {
+        if (_hallLoading || !_controller.HasActivatedLicense) return;
+        _hallLoading = true;
+        CompanionErrorText.Visibility = Visibility.Collapsed;
+        RefreshAll();
+        try { await _controller.RefreshCompanionHallAsync(); }
+        catch (Exception error)
+        {
+            CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "暂时无法连接桌宠大厅。");
+            CompanionErrorText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _hallLoading = false;
+            RefreshAll();
+        }
+    }
+
+    private async void CompanionHallEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing) return;
+        var enabled = CompanionHallEnabledCheck.IsChecked == true;
+        await RunHallActionAsync(() => _controller.SetCompanionHallEnabledAsync(enabled));
+    }
+
+    private void CompanionHallList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!_refreshing) RefreshAll();
+    }
+
+    private async void SendHall_Click(object sender, RoutedEventArgs e)
+    {
+        if (CompanionHallList.SelectedItem is not HallListItem person) return;
+        await RunHallActionAsync(async () =>
+        {
+            await _controller.SendCurrentGifToHallAsync(person.Id, CompanionHallMessageText.Text);
+            CompanionHallMessageText.Clear();
+        });
+    }
 
     private async void SaveCompanionName_Click(object sender, RoutedEventArgs e)
         => await RunCompanionActionAsync(() => _controller.UpdateCompanionNameAsync(CompanionNameText.Text));
@@ -697,6 +766,25 @@ public partial class SettingsWindow : Window
         finally
         {
             _companionLoading = false;
+            RefreshAll();
+        }
+    }
+
+    private async Task RunHallActionAsync(Func<Task> action)
+    {
+        if (_hallLoading) return;
+        _hallLoading = true;
+        CompanionErrorText.Visibility = Visibility.Collapsed;
+        RefreshAll();
+        try { await action(); }
+        catch (Exception error)
+        {
+            CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "大厅操作未完成，请稍后重试。");
+            CompanionErrorText.Visibility = Visibility.Visible;
+        }
+        finally
+        {
+            _hallLoading = false;
             RefreshAll();
         }
     }
@@ -878,6 +966,19 @@ public partial class SettingsWindow : Window
         {
             var clean = string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
             return clean.Length <= length ? clean : $"{clean[..length]}…";
+        }
+    }
+
+    private sealed class HallListItem
+    {
+        public string Id { get; }
+        public string DisplayName { get; }
+        public string StatusText => "在线，可以收到你的表情";
+
+        public HallListItem(CompanionHallPerson person)
+        {
+            Id = person.Id;
+            DisplayName = person.DisplayName;
         }
     }
 

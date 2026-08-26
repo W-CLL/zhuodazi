@@ -403,6 +403,18 @@ class HostApi {
   Future<String> companionSend() async =>
       await _channel.invokeMethod<String>('companionSend') ?? '搭子';
 
+  Future<Map<String, dynamic>> companionHallRefresh() =>
+      _mapCall('companionHallRefresh');
+
+  Future<Map<String, dynamic>> companionHallSet(bool enabled) =>
+      _mapCall('companionHallSet', {'enabled': enabled});
+
+  Future<String> companionHallSend(String recipientId, String message) async =>
+      await _channel.invokeMethod<String>('companionHallSend', {
+        'recipientId': recipientId,
+        'message': message,
+      }) ?? '桌搭子';
+
   Future<HostSnapshot> _snapshotCall(
     String method, [
     Map<String, Object>? arguments,

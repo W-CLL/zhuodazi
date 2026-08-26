@@ -373,6 +373,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { return }
                     try await self.sendCurrentGIF()
                 },
+                currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
+                isActivated: { [weak self] in self?.licenses.isActivated == true },
                 stateChanged: { [weak self] in self?.refreshMenuState() }
             )
         }
@@ -398,7 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { trialVisitBusy = false }
             do {
                 let visit = try await companions.playTrialVisit(category: category)
-                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName)
+                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName, message: visit.message)
                 try? FileManager.default.removeItem(at: visit.fileURL)
             } catch {
                 presentFriendlyError(error, title: "暂时叫不来")
@@ -533,7 +535,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         defer { companionPolling = false }
         do {
             for visit in try await companions.receive() {
-                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName)
+                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName, message: visit.message)
                 try? FileManager.default.removeItem(at: visit.fileURL)
             }
         } catch {

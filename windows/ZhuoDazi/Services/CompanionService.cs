@@ -14,15 +14,25 @@ public sealed record CompanionPartner(
 public sealed record CompanionProfile(
     [property: JsonPropertyName("displayName")] string DisplayName,
     [property: JsonPropertyName("pairingCode")] string PairingCode,
-    [property: JsonPropertyName("partner")] CompanionPartner? Partner);
+    [property: JsonPropertyName("partner")] CompanionPartner? Partner,
+    [property: JsonPropertyName("hallEnabled")] bool HallEnabled = false,
+    [property: JsonPropertyName("online")] bool Online = false);
 
-public sealed record CompanionVisit(string Id, string SenderName, string FilePath);
+public sealed record CompanionVisit(string Id, string SenderName, string FilePath, string Message = "");
+
+public sealed record CompanionHallPerson(
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("displayName")] string DisplayName,
+    [property: JsonPropertyName("online")] bool Online,
+    [property: JsonPropertyName("lastSeenAt")] string LastSeenAt);
 
 public sealed class CompanionService : IDisposable
 {
     private const string CompanionUrl = DeskPetApi.Companion;
     private const string PairUrl = DeskPetApi.CompanionPair;
     private const string DeliveriesUrl = DeskPetApi.CompanionDeliveries;
+    private const string HallUrl = DeskPetApi.CompanionHall;
+    private const string HallDeliveriesUrl = DeskPetApi.CompanionHallDeliveries;
     private const int MaximumGifBytes = 8 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
@@ -31,6 +41,7 @@ public sealed class CompanionService : IDisposable
     private readonly string _inboxDirectory;
 
     public CompanionProfile? Profile { get; private set; }
+    public IReadOnlyList<CompanionHallPerson> HallPeople { get; private set; } = [];
 
     public CompanionService(SettingsStore store, LicenseService licenses)
     {
@@ -72,7 +83,40 @@ public sealed class CompanionService : IDisposable
         return Profile;
     }
 
+    public async Task<IReadOnlyList<CompanionHallPerson>> RefreshHallAsync(CancellationToken cancellationToken = default)
+    {
+        using var request = CreateRequest(HttpMethod.Get, HallUrl);
+        var response = await SendJsonAsync<HallResponse>(request, cancellationToken);
+        HallPeople = response.People;
+        if (Profile is not null && Profile.HallEnabled != response.Enabled)
+            Profile = Profile with { HallEnabled = response.Enabled, Online = response.Enabled };
+        return HallPeople;
+    }
+
+    public async Task<CompanionProfile> SetHallEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
+    {
+        using var request = CreateJsonRequest(HttpMethod.Patch, HallUrl, new { enabled });
+        Profile = await SendJsonAsync<CompanionProfile>(request, cancellationToken);
+        if (!enabled) HallPeople = [];
+        return Profile;
+    }
+
     public async Task<string> SendCurrentGifAsync(string gifPath, CancellationToken cancellationToken = default)
+        => await SendGifAsync(gifPath, DeliveriesUrl, cancellationToken);
+
+    public async Task<string> SendCurrentGifToHallAsync(
+        string gifPath,
+        string recipientId,
+        string message,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(recipientId)) throw new InvalidOperationException("请选择一位在线用户");
+        var encodedMessage = Uri.EscapeDataString(message?.Trim() ?? string.Empty);
+        var url = $"{HallDeliveriesUrl}/{Uri.EscapeDataString(recipientId)}?message={encodedMessage}";
+        return await SendGifAsync(gifPath, url, cancellationToken);
+    }
+
+    private async Task<string> SendGifAsync(string gifPath, string url, CancellationToken cancellationToken)
     {
         if (!File.Exists(gifPath)) throw new InvalidOperationException("当前 GIF 文件不存在。");
         var info = new FileInfo(gifPath);
@@ -80,7 +124,7 @@ public sealed class CompanionService : IDisposable
             || info.Length < 10 || info.Length > MaximumGifBytes)
             throw new InvalidOperationException("只能发送不超过 8 MB 的 GIF。");
 
-        using var request = CreateRequest(HttpMethod.Post, DeliveriesUrl);
+        using var request = CreateRequest(HttpMethod.Post, url);
         await using var stream = File.OpenRead(gifPath);
         request.Content = new StreamContent(stream);
         request.Content.Headers.ContentType = new MediaTypeHeaderValue("image/gif");
@@ -152,7 +196,7 @@ public sealed class CompanionService : IDisposable
             using var acknowledgeResponse = await _httpClient.SendAsync(acknowledgeRequest, cancellationToken);
             if (!acknowledgeResponse.IsSuccessStatusCode)
                 throw new InvalidOperationException(await ReadErrorAsync(acknowledgeResponse, cancellationToken));
-            visits.Add(new CompanionVisit(item.Id, item.SenderName, filePath));
+            visits.Add(new CompanionVisit(item.Id, item.SenderName, filePath, item.Message));
         }
         return visits;
     }
@@ -234,7 +278,12 @@ public sealed class CompanionService : IDisposable
         [property: JsonPropertyName("id")] string Id,
         [property: JsonPropertyName("senderName")] string SenderName,
         [property: JsonPropertyName("sha256")] string Sha256,
-        [property: JsonPropertyName("downloadPath")] string DownloadPath);
+        [property: JsonPropertyName("downloadPath")] string DownloadPath,
+        [property: JsonPropertyName("message")] string Message = "");
+
+    private sealed record HallResponse(
+        [property: JsonPropertyName("enabled")] bool Enabled,
+        [property: JsonPropertyName("people")] List<CompanionHallPerson> People);
 
     private sealed record ErrorResponse([property: JsonPropertyName("error")] string Error);
 }

@@ -143,13 +143,14 @@ final class PetWindowController {
         petURLs.first { $0 != currentPetURL } ?? currentPetURL ?? petURLs.first
     }
 
-    func showVisitor(at url: URL, senderName: String) async {
+    func showVisitor(at url: URL, senderName: String, message: String = "") async {
         guard window.isVisible, theaterTask == nil, visitorWindow == nil else { return }
         let visitor = makeCompanionWindow(petURL: url)
         visitorWindow = visitor.window
         positionCompanion(visitor.window)
         visitor.window.orderFrontRegardless()
-        visitor.view.showBubble("\(senderName) 来串门啦", duration: 5)
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        visitor.view.showBubble(text.isEmpty ? "\(senderName) 来串门啦" : "\(senderName)：\(text)", duration: 5)
         try? await Task.sleep(for: .seconds(10))
         visitor.window.orderOut(nil)
         if visitorWindow === visitor.window { visitorWindow = nil }
