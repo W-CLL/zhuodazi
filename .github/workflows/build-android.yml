@@ -123,6 +123,10 @@ jobs:
               --title "桌搭子 Android v1.3.6" \
               --notes "建议更新到最新版本，获得更稳定的使用体验。"
           fi
+          gh release edit "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "桌搭子 Android v1.3.6" \
+            --notes "建议更新到最新版本，获得更稳定的使用体验。"
           gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
           gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.6.apk" --yes || true
           gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.6-debug.apk" --yes || true
