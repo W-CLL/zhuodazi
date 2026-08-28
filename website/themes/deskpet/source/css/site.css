@@ -1335,61 +1335,58 @@ img {
   margin-top: 12px;
 }
 
-.shot-bento {
+.shot-stage {
   display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(0, 0.92fr) minmax(168px, 0.72fr);
-  grid-template-areas:
-    "lead lead phone-a"
-    "desk-a desk-b phone-b";
-  gap: 18px 16px;
-  align-items: stretch;
+  gap: 28px;
   margin-top: 54px;
 }
 
-.shot {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  margin: 0;
+.shot-row,
+.shot-phones {
+  display: grid;
+  gap: 18px 16px;
 }
 
-.shot-lead { grid-area: lead; }
-.shot-phone-a { grid-area: phone-a; }
-.shot-desk-a { grid-area: desk-a; }
-.shot-desk-b { grid-area: desk-b; }
-.shot-phone-b { grid-area: phone-b; }
+.shot-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.shot-phones {
+  grid-template-columns: repeat(2, minmax(0, 220px));
+  justify-content: center;
+  padding-top: 6px;
+}
+
+.shot {
+  min-width: 0;
+  margin: 0;
+}
 
 .shot img {
   display: block;
   width: 100%;
-  min-height: 0;
+  height: auto;
   border: 1px solid var(--ink);
   background: var(--surface);
   object-fit: cover;
 }
 
 .shot-lead img,
-.shot-desk-a img,
-.shot-desk-b img {
-  flex: 0 0 auto;
+.shot-desk img {
   aspect-ratio: 30 / 19;
   object-position: center 58%;
 }
 
-.shot-phone-a img,
-.shot-phone-b img {
-  flex: 1 1 auto;
-  height: 100%;
+.shot-phone img {
+  aspect-ratio: 10 / 21;
   object-position: 100% center;
-  background: #1c1712;
+  background: #111;
 }
 
 .shot figcaption {
   display: grid;
   gap: 2px;
-  margin-top: auto;
-  padding-top: 12px;
+  margin-top: 12px;
 }
 
 .shot figcaption strong {
@@ -3095,25 +3092,13 @@ img {
     grid-template-columns: 1fr;
   }
 
-  .shot-bento {
-    grid-template-columns: 1fr 1fr;
-    grid-template-areas:
-      "lead lead"
-      "desk-a desk-b"
-      "phone-a phone-b";
-    gap: 16px 14px;
+  .shot-stage {
+    gap: 22px;
+    margin-top: 38px;
   }
 
-  .shot-phone-a,
-  .shot-phone-b {
-    width: min(72%, 240px);
-    justify-self: end;
-  }
-
-  .shot-phone-a img,
-  .shot-phone-b img {
-    flex: 0 0 auto;
-    aspect-ratio: 9 / 16;
+  .shot-phones {
+    grid-template-columns: repeat(2, minmax(0, 180px));
   }
 
   .client-showcase-heading,
@@ -3311,28 +3296,17 @@ img {
     right: auto;
   }
 
-  .shot-bento {
+  .shot-row,
+  .shot-phones {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "lead"
-      "desk-a"
-      "desk-b"
-      "phone-a"
-      "phone-b";
   }
 
-  .shot-phone-a,
-  .shot-phone-b {
+  .shot-phones {
+    justify-items: center;
+  }
+
+  .shot-phone {
     width: min(58%, 220px);
-    justify-self: end;
-  }
-
-  .shot-phone-a img,
-  .shot-phone-b img {
-    flex: 0 0 auto;
-    min-height: 0;
-    height: auto;
-    aspect-ratio: 9 / 16;
   }
 
   .intro-band,
