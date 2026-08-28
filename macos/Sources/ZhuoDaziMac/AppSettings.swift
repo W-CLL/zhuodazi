@@ -72,6 +72,7 @@ struct AppSettings: Codable {
     var positionY: CGFloat?
     var onboardingHintSeen = false
     var demoVisitSeen = false
+    var remoteDefaultsApplied = false
 
     init() {}
 
@@ -107,6 +108,7 @@ struct AppSettings: Codable {
         positionY = try values.decodeIfPresent(CGFloat.self, forKey: .positionY)
         onboardingHintSeen = try values.decodeIfPresent(Bool.self, forKey: .onboardingHintSeen) ?? false
         demoVisitSeen = try values.decodeIfPresent(Bool.self, forKey: .demoVisitSeen) ?? false
+        remoteDefaultsApplied = try values.decodeIfPresent(Bool.self, forKey: .remoteDefaultsApplied) ?? false
         normalize(resetClickThrough: true)
     }
 
@@ -149,6 +151,10 @@ final class SettingsStore {
         guard let data = defaults.data(forKey: key),
               var settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
             return AppSettings()
+        }
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           object["remoteDefaultsApplied"] == nil {
+            settings.remoteDefaultsApplied = true
         }
         settings.normalize(resetClickThrough: true)
         return settings

@@ -104,8 +104,8 @@ jobs:
       - name: Prepare package
         if: github.event_name != 'pull_request'
         run: |
-          cp "$APK_DIR/app-arm64-v8a-release.apk" ZhuoDazi-Android-1.3.7-arm64.apk
-          cp "$APK_DIR/app-armeabi-v7a-release.apk" ZhuoDazi-Android-1.3.7-armv7.apk
+          cp "$APK_DIR/app-arm64-v8a-release.apk" ZhuoDazi-Android-1.3.8-arm64.apk
+          cp "$APK_DIR/app-armeabi-v7a-release.apk" ZhuoDazi-Android-1.3.8-armv7.apk
 
       - name: Upload APK to Android draft release
         if: github.event_name != 'pull_request'
@@ -113,20 +113,20 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          tag="android-v1.3.7"
-          asset_arm64="ZhuoDazi-Android-1.3.7-arm64.apk"
-          asset_armv7="ZhuoDazi-Android-1.3.7-armv7.apk"
+          tag="android-v1.3.8"
+          asset_arm64="ZhuoDazi-Android-1.3.8-arm64.apk"
+          asset_armv7="ZhuoDazi-Android-1.3.8-armv7.apk"
           if ! gh release view "$tag" >/dev/null 2>&1; then
             gh release create "$tag" \
               --draft \
               --target "$GITHUB_SHA" \
-              --title "桌搭子 Android v1.3.7" \
+              --title "桌搭子 Android v1.3.8" \
               --notes "更新/优化了一些功能。"
           fi
           gh release edit "$tag" \
             --target "$GITHUB_SHA" \
-            --title "桌搭子 Android v1.3.7" \
+            --title "桌搭子 Android v1.3.8" \
             --notes "更新/优化了一些功能。"
           gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
-          gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.7.apk" --yes || true
-          gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.7-debug.apk" --yes || true
+          gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.8.apk" --yes || true
+          gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.8-debug.apk" --yes || true

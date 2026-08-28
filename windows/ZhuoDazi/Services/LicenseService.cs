@@ -23,8 +23,7 @@ public sealed class LicenseService : IDisposable
     private readonly string _licensePath;
     private LicenseRecord _record;
     private bool _trialActive;
-    private int _remainingTrialSeconds;
-    private DateTimeOffset _trialCheckedAt;
+    private DateTimeOffset? _trialExpiresAt;
 
     public bool IsActivated => Guid.TryParse(_record.LicenseId, out _);
     public bool IsTrialActive => !IsActivated && _trialActive && RemainingTrialSeconds > 0;
@@ -35,9 +34,8 @@ public sealed class LicenseService : IDisposable
     {
         get
         {
-            if (!_trialActive || IsActivated) return 0;
-            var elapsed = (int)(DateTimeOffset.UtcNow - _trialCheckedAt).TotalSeconds;
-            return Math.Max(0, _remainingTrialSeconds - elapsed);
+            if (!_trialActive || IsActivated || _trialExpiresAt is null) return 0;
+            return Math.Max(0, (int)Math.Ceiling((_trialExpiresAt.Value - DateTimeOffset.UtcNow).TotalSeconds));
         }
     }
     public int DeviceCount { get; private set; }
@@ -58,6 +56,7 @@ public sealed class LicenseService : IDisposable
         {
             _record = CreatePendingRecord();
         }
+        RestorePersistedTrial();
         Save();
     }
 
@@ -110,9 +109,12 @@ public sealed class LicenseService : IDisposable
                 throw new InvalidOperationException("激活服务返回的授权无效。");
             candidate.LicenseId = result.LicenseId;
             candidate.ActivatedAt = result.ActivatedAt;
+            candidate.TrialExpiresAt = null;
             DeviceCount = result.DeviceCount is > 0 and <= 2 ? result.DeviceCount : 1;
             AlreadyActivated = result.AlreadyActivated;
             _record = candidate;
+            _trialActive = false;
+            _trialExpiresAt = null;
             Save();
         }
     }
@@ -149,26 +151,25 @@ public sealed class LicenseService : IDisposable
             if (!response.IsSuccessStatusCode)
                 throw new InvalidOperationException(TryReadError(responseBytes) ?? "试用时间校验失败，请稍后重试。");
             var result = JsonSerializer.Deserialize<TrialResponse>(responseBytes, JsonOptions);
-            if (result is null || result.RemainingSeconds is < 0 or > 24 * 60 * 60)
-                throw new InvalidOperationException("试用服务返回的数据无效。");
-            _trialActive = result.Allowed && result.RemainingSeconds > 0;
-            _remainingTrialSeconds = _trialActive ? result.RemainingSeconds : 0;
-            _trialCheckedAt = DateTimeOffset.UtcNow;
-            return new TrialStatus(_trialActive, RemainingTrialSeconds);
+            if (result is null) throw new InvalidOperationException("试用服务返回的数据无效。");
+            ApplyTrialResponse(result);
+            return new TrialStatus(IsTrialActive, RemainingTrialSeconds);
         }
     }
 
     public void EndTrial()
     {
         _trialActive = false;
-        _remainingTrialSeconds = 0;
+        _trialExpiresAt = null;
+        _record.TrialExpiresAt = null;
+        Save();
     }
 
     public void Authorize(HttpRequestMessage request)
     {
         if (IsActivated)
             request.Headers.Authorization = new("Bearer", $"{_record.LicenseId}.{_record.Credential}");
-        else if (_trialActive)
+        else if (IsTrialActive)
             request.Headers.Authorization = new("Trial", $"{_record.InstallationId}.{_record.Credential}");
         else
             throw new InvalidOperationException("此设备尚未完成绑定。");
@@ -208,6 +209,61 @@ public sealed class LicenseService : IDisposable
         InstallationId = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant(),
         Credential = Base64UrlEncode(RandomNumberGenerator.GetBytes(32))
     };
+
+    private void RestorePersistedTrial()
+    {
+        if (IsActivated || string.IsNullOrWhiteSpace(_record.TrialExpiresAt)) return;
+        if (!DateTimeOffset.TryParse(_record.TrialExpiresAt, out var expiresAt) || expiresAt <= DateTimeOffset.UtcNow)
+        {
+            _record.TrialExpiresAt = null;
+            return;
+        }
+        _trialActive = true;
+        _trialExpiresAt = expiresAt;
+    }
+
+    private void ApplyTrialResponse(TrialResponse result)
+    {
+        var hasExpiresAt = DateTimeOffset.TryParse(result.ExpiresAt, out var expiresAt);
+        if (!hasExpiresAt && result.RemainingSeconds is < 0 or > 24 * 60 * 60)
+            throw new InvalidOperationException("试用服务返回的数据无效。");
+        if (!result.Allowed)
+        {
+            EndTrial();
+            return;
+        }
+
+        if (hasExpiresAt)
+        {
+            if (DateTimeOffset.TryParse(result.ServerTime, out var serverTime))
+            {
+                var remaining = expiresAt - serverTime;
+                expiresAt = remaining > TimeSpan.Zero
+                    ? DateTimeOffset.UtcNow + remaining
+                    : DateTimeOffset.UtcNow;
+            }
+            if (expiresAt <= DateTimeOffset.UtcNow)
+            {
+                EndTrial();
+                return;
+            }
+            _trialActive = true;
+            _trialExpiresAt = expiresAt;
+            _record.TrialExpiresAt = expiresAt.ToString("o");
+            Save();
+            return;
+        }
+
+        if (result.RemainingSeconds <= 0)
+        {
+            EndTrial();
+            return;
+        }
+        _trialActive = true;
+        _trialExpiresAt = DateTimeOffset.UtcNow.AddSeconds(result.RemainingSeconds);
+        _record.TrialExpiresAt = _trialExpiresAt.Value.ToString("o");
+        Save();
+    }
 
     private static bool IsValid(LicenseRecord record)
     {
@@ -250,6 +306,9 @@ public sealed class LicenseService : IDisposable
 
         [JsonPropertyName("activatedAt")]
         public string? ActivatedAt { get; set; }
+
+        [JsonPropertyName("trialExpiresAt")]
+        public string? TrialExpiresAt { get; set; }
     }
 
     private sealed class ActivationResponse
@@ -274,6 +333,15 @@ public sealed class LicenseService : IDisposable
 
         [JsonPropertyName("remainingSeconds")]
         public int RemainingSeconds { get; set; }
+
+        [JsonPropertyName("expiresAt")]
+        public string? ExpiresAt { get; set; }
+
+        [JsonPropertyName("startedAt")]
+        public string? StartedAt { get; set; }
+
+        [JsonPropertyName("serverTime")]
+        public string? ServerTime { get; set; }
     }
 
     private sealed class ErrorResponse

@@ -20,6 +20,7 @@ func presentFriendlyError(_ error: Error, title: String) {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let settingsStore = SettingsStore()
+    private let remoteConfig = RemoteConfigService()
     private var settings = AppSettings()
     private var petController: PetWindowController!
     private var licenses: LicenseService!
@@ -89,7 +90,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                 startCompanionPolling()
                             }
                         }
-                    } catch { }
+                    } catch {
+                        if licenses.isTrialActive {
+                            scheduleTrialCheck(licenses.remainingTrialSecondsNow)
+                        }
+                    }
                     petController.refreshPremiumAccess()
                     refreshMenuState()
                     startPet()
@@ -125,8 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduleDemoVisitIfNeeded()
         analytics.trackStartup()
         Task { @MainActor [weak self] in
+            await self?.refreshRemoteConfig()
+        }
+        Task { @MainActor [weak self] in
             guard let self else { return }
-            guard settings.autoCheckUpdates else { return }
+            guard settings.autoCheckUpdates, remoteConfig.current.autoUpdates else { return }
             try? await Task.sleep(for: .seconds(3))
             _ = try? await updates.check()
             if let manifest = updates.availableManifest, manifest.version != settings.ignoredUpdateVersion {
@@ -135,9 +143,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func refreshRemoteConfig() async {
+        if await remoteConfig.refresh() {
+            applyRemoteDefaultsIfNeeded()
+        }
+        refreshMenuState()
+        settingsWindow?.refreshAccessState()
+        companionWindow?.renderRemoteConfig(remoteConfig.current)
+    }
+
+    private func applyRemoteDefaultsIfNeeded() {
+        guard !settings.remoteDefaultsApplied else { return }
+        let config = remoteConfig.current
+        settings.personality = config.personality
+        settings.interactionMode = config.interactionMode
+        settings.theaterIntervalSeconds = config.theaterIntervalSeconds
+        settings.remoteDefaultsApplied = true
+        settingsStore.save(settings)
+        petController?.update { next in
+            next.personality = config.personality
+            next.interactionMode = config.interactionMode
+            next.theaterIntervalSeconds = config.theaterIntervalSeconds
+            next.remoteDefaultsApplied = true
+        }
+    }
+
     private func startOnboardingIfNeeded() {
         guard !settings.onboardingHintSeen else { return }
-        if licenses.isTrialActive, !settings.demoVisitSeen {
+        if licenses.isTrialActive, remoteConfig.current.trialVisits, !settings.demoVisitSeen {
             petController.showBubble("先待一会儿，马上有人来串门。")
             return
         }
@@ -162,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func scheduleDemoVisitIfNeeded() {
-        guard !settings.demoVisitSeen, licenses.isTrialActive else { return }
+        guard !settings.demoVisitSeen, licenses.isTrialActive, remoteConfig.current.trialVisits else { return }
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(12))
             await self?.showDemoVisitIfNeeded()
@@ -170,7 +203,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showDemoVisitIfNeeded() async {
-        guard !settings.demoVisitSeen, licenses.isTrialActive else { return }
+        guard !settings.demoVisitSeen, licenses.isTrialActive, remoteConfig.current.trialVisits else { return }
         guard petController.isVisible, !petController.isBusyWithScene else {
             scheduleDemoVisitIfNeeded()
             return
@@ -200,8 +233,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         self.scheduleTrialCheck(trial.remainingSeconds)
                         return
                     }
-                } catch { }
-                self.licenses.endTrial()
+                } catch {
+                    if self.licenses.isTrialActive {
+                        self.scheduleTrialCheck(min(self.licenses.remainingTrialSecondsNow, 3600))
+                        return
+                    }
+                }
                 self.fakeAdWindow?.close()
                 self.fakeAdWindow = nil
                 self.petController.refreshPremiumAccess()
@@ -275,14 +312,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
         theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场"
+        fishModeItem.isHidden = !remoteConfig.current.fishMode
         fishModeItem.title = licenses.isActivated
             ? "摸鱼广告"
             : licenses.isTrialActive ? "摸鱼广告（体验中）" : "摸鱼广告（激活后继续）"
-        fishModeItem.isEnabled = true
+        fishModeItem.isEnabled = remoteConfig.current.fishMode
         let trial = licenses.isTrialActive
-        girlfriendVisitItem.isHidden = !trial
-        friendVisitItem.isHidden = !trial
-        companionVisitItem.isHidden = !trial
+        let trialVisits = trial && remoteConfig.current.trialVisits
+        girlfriendVisitItem.isHidden = !trialVisits
+        friendVisitItem.isHidden = !trialVisits
+        companionVisitItem.isHidden = !trialVisits
         sendCompanionItem.isHidden = trial
         if let partner = companions?.profile?.partner {
             sendCompanionItem.title = "发送当前 GIF 给 \(partner.displayName)"
@@ -305,6 +344,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 petController: petController,
                 licenses: licenses,
                 updates: updates,
+                remoteConfig: { [weak self] in self?.remoteConfig.current ?? RemoteConfig() },
                 dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) },
                 openCompanion: { [weak self] in self?.openCompanion() },
                 openFakeAd: { [weak self] in self?.openFishMode() }
@@ -345,6 +385,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openFishMode() {
+        guard remoteConfig.current.fishMode else {
+            petController.showBubble("摸鱼广告暂时关掉了。")
+            return
+        }
         guard licenses.hasPremiumAccess else {
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -375,8 +419,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
                 isActivated: { [weak self] in self?.licenses.isActivated == true },
+                hallEnabled: { [weak self] in self?.remoteConfig.current.companionHall ?? true },
                 stateChanged: { [weak self] in self?.refreshMenuState() }
             )
+            companionWindow?.renderRemoteConfig(remoteConfig.current)
         }
         companionWindow?.showWindow(nil)
     }
@@ -388,6 +434,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func playTrialVisit(category: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard remoteConfig.current.trialVisits else {
+                petController.showBubble("体验来访暂时关掉了。")
+                return
+            }
             guard licenses.isTrialActive else {
                 petController.showBubble("体验结束后，点一下发给对象才需要激活。")
                 return

@@ -40,6 +40,10 @@ void main() {
     'xianyuUrl': 'https://www.goofish.com/item?id=1',
     'wechatId': 'wcl_lcw627',
     'websiteUrl': 'https://desktoppet.online/',
+    'announcement': '',
+    'trialVisitsEnabled': true,
+    'companionHallEnabled': true,
+    'autoUpdatesEnabled': true,
     'autoCheckUpdates': true,
     'ignoredUpdateVersion': '',
     'canInstallPackages': false,
@@ -169,7 +173,7 @@ void main() {
 
     await tester.tap(find.text('搭子').last);
     await tester.pump();
-    expect(find.text('体验期先看着来访'), findsOneWidget);
+    expect(find.text('体验期先自己叫人来串门'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('我的').last);
@@ -237,6 +241,14 @@ void main() {
     expect(find.textContaining('叫人来串门'), findsWidgets);
     expect(find.widgetWithText(FilledButton, '女友来访'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '发给搭子'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.widgetWithText(QuickAction, '女友来访'),
+      180,
+      scrollable: find.descendant(
+        of: find.byType(HomePage),
+        matching: find.byType(Scrollable),
+      ),
+    );
     expect(find.widgetWithText(QuickAction, '女友来访'), findsOneWidget);
     expect(find.widgetWithText(QuickAction, '好友来访'), findsOneWidget);
     expect(find.widgetWithText(QuickAction, '搭子来访'), findsOneWidget);

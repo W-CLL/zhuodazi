@@ -337,8 +337,9 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     final snapshot = controller.snapshot;
     final trial = !snapshot.activated && controller.liveTrialSeconds > 0;
+    final trialVisits = trial && snapshot.trialVisitsEnabled;
     final actions = <Widget>[
-      if (trial) ...[
+      if (trialVisits) ...[
         QuickAction(
           icon: Icons.favorite_outline,
           label: '女友来访',
@@ -394,22 +395,36 @@ class HomePage extends StatelessWidget {
         PageIntro(
           title: '今天也一起',
           subtitle: !snapshot.overlayAllowed
-              ? (trial
+              ? (trialVisits
                   ? '先打开悬浮窗，桌宠才会出来。点一下就能叫女友、好友或搭子来串门。'
                   : '先打开悬浮窗，桌宠才会待在屏幕边角。')
-              : trial
+              : trialVisits
               ? '先让桌宠出来，再点一下叫人来串门。发给对象需要激活。'
               : '先让桌宠出来，再随手发一张给搭子。',
         ),
         PetStage(snapshot: snapshot, gif: controller.petGif, height: 206),
         const SizedBox(height: 14),
+        if (snapshot.announcement.isNotEmpty) ...[
+          Panel(
+            color: const Color(0xfff7ecdb),
+            child: StatusLine(
+              icon: Icons.campaign_outlined,
+              title: snapshot.announcement,
+              detail: '',
+              color: const Color(0xff8a5a18),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         if (trial) ...[
           Panel(
             color: _mint,
             child: StatusLine(
               icon: Icons.timer_outlined,
               title: '完整体验还剩 ${trialClock(controller.liveTrialSeconds)}',
-              detail: '点一下模仿女友、好友或搭子来访。发给对象需要正式激活。',
+              detail: trialVisits
+                  ? '点一下模仿女友、好友或搭子来访。发给对象需要正式激活。'
+                  : '发给对象需要正式激活。',
               color: _brand,
             ),
           ),
@@ -487,11 +502,12 @@ class _HomeStatus extends StatelessWidget {
     }
     final inactiveTouch = snapshot.hidden || snapshot.clickThrough;
     final trial = !snapshot.activated && controller.liveTrialSeconds > 0;
+    final trialVisits = trial && snapshot.trialVisitsEnabled;
     final detail = snapshot.hidden
         ? '桌宠仍在后台运行，随时可以恢复显示。'
         : snapshot.clickThrough
         ? '当前触摸会直接交给桌宠下方的应用。'
-        : trial
+        : trialVisits
         ? '点桌宠打开菜单，或从这里叫女友、好友、搭子来串门。'
         : '点桌宠打开菜单，或直接把当前形象发给搭子。';
     return Panel(
@@ -511,13 +527,13 @@ class _HomeStatus extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: FilledButton.icon(
-                onPressed: () => trial
+                onPressed: () => trialVisits
                     ? playTrialVisit(context, controller, 'trialVisitGirlfriend')
                     : sendHomeGif(context, controller),
                 icon: Icon(
-                  trial ? Icons.favorite_outline : Icons.send_outlined,
+                  trialVisits ? Icons.favorite_outline : Icons.send_outlined,
                 ),
-                label: Text(trial ? '女友来访' : '发给搭子'),
+                label: Text(trialVisits ? '女友来访' : '发给搭子'),
               ),
             ),
             const SizedBox(height: 9),
@@ -1311,6 +1327,7 @@ class _CompanionPageState extends State<CompanionPage> {
               ],
             ),
           ),
+        if (widget.controller.snapshot.companionHallEnabled) ...[
         const SizedBox(height: 22),
         const SectionTitle(label: '桌宠大厅'),
         const SizedBox(height: 8),
@@ -1403,6 +1420,7 @@ class _CompanionPageState extends State<CompanionPage> {
             ],
           ),
         ),
+        ],
       ],
     );
   }
@@ -1429,6 +1447,18 @@ class AccountPage extends StatelessWidget {
                   : '这组码也可以填到另一台电脑或手机。')
               : '一组码最多填两台。电脑激活后，手机再填同一组码也能进同一个账号。',
         ),
+        if (snapshot.announcement.isNotEmpty) ...[
+          Panel(
+            color: const Color(0xfff7ecdb),
+            child: StatusLine(
+              icon: Icons.campaign_outlined,
+              title: snapshot.announcement,
+              detail: '',
+              color: const Color(0xff8a5a18),
+            ),
+          ),
+          const SizedBox(height: 14),
+        ],
         Panel(
           color: snapshot.activated ? _mint : _coralSoft,
           child: Row(
@@ -1681,14 +1711,15 @@ class AccountPage extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 12),
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('自动检查更新'),
-                subtitle: const Text('打开应用后先看一下有没有新版本'),
-                value: snapshot.autoCheckUpdates,
-                onChanged: (value) =>
-                    controller.setSetting(settingAutoCheckUpdates, value),
-              ),
+              if (snapshot.autoUpdatesEnabled)
+                SwitchListTile.adaptive(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('自动检查更新'),
+                  subtitle: const Text('打开应用后先看一下有没有新版本'),
+                  value: snapshot.autoCheckUpdates,
+                  onChanged: (value) =>
+                      controller.setSetting(settingAutoCheckUpdates, value),
+                ),
               const SizedBox(height: 4),
               AdaptiveActionRow(
                 children: [
@@ -2318,8 +2349,10 @@ class StatusLine extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 3),
-            Text(detail, style: Theme.of(context).textTheme.bodyMedium),
+            if (detail.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text(detail, style: Theme.of(context).textTheme.bodyMedium),
+            ],
           ],
         ),
       ),

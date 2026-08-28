@@ -100,6 +100,9 @@ public sealed class AppSettings
     [JsonPropertyName("demoVisitSeen")]
     public bool DemoVisitSeen { get; set; }
 
+    [JsonPropertyName("remoteDefaultsApplied")]
+    public bool RemoteDefaultsApplied { get; set; }
+
     public void Normalize()
     {
         Pets = (Pets ?? []).Where(item => !string.IsNullOrWhiteSpace(item.Id)

@@ -28,6 +28,7 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _trialDisplayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly DispatcherTimer _demoVisitTimer = new() { Interval = TimeSpan.FromSeconds(12) };
     private readonly CompanionVisitorQueue _visitorQueue = new();
+    private readonly RemoteConfigService _remoteConfig;
     private IReadOnlyList<string> _libraryFiles = [];
     private string? _activeLibraryPetPath;
     private PetWindow? _petWindow;
@@ -44,6 +45,7 @@ public sealed class AppController : IDisposable
     private bool _interactionSyncRequested;
     private bool _companionSyncing;
     private bool _trialVisitBusy;
+    private bool _autoUpdateStarted;
     private bool _disposed;
 
     public AppSettings Settings { get; }
@@ -51,6 +53,7 @@ public sealed class AppController : IDisposable
     public FeedbackService Feedback { get; }
     public InteractionService Interactions { get; }
     public CompanionService Companions { get; }
+    public RemoteConfig RemoteConfig => _remoteConfig.Current;
     public event Action? StateChanged;
     public event Action? TrialClockChanged;
     public bool IsExiting { get; private set; }
@@ -80,6 +83,7 @@ public sealed class AppController : IDisposable
         _licenses = licenses;
         _analytics = new AnalyticsService(_licenses);
         Settings = _store.Load();
+        _remoteConfig = new RemoteConfigService(_store);
         Updates = new UpdateService(_store, _licenses);
         Feedback = new FeedbackService(_licenses);
         Interactions = new InteractionService(_store, _licenses);
@@ -90,7 +94,7 @@ public sealed class AppController : IDisposable
         _idleTimer.Tick += (_, _) =>
         {
             if (_interactionActive || _visitorQueue.IsShowing) return;
-            if (IsTrialActive && !Settings.DemoVisitSeen) return;
+            if (IsTrialActive && RemoteConfig.TrialVisits && !Settings.DemoVisitSeen) return;
             _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
         };
         _theaterTimer.Tick += async (_, _) =>
@@ -151,16 +155,41 @@ public sealed class AppController : IDisposable
         StartOnboardingIfNeeded();
         ScheduleDemoVisitIfNeeded();
         _ = _analytics.TrackStartupAsync();
-        if (Settings.AutoCheckUpdates)
+        _ = RefreshRemoteConfigAsync();
+        MaybeCheckUpdates();
+    }
+
+    public async Task RefreshRemoteConfigAsync()
+    {
+        if (await _remoteConfig.RefreshAsync()) ApplyRemoteDefaultsIfNeeded();
+        _petWindow?.RefreshAppearance(CurrentPetPath());
+        RefreshTray();
+        StateChanged?.Invoke();
+        MaybeCheckUpdates();
+    }
+
+    private void ApplyRemoteDefaultsIfNeeded()
+    {
+        if (Settings.RemoteDefaultsApplied) return;
+        var config = RemoteConfig;
+        Settings.Personality = config.Personality;
+        Settings.InteractionMode = config.InteractionMode;
+        Settings.TheaterIntervalSeconds = config.TheaterIntervalSeconds;
+        Settings.RemoteDefaultsApplied = true;
+        Save();
+    }
+
+    private void MaybeCheckUpdates()
+    {
+        if (_autoUpdateStarted || !Settings.AutoCheckUpdates || !RemoteConfig.AutoUpdates) return;
+        _autoUpdateStarted = true;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
+        timer.Tick += async (_, _) =>
         {
-            var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(8) };
-            timer.Tick += async (_, _) =>
-            {
-                timer.Stop();
-                try { await Updates.CheckAsync(false); } catch { }
-            };
-            timer.Start();
-        }
+            timer.Stop();
+            try { await Updates.CheckAsync(false); } catch { }
+        };
+        timer.Start();
     }
 
     public void ShowSettings()
@@ -225,7 +254,7 @@ public sealed class AppController : IDisposable
     public void StartOnboardingIfNeeded()
     {
         if (Settings.OnboardingHintSeen || _petWindow is null) return;
-        if (IsTrialActive && !Settings.DemoVisitSeen)
+        if (IsTrialActive && RemoteConfig.TrialVisits && !Settings.DemoVisitSeen)
         {
             _petWindow.ShowReaction("先待一会儿，马上有人来串门。");
             return;
@@ -256,14 +285,14 @@ public sealed class AppController : IDisposable
 
     private void ScheduleDemoVisitIfNeeded()
     {
-        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive) return;
+        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive || !RemoteConfig.TrialVisits) return;
         _demoVisitTimer.Stop();
         _demoVisitTimer.Start();
     }
 
     private async Task ShowDemoVisitIfNeededAsync()
     {
-        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive) return;
+        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive || !RemoteConfig.TrialVisits) return;
         if (_theaterActive || _interactionActive || _visitorQueue.IsShowing
             || _petWindow is not { IsVisible: true })
         {
@@ -321,6 +350,11 @@ public sealed class AppController : IDisposable
 
     public void ShowFakeAdWindow()
     {
+        if (!RemoteConfig.FishMode)
+        {
+            _petWindow?.ShowReaction("摸鱼广告暂时关掉了。");
+            return;
+        }
         if (!RequestPremiumAccess("摸鱼模式")) return;
         if (_fakeAdWindow is null)
         {
@@ -426,6 +460,7 @@ public sealed class AppController : IDisposable
     public async Task<IReadOnlyList<CompanionHallPerson>> RefreshCompanionHallAsync(
         CancellationToken cancellationToken = default)
     {
+        if (!RemoteConfig.CompanionHall) return [];
         if (!_licenses.IsActivated) return [];
         var people = await Companions.RefreshHallAsync(cancellationToken);
         StateChanged?.Invoke();
@@ -434,6 +469,7 @@ public sealed class AppController : IDisposable
 
     public async Task SetCompanionHallEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
+        if (!RemoteConfig.CompanionHall) throw new InvalidOperationException("桌宠大厅暂时关闭。");
         if (!_licenses.IsActivated) throw new InvalidOperationException("激活完整版本后可以使用搭子联机。");
         await Companions.SetHallEnabledAsync(enabled, cancellationToken);
         StateChanged?.Invoke();
@@ -465,6 +501,11 @@ public sealed class AppController : IDisposable
 
     public async Task PlayTrialVisitAsync(string category)
     {
+        if (!RemoteConfig.TrialVisits)
+        {
+            _petWindow?.ShowReaction("体验来访暂时关掉了。");
+            return;
+        }
         if (!IsTrialActive)
         {
             ShowActivation(_settingsWindow, "体验结束后，点一下发给对象才需要激活。");
@@ -1413,9 +1454,11 @@ public sealed class AppController : IDisposable
     private static string FormatTrialClock(int seconds)
     {
         seconds = Math.Max(0, seconds);
-        var hours = seconds / 3600;
+        var days = seconds / 86400;
+        var hours = seconds % 86400 / 3600;
         var minutes = seconds % 3600 / 60;
         var remainder = seconds % 60;
+        if (days > 0) return $"{days}天 {hours}:{minutes:00}:{remainder:00}";
         return hours > 0 ? $"{hours}:{minutes:00}:{remainder:00}" : $"{minutes}:{remainder:00}";
     }
 
@@ -1430,9 +1473,12 @@ public sealed class AppController : IDisposable
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         if (IsTrialActive)
         {
-            _trayMenu.Items.Add("模仿女友来访", null, async (_, _) => await PlayTrialVisitAsync("girlfriend"));
-            _trayMenu.Items.Add("模仿好友来访", null, async (_, _) => await PlayTrialVisitAsync("friend"));
-            _trayMenu.Items.Add("模仿搭子来访", null, async (_, _) => await PlayTrialVisitAsync("companion"));
+            if (RemoteConfig.TrialVisits)
+            {
+                _trayMenu.Items.Add("模仿女友来访", null, async (_, _) => await PlayTrialVisitAsync("girlfriend"));
+                _trayMenu.Items.Add("模仿好友来访", null, async (_, _) => await PlayTrialVisitAsync("friend"));
+                _trayMenu.Items.Add("模仿搭子来访", null, async (_, _) => await PlayTrialVisitAsync("companion"));
+            }
         }
         else
         {
@@ -1448,10 +1494,13 @@ public sealed class AppController : IDisposable
         }
         _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
         _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
-        var fishModeLabel = _licenses.IsActivated
-            ? "摸鱼广告"
-            : IsTrialActive ? "摸鱼广告（体验中）" : "摸鱼广告（激活后继续）";
-        _trayMenu.Items.Add(fishModeLabel, null, (_, _) => ShowFakeAdWindow());
+        if (RemoteConfig.FishMode)
+        {
+            var fishModeLabel = _licenses.IsActivated
+                ? "摸鱼广告"
+                : IsTrialActive ? "摸鱼广告（体验中）" : "摸鱼广告（激活后继续）";
+            _trayMenu.Items.Add(fishModeLabel, null, (_, _) => ShowFakeAdWindow());
+        }
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
         _trayMenu.Items.Add(new Forms.ToolStripMenuItem("始终置顶", null, (_, _) => SetAlwaysOnTop(!Settings.AlwaysOnTop)) { Checked = Settings.AlwaysOnTop });
         var clickThroughItem = new Forms.ToolStripMenuItem(
@@ -1473,6 +1522,7 @@ public sealed class AppController : IDisposable
 
     private void OnUpdateStateChanged(UpdateState state)
     {
+        if (!RemoteConfig.AutoUpdates) return;
         if (state.Phase != UpdatePhase.Available || state.Manifest is not { } manifest
             || manifest.Version.Equals(Settings.IgnoredUpdateVersion, StringComparison.OrdinalIgnoreCase)) return;
 

@@ -21,4 +21,5 @@ enum DeskPetApi {
     static let trialVisitPlay = baseURL.appendingPathComponent("api/trial/visit-stickers/play")
     static let analyticsEvents = baseURL.appendingPathComponent("api/analytics/events")
     static let updateLatest = baseURL.appendingPathComponent("api/update/latest")
+    static let siteSettings = baseURL.appendingPathComponent("api/public/site-settings")
 }

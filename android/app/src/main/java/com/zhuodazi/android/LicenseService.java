@@ -49,12 +49,12 @@ final class LicenseService {
         int deviceCount = response.optInt("deviceCount", 1);
         lastDeviceCount = deviceCount >= 1 && deviceCount <= 2 ? deviceCount : 1;
         secureStore.activate(licenseId, response.optString("activatedAt"));
-        settings.setTrialRemaining(0);
+        settings.clearTrial();
     }
 
     TrialStatus checkTrial() throws Exception {
         if (isActivated()) {
-            settings.setTrialRemaining(0);
+            settings.clearTrial();
             return new TrialStatus(false, 0);
         }
         SecureLicenseStore.LicenseRecord record = secureStore.record();
@@ -63,10 +63,40 @@ final class LicenseService {
         JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.TRIAL, body,
             this, NetworkClient.Auth.NONE);
         int seconds = response.optInt("remainingSeconds", -1);
-        if (seconds < 0 || seconds > 24 * 60 * 60) throw new IllegalStateException("体验服务返回的数据无效");
-        boolean allowed = response.optBoolean("allowed") && seconds > 0;
-        settings.setTrialRemaining(allowed ? seconds : 0);
-        return new TrialStatus(allowed, seconds);
+        String expiresAtText = response.optString("expiresAt", "");
+        boolean hasExpiresAt = !expiresAtText.isEmpty() && !response.isNull("expiresAt");
+        if (!hasExpiresAt && (seconds < 0 || seconds > 24 * 60 * 60)) {
+            throw new IllegalStateException("体验服务返回的数据无效");
+        }
+        if (!response.optBoolean("allowed")) {
+            settings.clearTrial();
+            return new TrialStatus(false, 0);
+        }
+        long expiresAt = parseExpiresAtMillis(response);
+        if (expiresAt <= System.currentTimeMillis()) {
+            settings.clearTrial();
+            return new TrialStatus(false, 0);
+        }
+        settings.setTrialExpiresAt(expiresAt);
+        return new TrialStatus(true, (int) Math.min(Integer.MAX_VALUE, trialRemainingSeconds()));
+    }
+
+    private static long parseExpiresAtMillis(JSONObject response) {
+        String expiresAtText = response.optString("expiresAt", "");
+        if (!expiresAtText.isEmpty() && !response.isNull("expiresAt")) {
+            try {
+                long expiresAt = java.time.Instant.parse(expiresAtText).toEpochMilli();
+                String serverTimeText = response.optString("serverTime", "");
+                if (!serverTimeText.isEmpty() && !response.isNull("serverTime")) {
+                    long serverTime = java.time.Instant.parse(serverTimeText).toEpochMilli();
+                    long remaining = expiresAt - serverTime;
+                    return remaining > 0 ? System.currentTimeMillis() + remaining : System.currentTimeMillis();
+                }
+                return expiresAt;
+            } catch (Exception ignored) { }
+        }
+        int seconds = Math.max(0, response.optInt("remainingSeconds", 0));
+        return seconds <= 0 ? 0L : System.currentTimeMillis() + seconds * 1000L;
     }
 
     void authorize(HttpURLConnection connection, boolean activatedOnly) {

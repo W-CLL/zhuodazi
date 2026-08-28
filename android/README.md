@@ -27,11 +27,11 @@ Android 不支持 Windows 托盘、全局鼠标追逐和 WPF 窗口模型。提�
 
 ### GitHub Actions
 
-推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.3.7.apk` 上传到 `android-v1.3.7` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
+推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.3.8.apk` 上传到 `android-v1.3.8` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
 
 工作流会执行 Android Lint、APK 编译和 v2 签名验证。仓库当前的 Actions Artifact 存储额度已满，因此和 Windows/macOS 构建一样直接使用 GitHub Release 保存安装包。
 
-v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。当前试用包是 v1.3.7（versionCode 11）。
+v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。当前试用包是 v1.3.8（versionCode 12）。
 
 ### 本地构建
 

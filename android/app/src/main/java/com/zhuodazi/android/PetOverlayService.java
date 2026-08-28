@@ -164,6 +164,7 @@ public final class PetOverlayService extends Service {
     };
 
     private final Runnable reminderTask = this::checkReminders;
+    private final Runnable trialCheckTask = this::refreshTrialInBackground;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -237,6 +238,7 @@ public final class PetOverlayService extends Service {
         settings.setRunning(true);
         updateNotification();
         scheduleCompanionPoll();
+        scheduleTrialCheck();
         warmInteractionContent();
         return START_STICKY;
     }
@@ -278,7 +280,7 @@ public final class PetOverlayService extends Service {
         windowParams.x = SettingsStore.clamp(settings.positionX(bounds.x - width), 0, Math.max(0, bounds.x - width));
         windowParams.y = SettingsStore.clamp(settings.positionY(bounds.y / 2), 0, maxWindowY(bounds, height));
         overlay.setOnTouchListener((view, event) -> handleTouch(event));
-        overlay.setTrialVisitVisible(licenses.isTrialActive());
+        overlay.setTrialVisitVisible(licenses.isTrialActive() && settings.trialVisitsEnabled());
         overlay.setMenuListener(action -> {
             overlay.hideQuickMenu();
             collapseMenuWindow();
@@ -288,7 +290,7 @@ public final class PetOverlayService extends Service {
         currentPet = pets.selectedPet();
         loadCurrentPet();
         if (announce) {
-            if (licenses.isTrialActive() && !settings.demoVisitSeen()) {
+            if (licenses.isTrialActive() && settings.trialVisitsEnabled() && !settings.demoVisitSeen()) {
                 say("idle", "先待一会儿，马上有人来串门。", 4800);
             } else {
                 say("idle", "我来啦。点一下，菜单会自己冒出来。", 4800);
@@ -1035,6 +1037,10 @@ public final class PetOverlayService extends Service {
     }
 
     private void playTrialVisit(String category) {
+        if (!settings.trialVisitsEnabled()) {
+            sayText("体验来访暂时关掉了。", 4200);
+            return;
+        }
         if (!licenses.isTrialActive()) {
             sayText("体验结束后，点一下发给对象才需要激活。", 5200);
             return;
@@ -1106,7 +1112,8 @@ public final class PetOverlayService extends Service {
     }
 
     private void scheduleDemoVisit() {
-        if (demoVisitScheduled || settings.demoVisitSeen() || !licenses.isTrialActive()) {
+        if (demoVisitScheduled || settings.demoVisitSeen() || !licenses.isTrialActive()
+            || !settings.trialVisitsEnabled()) {
             return;
         }
         demoVisitScheduled = true;
@@ -1247,6 +1254,32 @@ public final class PetOverlayService extends Service {
     private void scheduleCompanionPoll() {
         handler.removeCallbacks(companionPollTask);
         if (licenses.isActivated() && settings.running()) handler.postDelayed(companionPollTask, 30_000L);
+    }
+
+    private void scheduleTrialCheck() {
+        handler.removeCallbacks(trialCheckTask);
+        if (licenses.isActivated() || !settings.running()) return;
+        handler.post(trialCheckTask);
+    }
+
+    private void refreshTrialInBackground() {
+        if (licenses.isActivated()) return;
+        networkExecutor.execute(() -> {
+            try {
+                licenses.checkTrial();
+            } catch (Exception ignored) { }
+            handler.post(() -> {
+                long remaining = licenses.trialRemainingSeconds();
+                long delayMs = remaining > 0
+                    ? Math.min(remaining, 24L * 60L * 60L) * 1000L
+                    : 3_600_000L;
+                if (!licenses.isActivated() && settings.running()) {
+                    handler.removeCallbacks(trialCheckTask);
+                    handler.postDelayed(trialCheckTask, delayMs);
+                }
+                if (overlay != null) refreshOverlay();
+            });
+        });
     }
 
     private void cancelMovement() {

@@ -164,6 +164,13 @@ class HostSnapshot {
   String get xianyuUrl => _string('xianyuUrl', '');
   String get wechatId => _string('wechatId', 'wcl_lcw627');
   String get websiteUrl => _string('websiteUrl', 'https://desktoppet.online/');
+  String get announcement => _string('announcement', '');
+  bool get trialVisitsEnabled =>
+      !_data.containsKey('trialVisitsEnabled') || _bool('trialVisitsEnabled');
+  bool get companionHallEnabled => !_data.containsKey('companionHallEnabled')
+      || _bool('companionHallEnabled');
+  bool get autoUpdatesEnabled =>
+      !_data.containsKey('autoUpdatesEnabled') || _bool('autoUpdatesEnabled');
   bool get autoCheckUpdates => _data.containsKey('autoCheckUpdates')
       ? _bool('autoCheckUpdates')
       : true;

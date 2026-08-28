@@ -269,7 +269,11 @@ class AppController extends ChangeNotifier {
     try {
       await _guard(() async {
         companion = await _api.companionRefresh();
-        companionHall = await _api.companionHallRefresh();
+        if (snapshot.companionHallEnabled) {
+          companionHall = await _api.companionHallRefresh();
+        } else {
+          companionHall = null;
+        }
       });
     } catch (error) {
       companionError = readableHostError(error);
@@ -307,6 +311,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> setCompanionHall(bool enabled) async {
+    if (!snapshot.companionHallEnabled) return;
     await _guard(() async {
       companion = await _api.companionHallSet(enabled);
       companionHall = await _api.companionHallRefresh();
@@ -314,6 +319,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshCompanionHall() async {
+    if (!snapshot.companionHallEnabled) return;
     await _guard(() async {
       companionHall = await _api.companionHallRefresh();
     });
@@ -354,7 +360,9 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _maybeAutoCheckUpdates() async {
-    if (_autoChecked || !snapshot.autoCheckUpdates) return;
+    if (_autoChecked || !snapshot.autoCheckUpdates || !snapshot.autoUpdatesEnabled) {
+      return;
+    }
     _autoChecked = true;
     try {
       final next = await _api.checkUpdate(manual: false);
@@ -408,9 +416,13 @@ class AppController extends ChangeNotifier {
 
 String trialClock(int seconds) {
   final safe = seconds < 0 ? 0 : seconds;
-  final hours = safe ~/ 3600;
+  final days = safe ~/ 86400;
+  final hours = (safe % 86400) ~/ 3600;
   final minutes = (safe % 3600) ~/ 60;
   final remaining = safe % 60;
+  if (days > 0) {
+    return '$days天 $hours:${minutes.toString().padLeft(2, '0')}:${remaining.toString().padLeft(2, '0')}';
+  }
   if (hours > 0) {
     return '$hours:${minutes.toString().padLeft(2, '0')}:${remaining.toString().padLeft(2, '0')}';
   }

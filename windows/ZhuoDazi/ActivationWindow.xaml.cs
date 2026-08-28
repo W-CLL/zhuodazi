@@ -9,10 +9,10 @@ namespace ZhuoDazi;
 public partial class ActivationWindow : Window
 {
     private const string AllowedCharacters = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    private const string AuthorWeChat = "wcl_lcw627";
     private readonly LicenseService _licenses;
     private readonly bool _replacingExisting;
     private bool _normalizing;
+    private string _wechatId = "wcl_lcw627";
     private string? _xianyuUrl;
 
     public ActivationWindow(
@@ -99,7 +99,7 @@ public partial class ActivationWindow : Window
 
     private void CopyWeChat_Click(object sender, RoutedEventArgs e)
     {
-        System.Windows.Clipboard.SetText(AuthorWeChat);
+        System.Windows.Clipboard.SetText(_wechatId);
         StatusText.Foreground = (System.Windows.Media.Brush)FindResource("MutedBrush");
         StatusText.Text = "微信号已复制，备注「桌搭子」即可。";
     }
@@ -124,6 +124,15 @@ public partial class ActivationWindow : Window
             if (!response.IsSuccessStatusCode) return;
             await using var stream = await response.Content.ReadAsStreamAsync();
             using var document = await System.Text.Json.JsonDocument.ParseAsync(stream);
+            if (document.RootElement.TryGetProperty("wechatId", out var wechatElement))
+            {
+                var wechat = wechatElement.GetString()?.Trim();
+                if (!string.IsNullOrWhiteSpace(wechat))
+                {
+                    _wechatId = wechat;
+                    WeChatIdText.Text = wechat;
+                }
+            }
             if (!document.RootElement.TryGetProperty("xianyuUrl", out var urlElement)) return;
             var url = urlElement.GetString();
             if (string.IsNullOrWhiteSpace(url)) return;

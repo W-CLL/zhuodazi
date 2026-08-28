@@ -25,8 +25,12 @@ public sealed class SettingsStore
         try
         {
             if (!File.Exists(SettingsPath)) return CreateDefault();
-            var settings = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(SettingsPath), JsonOptions) ?? CreateDefault();
+            var json = File.ReadAllText(SettingsPath);
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? CreateDefault();
             settings.Normalize();
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("remoteDefaultsApplied", out _))
+                settings.RemoteDefaultsApplied = true;
             return settings;
         }
         catch

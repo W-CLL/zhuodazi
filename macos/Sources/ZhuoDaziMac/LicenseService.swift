@@ -7,6 +7,7 @@ private struct LicenseRecord: Codable {
     var credential: String
     var licenseId: String?
     var activatedAt: String?
+    var trialExpiresAt: String?
 }
 
 private struct ActivationResponse: Decodable {
@@ -52,8 +53,7 @@ final class LicenseService {
     private let account = "device-license"
     private var record: LicenseRecord
     private var trialActive = false
-    private var remainingTrialSeconds = 0
-    private var trialCheckedAt = Date.distantPast
+    private var trialExpiresAt: Date?
     private(set) var deviceCount = 1
     private(set) var alreadyActivated = false
 
@@ -65,9 +65,8 @@ final class LicenseService {
     var isTrialActive: Bool { !isActivated && trialActive && remainingTrialSecondsNow > 0 }
     var hasPremiumAccess: Bool { isActivated || isTrialActive }
     var remainingTrialSecondsNow: Int {
-        guard trialActive, !isActivated else { return 0 }
-        let elapsed = Int(Date().timeIntervalSince(trialCheckedAt))
-        return max(0, remainingTrialSeconds - elapsed)
+        guard trialActive, !isActivated, let expiresAt = trialExpiresAt else { return 0 }
+        return max(0, Int(ceil(expiresAt.timeIntervalSinceNow)))
     }
 
     var summary: String {
@@ -94,6 +93,7 @@ final class LicenseService {
            let decoded = try? JSONDecoder().decode(LicenseRecord.self, from: stored),
            Self.isValid(decoded) {
             record = decoded
+            restorePersistedTrial()
         } else {
             record = Self.createPendingRecord()
             try save()
@@ -137,12 +137,14 @@ final class LicenseService {
         record = candidate
         record.licenseId = result.licenseId
         record.activatedAt = result.activatedAt
+        record.trialExpiresAt = nil
         if let count = result.deviceCount, (1...2).contains(count) {
             deviceCount = count
         } else {
             deviceCount = 1
         }
         alreadyActivated = result.alreadyActivated ?? false
+        clearTrialState()
         try save()
     }
 
@@ -168,28 +170,31 @@ final class LicenseService {
         guard (200..<300).contains(http.statusCode) else {
             throw LicenseError.server(Self.readError(data) ?? "试用时间校验失败，请稍后重试")
         }
-        guard let result = try? JSONDecoder().decode(TrialResponse.self, from: data),
-              (0...86400).contains(result.remainingSeconds) else {
+        guard let result = try? JSONDecoder().decode(TrialResponse.self, from: data) else {
             throw LicenseError.invalidResponse
         }
-        trialActive = result.allowed && result.remainingSeconds > 0
-        remainingTrialSeconds = trialActive ? result.remainingSeconds : 0
-        trialCheckedAt = Date()
+        try applyTrialResponse(result)
         return TrialStatus(
-            allowed: trialActive,
+            allowed: isTrialActive,
             remainingSeconds: remainingTrialSecondsNow
         )
     }
 
     func endTrial() {
+        clearTrialState()
+        try? save()
+    }
+
+    private func clearTrialState() {
         trialActive = false
-        remainingTrialSeconds = 0
+        trialExpiresAt = nil
+        record.trialExpiresAt = nil
     }
 
     func authorize(_ request: inout URLRequest) throws {
         if isActivated, let licenseId = record.licenseId {
             request.setValue("Bearer \(licenseId).\(record.credential)", forHTTPHeaderField: "Authorization")
-        } else if trialActive {
+        } else if isTrialActive {
             request.setValue("Trial \(record.installationId).\(record.credential)", forHTTPHeaderField: "Authorization")
         } else {
             throw LicenseError.inactive
@@ -218,6 +223,61 @@ final class LicenseService {
 #endif
     }
 
+    private func restorePersistedTrial() {
+        guard !isActivated, let stored = record.trialExpiresAt, let expiresAt = Self.parseDate(stored) else { return }
+        if expiresAt <= Date() {
+            record.trialExpiresAt = nil
+            return
+        }
+        trialActive = true
+        trialExpiresAt = expiresAt
+    }
+
+    private func applyTrialResponse(_ result: TrialResponse) throws {
+        let parsedExpiry = Self.parseDate(result.expiresAt)
+        if parsedExpiry == nil, !(0...86400).contains(result.remainingSeconds) {
+            throw LicenseError.invalidResponse
+        }
+        guard result.allowed else {
+            endTrial()
+            return
+        }
+        if var expiresAt = parsedExpiry {
+            if let serverTime = Self.parseDate(result.serverTime) {
+                let remaining = expiresAt.timeIntervalSince(serverTime)
+                expiresAt = remaining > 0 ? Date().addingTimeInterval(remaining) : Date()
+            }
+            if expiresAt <= Date() {
+                endTrial()
+                return
+            }
+            trialActive = true
+            trialExpiresAt = expiresAt
+            record.trialExpiresAt = ISO8601DateFormatter().string(from: expiresAt)
+            try save()
+            return
+        }
+        guard result.remainingSeconds > 0 else {
+            endTrial()
+            return
+        }
+        let expiresAt = Date().addingTimeInterval(TimeInterval(result.remainingSeconds))
+        trialActive = true
+        trialExpiresAt = expiresAt
+        record.trialExpiresAt = ISO8601DateFormatter().string(from: expiresAt)
+        try save()
+    }
+
+    private static func parseDate(_ value: String?) -> Date? {
+        guard let value, !value.isEmpty else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: value) { return date }
+        let basic = ISO8601DateFormatter()
+        basic.formatOptions = [.withInternetDateTime]
+        return basic.date(from: value)
+    }
+
     private static func isValid(_ record: LicenseRecord) -> Bool {
         guard record.version == 1,
               record.installationId.count == 32,
@@ -232,6 +292,9 @@ final class LicenseService {
     private struct TrialResponse: Decodable {
         let allowed: Bool
         let remainingSeconds: Int
+        let expiresAt: String?
+        let startedAt: String?
+        let serverTime: String?
     }
 
     private static func randomBytes(count: Int) -> [UInt8] {

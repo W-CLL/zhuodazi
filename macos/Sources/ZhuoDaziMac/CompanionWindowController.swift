@@ -6,7 +6,9 @@ final class CompanionWindowController: NSWindowController {
     private let sendCurrentGIF: () async throws -> Void
     private let currentGIFURL: () -> URL?
     private let isActivated: () -> Bool
+    private let hallAvailable: () -> Bool
     private let stateChanged: () -> Void
+    private var hallViews: [NSView] = []
     private let status = NSTextField(wrappingLabelWithString: "正在连接搭子服务…")
     private let nameField = NSTextField(string: "")
     private let codeField = NSTextField(string: "")
@@ -22,11 +24,12 @@ final class CompanionWindowController: NSWindowController {
     private let hallSendButton = NSButton(title: "发一只表情", target: nil, action: nil)
     private var loading = false
 
-    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, currentGIFURL: @escaping () -> URL?, isActivated: @escaping () -> Bool, stateChanged: @escaping () -> Void) {
+    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, currentGIFURL: @escaping () -> URL?, isActivated: @escaping () -> Bool, hallEnabled: @escaping () -> Bool, stateChanged: @escaping () -> Void) {
         self.service = service
         self.sendCurrentGIF = sendCurrentGIF
         self.currentGIFURL = currentGIFURL
         self.isActivated = isActivated
+        self.hallAvailable = hallEnabled
         self.stateChanged = stateChanged
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 590),
@@ -117,8 +120,22 @@ final class CompanionWindowController: NSWindowController {
         hallRefreshButton.action = #selector(refreshHallAction)
         hallSendButton.target = self
         hallSendButton.action = #selector(sendHallAction)
-        stack.addArrangedSubview(row(label: "在线陌生人", controls: [hallPopup, hallRefreshButton]))
-        stack.addArrangedSubview(row(label: "留言", controls: [hallMessage, hallSendButton]))
+        let strangers = row(label: "在线陌生人", controls: [hallPopup, hallRefreshButton])
+        let message = row(label: "留言", controls: [hallMessage, hallSendButton])
+        stack.addArrangedSubview(strangers)
+        stack.addArrangedSubview(message)
+        hallViews = [hallHint, hallToggle, hallStatus, strangers, message]
+        applyHallVisibility()
+    }
+
+    func renderRemoteConfig(_ config: RemoteConfig) {
+        applyHallVisibility(config.companionHall)
+        render()
+    }
+
+    private func applyHallVisibility(_ enabled: Bool? = nil) {
+        let visible = enabled ?? hallAvailable()
+        for view in hallViews { view.isHidden = !visible }
     }
 
     private func row(label: String, controls: [NSView]) -> NSStackView {
@@ -135,7 +152,9 @@ final class CompanionWindowController: NSWindowController {
     private func refreshProfile() {
         run {
             _ = try await self.service.refreshProfile()
-            _ = try? await self.service.refreshHall()
+            if self.hallAvailable() {
+                _ = try? await self.service.refreshHall()
+            }
             return ()
         }
     }
@@ -147,8 +166,8 @@ final class CompanionWindowController: NSWindowController {
         if !loading {
             hallToggle.state = profile?.hallEnabled == true ? .on : .off
         }
-        hallToggle.isEnabled = isActivated() && !loading
-        let hallEnabled = profile?.hallEnabled == true
+        hallToggle.isEnabled = isActivated() && hallAvailable() && !loading
+        let hallEnabled = hallAvailable() && profile?.hallEnabled == true
         if !hallEnabled {
             hallStatus.stringValue = "开启后你会出现在陌生人大厅，也能看到其他在线用户。"
         } else if service.hallPeople.isEmpty {
@@ -167,7 +186,7 @@ final class CompanionWindowController: NSWindowController {
         }
         hallPopup.isEnabled = hallEnabled && !loading && !service.hallPeople.isEmpty
         hallMessage.isEnabled = hallPopup.isEnabled
-        hallRefreshButton.isEnabled = isActivated() && !loading
+        hallRefreshButton.isEnabled = isActivated() && hallAvailable() && !loading
         hallSendButton.isEnabled = hallPopup.isEnabled && currentGIFURL() != nil && !loading
         if let partner = profile?.partner {
             status.stringValue = "已和 \(partner.displayName) 绑定"
@@ -225,10 +244,12 @@ final class CompanionWindowController: NSWindowController {
     }
 
     @objc private func refreshHallAction() {
+        guard hallAvailable() else { return }
         run { try await self.service.refreshHall() }
     }
 
     @objc private func hallToggleAction() {
+        guard hallAvailable() else { return }
         let enabled = hallToggle.state == .on
         run {
             _ = try await self.service.setHallEnabled(enabled)

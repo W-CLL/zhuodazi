@@ -41,7 +41,6 @@ public final class FlutterMainActivity extends FlutterActivity {
     private static final int REQUEST_NOTIFICATIONS = 4303;
     private static final int REQUEST_THEATER_SCRIPT = 4304;
     private static final int REQUEST_LIBRARY = 4305;
-    private static final String AUTHOR_WECHAT = "wcl_lcw627";
     private static final String WEBSITE_URL = "https://desktoppet.online/";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -165,8 +164,13 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("theaterScripts", theaterScriptMaps());
         value.put("reminders", reminderMaps());
         value.put("xianyuUrl", settings.xianyuUrl());
-        value.put("wechatId", AUTHOR_WECHAT);
+        value.put("wechatId", settings.wechatId());
         value.put("websiteUrl", WEBSITE_URL);
+        value.put("announcement", settings.announcement());
+        value.put("trialVisitsEnabled", settings.trialVisitsEnabled());
+        value.put("companionHallEnabled", settings.companionHallEnabled());
+        value.put("fishModeEnabled", settings.fishModeEnabled());
+        value.put("autoUpdatesEnabled", settings.autoUpdatesEnabled());
         value.put("autoCheckUpdates", settings.autoCheckUpdates());
         value.put("ignoredUpdateVersion", settings.ignoredUpdateVersion());
         value.put("canInstallPackages", canInstallPackages());
@@ -416,8 +420,8 @@ public final class FlutterMainActivity extends FlutterActivity {
             try {
                 JSONObject response = NetworkClient.json(this, "GET", DeskPetApi.SITE_SETTINGS,
                     null, licenses, NetworkClient.Auth.NONE);
-                String url = response.optString("xianyuUrl", "").trim();
-                if (url.startsWith("https://")) settings.putString(SettingsStore.XIANYU_URL, url);
+                settings.applyRemoteConfig(response);
+                sendService(PetOverlayService.ACTION_REFRESH);
             } catch (Exception ignored) { }
             return snapshot();
         });

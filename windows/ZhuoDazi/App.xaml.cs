@@ -66,7 +66,8 @@ public partial class App : System.Windows.Application
                 }
                 catch
                 {
-                    freeModeMessage = "先用基础陪伴就好，桌搭子还在。";
+                    if (_licenseService.IsTrialActive) ScheduleTrialCheck(_licenseService.RemainingTrialSeconds);
+                    else freeModeMessage = "先用基础陪伴就好，桌搭子还在。";
                 }
             }
             Controller = new AppController(_licenseService);
@@ -139,10 +140,13 @@ public partial class App : System.Windows.Application
         }
         catch
         {
-            // The full trial ends locally if its expiry cannot be confirmed.
+            if (_licenseService.IsTrialActive)
+            {
+                ScheduleTrialCheck(Math.Min(_licenseService.RemainingTrialSeconds, 3600));
+                return;
+            }
         }
 
-        _licenseService.EndTrial();
         Controller?.RefreshPremiumAccess("七天完整体验结束啦，基础陪伴继续。");
         ShowActivation("刚才试过的互动、小剧场和摸鱼模式，激活后都可以继续使用。", trialEnded: true);
         Controller?.RefreshPremiumAccess();

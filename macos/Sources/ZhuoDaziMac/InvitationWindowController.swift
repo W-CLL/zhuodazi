@@ -7,6 +7,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private let statusLabel = NSTextField(labelWithString: "")
     private let contactButton = NSButton(title: "还没有激活码", target: nil, action: nil)
     private let contactBox = NSBox()
+    private let wechatLabel = NSTextField(labelWithString: "wcl_lcw627")
     private var result: String?
 
     init(required: Bool, statusMessage: String? = nil, trialEnded: Bool = false) {
@@ -96,6 +97,9 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.isHidden = false
         contactButton.isHidden = true
         stack.addArrangedSubview(contactBox)
+        Task { @MainActor [weak self] in
+            await self?.loadRemoteContact()
+        }
 
         let website = NSButton(title: trialEnded ? "去官网看看玩法" : "去官网看看", target: self, action: #selector(openWebsite))
         let cancel = NSButton(title: trialEnded ? "继续基础陪伴" : (required ? "先留下桌宠" : "取消"), target: self, action: #selector(cancelPrompt))
@@ -142,12 +146,11 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         let accountTitle = NSTextField(labelWithString: "微信号")
         accountTitle.font = .systemFont(ofSize: 11)
         accountTitle.textColor = .secondaryLabelColor
-        let account = NSTextField(labelWithString: "wcl_lcw627")
-        account.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
-        account.isSelectable = true
+        wechatLabel.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
+        wechatLabel.isSelectable = true
         let support = wrappingLabel("想定制角色、动作或功能，也可以直接聊。")
 
-        let copy = NSStackView(views: [title, note, accountTitle, account, support])
+        let copy = NSStackView(views: [title, note, accountTitle, wechatLabel, support])
         copy.orientation = .vertical
         copy.alignment = .leading
         copy.spacing = 7
@@ -157,6 +160,19 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         row.alignment = .centerY
         row.spacing = 16
         contactBox.contentView = row
+    }
+
+    private func loadRemoteContact() async {
+        var request = URLRequest(url: DeskPetApi.siteSettings)
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let wechat = root["wechatId"] as? String,
+              !wechat.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        wechatLabel.stringValue = wechat.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func wrappingLabel(_ text: String) -> NSTextField {

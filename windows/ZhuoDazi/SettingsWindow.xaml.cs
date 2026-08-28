@@ -95,6 +95,11 @@ public partial class SettingsWindow : Window
         CurrentPetPreview.FilePath = _controller.CurrentPetPath();
         CurrentPetNameText.Text = _controller.LibraryName;
         LicenseBannerText.Text = _controller.LicenseSummary;
+        var announcement = _controller.RemoteConfig.Announcement;
+        AnnouncementBanner.Visibility = string.IsNullOrWhiteSpace(announcement) ? Visibility.Collapsed : Visibility.Visible;
+        AnnouncementText.Text = announcement;
+        FishModeRow.Visibility = _controller.RemoteConfig.FishMode ? Visibility.Visible : Visibility.Collapsed;
+        CompanionHallPanel.Visibility = _controller.RemoteConfig.CompanionHall ? Visibility.Visible : Visibility.Collapsed;
         TodayActivateButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
         TodayActivateButton.Content = _controller.IsTrialActive ? "体验中，也可现在激活" : "继续完整体验";
         TopmostCheck.IsChecked = settings.AlwaysOnTop;
@@ -234,6 +239,7 @@ public partial class SettingsWindow : Window
             && !_hallLoading;
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
+        AutoUpdateCheck.Visibility = _controller.RemoteConfig.AutoUpdates ? Visibility.Visible : Visibility.Collapsed;
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
         LicenseStatusText.Text = _controller.LicenseSummary;
         RenderUpdateState(_controller.Updates.State);

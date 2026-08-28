@@ -32,10 +32,14 @@ final class SettingsWindowController: NSWindowController {
     private let petController: PetWindowController
     private let licenses: LicenseService
     private let updates: UpdateService
+    private let remoteConfig: () -> RemoteConfig
     private let feedbackService: FeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private let openCompanion: () -> Void
     private let openFakeAd: () -> Void
+    private let announcementLabel = NSTextField(wrappingLabelWithString: "")
+    private let fishModeButton = NSButton(title: "打开摸鱼广告", target: nil, action: nil)
+    private var fishModeSection: [NSView] = []
     private var refreshing = false
     private var editingReminderId: String?
     private var feedbackLoading = false
@@ -112,6 +116,7 @@ final class SettingsWindowController: NSWindowController {
         petController: PetWindowController,
         licenses: LicenseService,
         updates: UpdateService,
+        remoteConfig: @escaping () -> RemoteConfig,
         dockVisibilityChanged: @escaping (Bool) -> Void,
         openCompanion: @escaping () -> Void,
         openFakeAd: @escaping () -> Void
@@ -119,6 +124,7 @@ final class SettingsWindowController: NSWindowController {
         self.petController = petController
         self.licenses = licenses
         self.updates = updates
+        self.remoteConfig = remoteConfig
         self.feedbackService = FeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
@@ -189,6 +195,11 @@ final class SettingsWindowController: NSWindowController {
     private func buildBehaviorPage() -> NSViewController {
         let (page, stack) = makePage("外观与行为")
         addTitle("外观与行为", to: stack)
+        announcementLabel.textColor = .systemOrange
+        announcementLabel.maximumNumberOfLines = 3
+        announcementLabel.widthAnchor.constraint(equalToConstant: 650).isActive = true
+        announcementLabel.isHidden = true
+        stack.addArrangedSubview(announcementLabel)
 
         sizeSlider.target = self
         sizeSlider.action = #selector(appearanceChanged(_:))
@@ -229,9 +240,15 @@ final class SettingsWindowController: NSWindowController {
         let play = NSButton(title: "立即上演", target: self, action: #selector(startTheater))
         stack.addArrangedSubview(labeledRow("小剧场间隔", controls: [theaterIntervalPopup, play]))
         stack.addArrangedSubview(separator())
-        addSection("摸鱼模式", to: stack)
-        stack.addArrangedSubview(hint("七天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。"))
-        stack.addArrangedSubview(NSButton(title: "打开摸鱼广告", target: self, action: #selector(openFakeAdAction)))
+        let fishTitle = NSTextField(labelWithString: "摸鱼模式")
+        fishTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        let fishHint = hint("七天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。")
+        fishModeButton.target = self
+        fishModeButton.action = #selector(openFakeAdAction)
+        fishModeSection = [fishTitle, fishHint, fishModeButton]
+        stack.addArrangedSubview(fishTitle)
+        stack.addArrangedSubview(fishHint)
+        stack.addArrangedSubview(fishModeButton)
         return page
     }
 
@@ -517,6 +534,11 @@ final class SettingsWindowController: NSWindowController {
         randomPetCheckbox.state = settings.randomPetEnabled ? .on : .off
         randomIntervalPopup.selectItem(at: randomIntervals.firstIndex(of: settings.randomPetIntervalSeconds) ?? 0)
         autoUpdateCheckbox.state = settings.autoCheckUpdates ? .on : .off
+        let config = remoteConfig()
+        announcementLabel.stringValue = config.announcement
+        announcementLabel.isHidden = config.announcement.isEmpty
+        autoUpdateCheckbox.isHidden = !config.autoUpdates
+        for view in fishModeSection { view.isHidden = !config.fishMode }
         refreshPets(settings)
         refreshLibraries(settings)
         refreshContent(settings)
