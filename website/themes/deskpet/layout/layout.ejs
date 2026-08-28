@@ -1,19 +1,85 @@
 <!doctype html>
+<%
+  const siteUrl = String(config.url || 'https://desktoppet.online').replace(/\/$/, '');
+  const pagePath = url_for(page.path || '/');
+  const canonicalUrl = siteUrl + (pagePath === '/index.html' ? '/' : pagePath);
+  const isHome = Boolean(page.__index) || page.path === '' || page.path === 'index.html';
+  const isPost = page.layout === 'post';
+  const isNotFound = String(page.path || '').includes('404');
+  const isArchive = Boolean(page.archive) || page.layout === 'archive';
+  const seoTitle = isHome
+    ? '桌搭子｜对象回「在开会」，你回一只熊'
+    : isArchive
+      ? '桌搭子手记｜桌角发生过的事'
+      : ((page.title || config.title) + '｜桌搭子');
+  const fallbackDescription = isArchive
+    ? '桌搭子手记。怎么用、改了什么、以及那次把熊派过去之后发生了什么。'
+    : config.description;
+  const seoDescription = String(strip_html(page.description || page.excerpt || fallbackDescription || ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180);
+  const seoImage = siteUrl + url_for(page.cover || '/images/screenshots/visit-showcase.gif');
+  const ogType = isPost ? 'article' : 'website';
+  const softwareLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: '桌搭子',
+    alternateName: 'DeskPet',
+    applicationCategory: 'EntertainmentApplication',
+    operatingSystem: 'Windows, macOS, Android',
+    url: siteUrl + '/',
+    downloadUrl: siteUrl + '/download/',
+    description: config.description,
+    image: siteUrl + url_for('/images/screenshots/visit-showcase.gif'),
+    offers: {
+      '@type': 'Offer',
+      url: siteUrl + '/download/',
+      price: '0',
+      priceCurrency: 'CNY',
+      description: '先下载试用。一组激活码填两台。'
+    }
+  };
+  const webpageLd = {
+    '@context': 'https://schema.org',
+    '@type': isPost ? 'BlogPosting' : 'WebPage',
+    name: seoTitle,
+    headline: page.title || seoTitle,
+    description: seoDescription,
+    url: canonicalUrl,
+    inLanguage: 'zh-CN',
+    isPartOf: { '@type': 'WebSite', name: '桌搭子', url: siteUrl + '/' },
+    image: seoImage
+  };
+  if (isPost && page.date) webpageLd.datePublished = page.date.toISOString();
+  if (isPost && page.updated) webpageLd.dateModified = page.updated.toISOString();
+%>
 <html lang="<%= config.language || 'zh-CN' %>">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="<%= page.description || config.description %>">
+    <title><%= seoTitle %></title>
+    <meta name="description" content="<%= seoDescription %>">
+    <meta name="keywords" content="<%= config.keywords %>">
+    <link rel="canonical" href="<%= canonicalUrl %>">
     <meta name="theme-color" content="#f6f8f6">
     <meta name="color-scheme" content="light dark">
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="<%= page.title ? page.title + ' | ' + config.title : config.title %>">
-    <meta property="og:description" content="<%= page.description || config.description %>">
-    <meta property="og:url" content="<%= config.url + url_for(page.path || '/') %>">
-    <meta property="og:image" content="<%= config.url + url_for('/images/collection/bubu-home.gif') %>">
-    <title><%= page.title ? page.title + ' | ' + config.title : config.title %></title>
+    <meta name="robots" content="<%= isNotFound ? 'noindex,follow' : 'index,follow' %>">
+    <meta property="og:type" content="<%= ogType %>">
+    <meta property="og:locale" content="zh_CN">
+    <meta property="og:site_name" content="桌搭子">
+    <meta property="og:title" content="<%= seoTitle %>">
+    <meta property="og:description" content="<%= seoDescription %>">
+    <meta property="og:url" content="<%= canonicalUrl %>">
+    <meta property="og:image" content="<%= seoImage %>">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<%= seoTitle %>">
+    <meta name="twitter:description" content="<%= seoDescription %>">
+    <meta name="twitter:image" content="<%= seoImage %>">
     <link rel="icon" href="<%= url_for('/images/app-icon.png') %>" type="image/png">
     <link rel="stylesheet" href="<%= url_for('/css/site.css') %>?v=<%= theme.asset_version %>">
+    <script type="application/ld+json"><%- JSON.stringify(isHome ? softwareLd : webpageLd) %></script>
+    <% if (isHome) { %><script type="application/ld+json"><%- JSON.stringify(webpageLd) %></script><% } %>
   </head>
   <body class="page-<%= page.layout || 'default' %>">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -52,7 +118,7 @@
             <img src="<%= url_for('/images/app-icon.png') %>" width="34" height="34" alt="" loading="lazy" decoding="async">
             <span>桌搭子</span>
           </a>
-          <p>想起对方，就派一张 GIF；想刷一会儿，开右下角。</p>
+          <p>对象回「在开会」，你回一只熊。</p>
         </div>
         <div class="footer-links">
           <a href="<%= url_for('/download/') %>">下载</a>

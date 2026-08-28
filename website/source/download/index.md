@@ -1,5 +1,5 @@
 ---
-title: 下载桌搭子
+title: 下载桌搭子 Windows / macOS / Android
 layout: download
-description: 下载桌搭子 Windows、macOS 与 Android 客户端。装上就能先养一只，再把 GIF 发到对方桌面或手机上。
+description: 下载桌搭子 Windows、macOS、Android。电脑和手机都能先养一只；想说话了，派一张 GIF 去对方桌面坐一会儿。
 ---

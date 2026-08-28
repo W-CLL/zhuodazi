@@ -7,7 +7,8 @@ tags:
   - 自定义
   - 互动
   - 桌宠
-excerpt: 搭子联机、摸鱼模式、GIF 资源库、互动词包、桌面行为和小剧场都在这里。这份清单帮你把桌搭子调成自己的样子。
+excerpt: 搭子联机、摸鱼模式、GIF 资源库、互动词包、桌面行为和小剧场都在这儿。想调成什么样，自己慢慢拧。
+description: 桌搭子功能说明：自定义 GIF、搭子发来访、摸鱼模式、互动词包、小剧场和提醒。Windows / macOS / Android。
 cover: /images/pet-keyboard.gif
 ---
 

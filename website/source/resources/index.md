@@ -1,5 +1,5 @@
 ---
 title: 桌搭子资源包
 layout: resources
-description: 下载桌搭子互动词包与小剧场剧本 ZIP 资源包。
+description: 给桌搭子换台词。互动词包和小剧场剧本下载后解压，在 Windows / macOS 客户端里多选导入。
 ---

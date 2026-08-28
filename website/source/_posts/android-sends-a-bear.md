@@ -7,7 +7,8 @@ tags:
   - 桌搭子
   - 安卓
   - 搭子
-excerpt: 安卓也能派一只桌宠过去。它悬浮在短视频和微信上面，不弹窗，也不催回复。
+excerpt: 安卓也能派一只桌宠过去。它浮在短视频和微信上面，不弹窗，也不催回复。
+description: 桌搭子安卓也能把 GIF 派到对方手机桌角。悬浮在短视频和微信上面，不弹窗，不催回消息。
 cover: /images/collection/bubu-visit.gif
 ---
 
