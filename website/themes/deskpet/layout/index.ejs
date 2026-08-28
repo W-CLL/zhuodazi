@@ -15,21 +15,14 @@
         <span>电脑版摸鱼能玩七天</span>
       </div>
     </div>
-    <div class="desktop-scene reveal" aria-label="原桌宠与搭子发来的 GIF 同时出现在桌面上的示意">
-      <div class="scene-wallpaper"></div>
-      <div class="scene-topbar"><span></span><span></span><span></span><b>在开会 · 其实在摸鱼</b></div>
-      <div class="scene-note note-left">待办<br><strong>先回一只熊</strong></div>
-      <div class="scene-note note-right">专注中<br><strong>25:00</strong></div>
-      <div class="scene-window scene-window-main">
-        <div class="window-heading"><span></span><span></span><span></span><b>下午的工作清单</b></div>
-        <div class="window-lines"><i></i><i></i><i></i><i></i></div>
-      </div>
-      <div class="scene-message" data-speech>搭子发来一张：下班了吗？</div>
-      <span class="scene-pet-label scene-pet-label-home">我的桌宠</span>
-      <img class="hero-pet hero-pet-home" src="<%= url_for('/images/collection/bubu-home.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="原本待在桌角的白熊桌宠" decoding="async" fetchpriority="high">
-      <span class="scene-pet-label scene-pet-label-visitor">搭子送来的 GIF</span>
-      <img class="hero-pet-visitor" src="<%= url_for('/images/collection/bubu-visit.gif') %>?v=<%= theme.asset_version %>" width="256" height="256" alt="搭子派来下班的棕熊访客" decoding="async" fetchpriority="high">
-      <div class="scene-taskbar"><span></span><span></span><span></span><span></span><b>14:30</b></div>
+    <div class="hero-stage reveal" aria-label="电脑桌角来了一只熊，手机刷短视频时也会坐过来">
+      <figure class="hero-desk">
+        <img src="<%= url_for('/images/screenshots/visit-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="白熊待在桌角，棕熊带着下班表情来串门" decoding="async" fetchpriority="high">
+      </figure>
+      <figure class="hero-phone">
+        <img src="<%= url_for('/images/screenshots/android-visit.gif') %>?v=<%= theme.asset_version %>" width="720" height="1280" alt="刷短视频时，桌角来了一只对面派来的熊" decoding="async">
+        <figcaption>手机上也坐得下</figcaption>
+      </figure>
     </div>
   </div>
 </section>
@@ -155,16 +148,28 @@
         <p class="section-kicker">打开后大概是这样</p>
         <h2 id="client-showcase-title">它们会自己演，也会来找你。</h2>
       </div>
-      <p>先看两只演完一小段，再接住它丢过来的那句话。不回也行。</p>
+      <p>电脑上是这样。手机上也是。它会演一小段，也会直接坐在微信上面。不回也行。</p>
     </div>
-    <div class="client-shot-grid client-scene-grid">
-      <figure class="client-shot reveal">
-        <img src="<%= url_for('/images/screenshots/visit-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="白熊待在桌角，棕熊带着下班表情来串门" loading="lazy" decoding="async">
-        <figcaption><strong>搭子来串门</strong><span>原来那只还在，访客自己找地方坐</span></figcaption>
+    <div class="shot-bento">
+      <figure class="shot shot-lead reveal">
+        <img src="<%= url_for('/images/screenshots/theater-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="小剧场里两只猫在对白，约去喝杯咖啡" loading="lazy" decoding="async">
+        <figcaption><strong>自己演一小段</strong><span>会议结束，去喝杯咖啡？不用你点开</span></figcaption>
       </figure>
-      <figure class="client-shot reveal">
+      <figure class="shot shot-phone-a reveal">
+        <img src="<%= url_for('/images/screenshots/android-wechat.gif') %>?v=<%= theme.asset_version %>" width="720" height="1280" alt="桌宠悬浮在微信聊天上面，不催回复" loading="lazy" decoding="async">
+        <figcaption><strong>浮在微信上面</strong><span>不弹窗，也不催回复</span></figcaption>
+      </figure>
+      <figure class="shot shot-desk-a reveal">
         <img src="<%= url_for('/images/screenshots/together-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只熊在小剧场里对白，约对方坐一会儿" loading="lazy" decoding="async">
         <figcaption><strong>两只一起待一会儿</strong><span>靠近、贫两句，演完一小段</span></figcaption>
+      </figure>
+      <figure class="shot shot-desk-b reveal">
+        <img src="<%= url_for('/images/screenshots/interaction-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="桌宠提醒两件事做完了，记得给自己喝口水" loading="lazy" decoding="async">
+        <figcaption><strong>它会来找你</strong><span>两件事做完了，记得给自己喝口水</span></figcaption>
+      </figure>
+      <figure class="shot shot-phone-b reveal">
+        <img src="<%= url_for('/images/screenshots/android-send.gif') %>?v=<%= theme.asset_version %>" width="720" height="1280" alt="手机上点一下，把这张 GIF 发给搭子" loading="lazy" decoding="async">
+        <figcaption><strong>点一下发出去</strong><span>先让桌宠出来，再随手发一张</span></figcaption>
       </figure>
     </div>
   </div>
