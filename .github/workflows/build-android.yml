@@ -121,12 +121,12 @@ jobs:
               --draft \
               --target "$GITHUB_SHA" \
               --title "桌搭子 Android v1.3.7" \
-              --notes "完整体验现在是七天。"
+              --notes "更新/优化了一些功能。"
           fi
           gh release edit "$tag" \
             --target "$GITHUB_SHA" \
             --title "桌搭子 Android v1.3.7" \
-            --notes "完整体验现在是七天。"
+            --notes "更新/优化了一些功能。"
           gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
           gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.7.apk" --yes || true
           gh release delete-asset "$tag" "ZhuoDazi-Android-1.3.7-debug.apk" --yes || true

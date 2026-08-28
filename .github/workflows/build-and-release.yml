@@ -86,7 +86,7 @@ jobs:
         run: |
           tag="v${APP_VERSION}"
           title="桌搭子 ${APP_VERSION}"
-          notes="完整体验现在是七天。"
+          notes="更新/优化了一些功能。"
           state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
           if [[ "$state" == "false" ]]; then
             application_changes="$(git diff --name-only "$tag" "$TARGET_SHA" -- windows macos)"
