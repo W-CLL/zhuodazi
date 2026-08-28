@@ -62,7 +62,7 @@ public partial class App : System.Windows.Application
                 {
                     var trial = await _licenseService.CheckTrialAsync();
                     if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
-                    else freeModeMessage = "一天完整体验结束啦，基础陪伴继续。";
+                    else freeModeMessage = "七天完整体验结束啦，基础陪伴继续。";
                 }
                 catch
                 {
@@ -143,7 +143,7 @@ public partial class App : System.Windows.Application
         }
 
         _licenseService.EndTrial();
-        Controller?.RefreshPremiumAccess("一天完整体验结束啦，基础陪伴继续。");
+        Controller?.RefreshPremiumAccess("七天完整体验结束啦，基础陪伴继续。");
         ShowActivation("刚才试过的互动、小剧场和摸鱼模式，激活后都可以继续使用。", trialEnded: true);
         Controller?.RefreshPremiumAccess();
     }

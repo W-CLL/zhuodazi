@@ -205,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self.fakeAdWindow?.close()
                 self.fakeAdWindow = nil
                 self.petController.refreshPremiumAccess()
-                self.petController.showBubble("一天完整体验结束啦，基础陪伴继续。")
+                self.petController.showBubble("七天完整体验结束啦，基础陪伴继续。")
                 self.settingsWindow?.refreshAccessState()
                 if await ActivationPrompts.activate(
                     licenses: self.licenses,
@@ -351,7 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if await ActivationPrompts.activate(
                     licenses: licenses,
                     required: true,
-                    statusMessage: "摸鱼模式可完整体验一天，激活后可以继续使用。"
+                    statusMessage: "摸鱼模式可完整体验七天，激活后可以继续使用。"
                 ) {
                     petController.refreshPremiumAccess()
                     settingsWindow?.refreshAccessState()

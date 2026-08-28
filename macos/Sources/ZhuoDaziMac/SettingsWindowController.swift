@@ -230,7 +230,7 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(labeledRow("小剧场间隔", controls: [theaterIntervalPopup, play]))
         stack.addArrangedSubview(separator())
         addSection("摸鱼模式", to: stack)
-        stack.addArrangedSubview(hint("一天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。"))
+        stack.addArrangedSubview(hint("七天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。"))
         stack.addArrangedSubview(NSButton(title: "打开摸鱼广告", target: self, action: #selector(openFakeAdAction)))
         return page
     }
@@ -610,7 +610,7 @@ final class SettingsWindowController: NSWindowController {
     private func refreshUpdateState() {
         activationLabel.stringValue = licenses.isActivated
             ? licenses.summary
-            : licenses.hasPremiumAccess ? "一天完整功能体验中" : "免费版 - 激活可解锁完整功能"
+            : licenses.hasPremiumAccess ? "七天完整功能体验中" : "免费版 - 激活可解锁完整功能"
         let status = updates.status
         updateLabel.stringValue = "当前版本 v\(AppVersion.current) - \(status.message)"
         updateProgress.doubleValue = Double(status.progress)

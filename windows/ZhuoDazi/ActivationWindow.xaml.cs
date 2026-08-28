@@ -28,7 +28,7 @@ public partial class ActivationWindow : Window
         if (trialEnded)
         {
             Title = "完整体验结束，基础陪伴继续";
-            HeadingText.Text = "一天体验结束啦";
+            HeadingText.Text = "七天体验结束啦";
             SubtitleText.Text = "桌搭子不会离开。刚才试过的玩法想接着用，填激活码就好；先留下桌宠也完全没问题。";
             WebsiteButton.Content = "去官网看看玩法";
             ContinueButton.Content = "继续基础陪伴";
