@@ -1,6 +1,6 @@
 # 桌搭子 macOS 版
 
-这是使用 Swift 与 AppKit 实现的原生 macOS 3.2.0 版，最低支持 macOS 13。
+这是使用 Swift 与 AppKit 实现的原生 macOS 3.2.4 版，最低支持 macOS 13。
 
 ## 当前功能
 
