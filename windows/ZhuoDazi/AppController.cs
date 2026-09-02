@@ -145,10 +145,10 @@ public sealed class AppController : IDisposable
             _interactionSyncTimer.Interval = TimeSpan.FromSeconds(5);
             _interactionSyncTimer.Start();
         }
-        if (_licenses.IsActivated)
+        if (_licenses.IsActivated || _licenses.IsTrialActive)
         {
             _companionTimer.Start();
-            _ = RefreshCompanionAsync();
+            if (_licenses.IsActivated) _ = RefreshCompanionAsync();
         }
         Save();
         RefreshTrialDisplay();
@@ -233,10 +233,10 @@ public sealed class AppController : IDisposable
         _interactionSyncTimer.Stop();
         if (HasPremiumAccess) ScheduleInteractionSync();
         _companionTimer.Stop();
-        if (_licenses.IsActivated)
+        if (_licenses.IsActivated || _licenses.IsTrialActive)
         {
             _companionTimer.Start();
-            _ = RefreshCompanionAsync();
+            if (_licenses.IsActivated) _ = RefreshCompanionAsync();
         }
         if (!HasPremiumAccess && _fakeAdWindow is not null) _fakeAdWindow.Close();
         if (!string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
@@ -453,6 +453,16 @@ public sealed class AppController : IDisposable
     {
         if (!_licenses.IsActivated) return;
         await Companions.RefreshProfileAsync(cancellationToken);
+        if (!Settings.CompanionHallDefaultApplied)
+        {
+            if (RemoteConfig.CompanionHall && Companions.Profile is { HallEnabled: false })
+            {
+                try { await Companions.SetHallEnabledAsync(true, cancellationToken); }
+                catch { }
+            }
+            Settings.CompanionHallDefaultApplied = true;
+            Save();
+        }
         RefreshTray();
         StateChanged?.Invoke();
     }
@@ -1538,7 +1548,7 @@ public sealed class AppController : IDisposable
 
     private async Task PollCompanionAsync()
     {
-        if (_disposed || IsExiting || !_licenses.IsActivated)
+        if (_disposed || IsExiting || !(_licenses.IsActivated || _licenses.IsTrialActive))
             return;
         if (_companionSyncing || _theaterActive || _petWindow is not { IsVisible: true })
         {

@@ -565,11 +565,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func startCompanionPolling() {
         companionTimer?.invalidate()
         companionTimer = nil
-        guard licenses.isActivated else { return }
+        guard licenses.isActivated || licenses.isTrialActive else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            _ = try? await companions.refreshProfile()
-            refreshMenuState()
+            if licenses.isActivated {
+                if let profile = try? await companions.refreshProfile() {
+                    if !settings.companionHallDefaultApplied {
+                        if remoteConfig.current.companionHall, profile.hallEnabled == false {
+                            _ = try? await companions.setHallEnabled(true)
+                        }
+                        settings.companionHallDefaultApplied = true
+                        settingsStore.save(settings)
+                    }
+                }
+                refreshMenuState()
+            }
             await pollCompanion()
         }
         let timer = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
@@ -580,7 +590,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pollCompanion() async {
-        guard !companionPolling, licenses.isActivated, petController.isVisible else { return }
+        guard !companionPolling, licenses.isActivated || licenses.isTrialActive, petController.isVisible else { return }
         companionPolling = true
         defer { companionPolling = false }
         do {

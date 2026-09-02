@@ -135,13 +135,21 @@ public final class PetOverlayService extends Service {
 
     private final Runnable companionPollTask = new Runnable() {
         @Override public void run() {
-            if (!licenses.isActivated() || companionBusy) {
+            if ((!licenses.isActivated() && !licenses.isTrialActive()) || companionBusy) {
                 scheduleCompanionPoll();
                 return;
             }
             companionBusy = true;
             networkExecutor.execute(() -> {
                 try {
+                    if (licenses.isActivated() && settings.companionHallEnabled()
+                        && !settings.companionHallDefaultApplied()) {
+                        try {
+                            CompanionService.Profile profile = companions.refreshProfile();
+                            if (!profile.hallEnabled()) companions.setHallEnabled(true);
+                        } catch (Exception ignored) { }
+                        settings.putBoolean(SettingsStore.COMPANION_HALL_DEFAULT_APPLIED, true);
+                    }
                     List<CompanionService.Visit> visits = companions.receive();
                     handler.post(() -> {
                         for (CompanionService.Visit visit : visits) receiveVisit(visit);
@@ -1253,7 +1261,9 @@ public final class PetOverlayService extends Service {
 
     private void scheduleCompanionPoll() {
         handler.removeCallbacks(companionPollTask);
-        if (licenses.isActivated() && settings.running()) handler.postDelayed(companionPollTask, 30_000L);
+        if ((licenses.isActivated() || licenses.isTrialActive()) && settings.running()) {
+            handler.postDelayed(companionPollTask, 30_000L);
+        }
     }
 
     private void scheduleTrialCheck() {

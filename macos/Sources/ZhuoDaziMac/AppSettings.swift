@@ -72,6 +72,7 @@ struct AppSettings: Codable {
     var positionY: CGFloat?
     var onboardingHintSeen = false
     var demoVisitSeen = false
+    var companionHallDefaultApplied = false
     var remoteDefaultsApplied = false
 
     init() {}
@@ -108,6 +109,7 @@ struct AppSettings: Codable {
         positionY = try values.decodeIfPresent(CGFloat.self, forKey: .positionY)
         onboardingHintSeen = try values.decodeIfPresent(Bool.self, forKey: .onboardingHintSeen) ?? false
         demoVisitSeen = try values.decodeIfPresent(Bool.self, forKey: .demoVisitSeen) ?? false
+        companionHallDefaultApplied = try values.decodeIfPresent(Bool.self, forKey: .companionHallDefaultApplied) ?? false
         remoteDefaultsApplied = try values.decodeIfPresent(Bool.self, forKey: .remoteDefaultsApplied) ?? false
         normalize(resetClickThrough: true)
     }

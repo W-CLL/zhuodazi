@@ -34,6 +34,7 @@ final class SettingsStore {
     static final String PET_LIBRARIES = "pet_libraries";
     static final String ACTIVE_LIBRARY = "active_library";
     static final String DEMO_VISIT_SEEN = "demo_visit_seen";
+    static final String COMPANION_HALL_DEFAULT_APPLIED = "companion_hall_default_applied";
     static final String REMOTE_CONFIG = "remote_config";
     static final String REMOTE_DEFAULTS_APPLIED = "remote_defaults_applied";
     static final String WECHAT_ID = "wechat_id";
@@ -82,6 +83,7 @@ final class SettingsStore {
     String petLibrariesJson() { return values.getString(PET_LIBRARIES, "[]"); }
     String activeLibrary() { return values.getString(ACTIVE_LIBRARY, ""); }
     boolean demoVisitSeen() { return values.getBoolean(DEMO_VISIT_SEEN, false); }
+    boolean companionHallDefaultApplied() { return values.getBoolean(COMPANION_HALL_DEFAULT_APPLIED, false); }
     boolean remoteDefaultsApplied() { return values.getBoolean(REMOTE_DEFAULTS_APPLIED, false); }
     String wechatId() { return values.getString(WECHAT_ID, "wcl_lcw627"); }
     String announcement() { return values.getString(ANNOUNCEMENT, ""); }

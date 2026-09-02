@@ -120,7 +120,7 @@ final class CompanionService {
 
     List<Visit> receive() throws Exception {
         JSONObject response = NetworkClient.json(context, "GET", DeskPetApi.COMPANION_DELIVERIES, null,
-            licenses, NetworkClient.Auth.ACTIVATED);
+            licenses, NetworkClient.Auth.PREMIUM);
         JSONArray deliveries = response.optJSONArray("deliveries");
         List<Visit> visits = new ArrayList<>();
         if (deliveries == null) return visits;
@@ -135,11 +135,11 @@ final class CompanionService {
             if (!id.matches("[A-Za-z0-9._:-]{1,128}") || !hash.matches("(?i)[0-9a-f]{64}")
                 || !downloadPath.startsWith(DeskPetApi.COMPANION_DOWNLOAD_PREFIX)) continue;
             byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
-                licenses, NetworkClient.Auth.ACTIVATED, MAXIMUM_GIF_BYTES);
+                licenses, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
             validateGif(gif, hash);
             File file = pets.saveInboxGif(id, gif);
             NetworkClient.json(context, "POST", DeskPetApi.COMPANION_DELIVERIES + "/" + id + "/acknowledge",
-                null, licenses, NetworkClient.Auth.ACTIVATED);
+                null, licenses, NetworkClient.Auth.PREMIUM);
             visits.add(new Visit(id, sender, message, file));
         }
         return visits;

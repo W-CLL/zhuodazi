@@ -100,6 +100,9 @@ public sealed class AppSettings
     [JsonPropertyName("demoVisitSeen")]
     public bool DemoVisitSeen { get; set; }
 
+    [JsonPropertyName("companionHallDefaultApplied")]
+    public bool CompanionHallDefaultApplied { get; set; }
+
     [JsonPropertyName("remoteDefaultsApplied")]
     public bool RemoteDefaultsApplied { get; set; }
 
