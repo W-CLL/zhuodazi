@@ -533,7 +533,10 @@ final class PetWindowController {
         theaterTimer = nil
         if settings.randomPetEnabled, canRandomizePet {
             let timer = Timer(timeInterval: TimeInterval(settings.randomPetIntervalSeconds), repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in _ = self?.randomizePet() }
+                Task { @MainActor [weak self] in
+                    guard let self, self.window.isVisible else { return }
+                    _ = self.randomizePet()
+                }
             }
             RunLoop.main.add(timer, forMode: .common)
             randomPetTimer = timer

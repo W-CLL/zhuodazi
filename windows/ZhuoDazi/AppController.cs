@@ -94,8 +94,9 @@ public sealed class AppController : IDisposable
         _idleTimer.Tick += (_, _) =>
         {
             if (_interactionActive || _visitorQueue.IsShowing) return;
+            if (_petWindow is not { IsVisible: true }) return;
             if (IsTrialActive && RemoteConfig.TrialVisits && !Settings.DemoVisitSeen) return;
-            _petWindow?.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
+            _petWindow.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
         };
         _theaterTimer.Tick += async (_, _) =>
         {

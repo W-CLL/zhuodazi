@@ -127,13 +127,12 @@ public partial class PetWindow : Window
 
     public void ShowReaction(string message)
     {
-        if (string.IsNullOrWhiteSpace(message)) return;
+        if (string.IsNullOrWhiteSpace(message) || !IsVisible) return;
         if (IsInteractionVisible) return;
         SpeechText.Text = message;
         SpeechBubble.Visibility = Visibility.Visible;
         _speechTimer.Stop();
         _speechTimer.Start();
-        if (!IsVisible) Show();
     }
 
     public async void ShowReminder(string message, string? expressionPath)
