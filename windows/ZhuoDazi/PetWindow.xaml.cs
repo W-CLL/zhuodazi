@@ -6,8 +6,11 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using ZhuoDazi.Behaviors;
 using ZhuoDazi.Controls;
 using ZhuoDazi.Interop;
+using ZhuoDazi.Physics;
+using Activity = ZhuoDazi.Behaviors.PetBehaviorStateMachine.Activity;
 using Forms = System.Windows.Forms;
 using WpfBrushes = System.Windows.Media.Brushes;
 using WpfButton = System.Windows.Controls.Button;
@@ -20,12 +23,21 @@ namespace ZhuoDazi;
 
 public partial class PetWindow : Window
 {
+    // Windows 消息常量
     private const int HotkeyId = 0xDA21;
     private const int WmHotkey = 0x0312;
-    private const double CollapsedBubbleHeight = 120;
-    private const double MinimumInteractionBubbleHeight = 220;
-    private const double MinimumScrollableMessageHeight = 96;
-    private const double WindowEdgeGap = 16;
+
+    // UI 布局常量（单位：DIP，设备独立像素）
+    private const double CollapsedBubbleHeight = 120; // 对话气泡折叠时的高度
+    private const double MinimumInteractionBubbleHeight = 220; // 交互卡片最小高度
+    private const double MinimumScrollableMessageHeight = 96; // 消息文本可滚动区域最小高度
+    private const double WindowEdgeGap = 16; // 窗口与屏幕边缘的最小间距
+
+    // 运动相关常量（物理细节在 PetPhysicsEngine / DragController 中）
+    private const double MaximumThrowVelocity = 1650.0; // 投掷时的最大速度限制（DIP/秒）
+    private const double EdgeSnapThreshold = 34.0; // 边缘吸附触发距离（DIP）
+    private const double BounceSpeechImpactSpeed = 330.0; // 触发碰撞台词的最小撞击速度（DIP/秒）
+
     private readonly AppController _controller;
     private readonly AnimatedGifPlayer _gifPlayer;
     private readonly bool _isCompanion;
@@ -33,24 +45,14 @@ public partial class PetWindow : Window
     private readonly DispatcherTimer _motionTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private readonly Queue<DateTime> _hardThrows = new();
+    private readonly PetPhysicsEngine _physics = new();
+    private readonly DragController _drag;
+    private readonly PetBehaviorStateMachine _behavior = new();
     private HwndSource? _source;
     private string? _currentPetPath;
     private bool _petLoaded;
     private int _appearanceVersion;
-    private bool _isDragging;
-    private Point _lastDragPoint;
-    private long _lastDragTicks;
-    private double _dragDistance;
-    private Vector _dragVelocity;
-    private Vector _velocity;
-    private bool _inertiaActive;
     private long _lastFrameTicks;
-    private Activity _activity = Activity.Idle;
-    private DateTime _nextBehaviorDecision = DateTime.MinValue;
-    private DateTime _lastBehaviorSpeech = DateTime.MinValue;
-    private DateTime _lastBounceSpeech = DateTime.MinValue;
-    private DateTime _dockedUntil = DateTime.MinValue;
-    private Point _wanderTarget;
     private double _facing = 1;
     private bool _scripted;
     private Point? _scriptTarget;
@@ -59,23 +61,16 @@ public partial class PetWindow : Window
     private CancellationTokenRegistration _scriptCancellation;
     private bool _cornerSecretFound;
     private bool _throwSecretFound;
+    private DateTime _lastBounceSpeech = DateTime.MinValue;
     private double _baseWindowHeight = 380;
     private Action<PetInteractionChoice?>? _interactionCallback;
-
-    private enum Activity
-    {
-        Idle,
-        Wander,
-        Chase,
-        Avoid,
-        Dock
-    }
 
     public PetWindow(AppController controller, bool isCompanion = false)
     {
         InitializeComponent();
         _controller = controller;
         _isCompanion = isCompanion;
+        _drag = new DragController(_clock);
         ShowActivated = !isCompanion;
         _gifPlayer = new AnimatedGifPlayer(PetImage);
         _speechTimer.Tick += (_, _) =>
@@ -91,6 +86,11 @@ public partial class PetWindow : Window
         MouseMove += OnMouseMove;
         if (!isCompanion) MouseRightButtonUp += (_, _) => _controller.ShowTrayMenu();
     }
+
+    private BehaviorOptions BehaviorOptions => new(
+        _controller.Settings.Personality,
+        _controller.Settings.MouseInteractionEnabled,
+        _controller.Settings.RandomMovementEnabled);
 
     public void RefreshAppearance(string? petPath)
     {
@@ -119,16 +119,19 @@ public partial class PetWindow : Window
 
     public void RefreshBehavior()
     {
-        _nextBehaviorDecision = DateTime.MinValue;
-        _activity = Activity.Idle;
-        _dockedUntil = DateTime.MinValue;
-        if (!_scripted) _velocity = default;
+        _behavior.Reset();
+        if (!_scripted) _physics.SetVelocity(default);
     }
 
     public void ShowReaction(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || !IsVisible) return;
-        if (IsInteractionVisible) return;
+        if (IsInteractionVisible)
+        {
+            Dispatcher.BeginInvoke(() => ShowReaction(message),
+                System.Windows.Threading.DispatcherPriority.Background);
+            return;
+        }
         SpeechText.Text = message;
         SpeechBubble.Visibility = Visibility.Visible;
         _speechTimer.Stop();
@@ -252,8 +255,7 @@ public partial class PetWindow : Window
     {
         Left = position.X;
         Top = position.Y;
-        _velocity = default;
-        _inertiaActive = false;
+        _physics.StopInertia();
     }
 
     public Rect GetWorkingArea()
@@ -269,9 +271,8 @@ public partial class PetWindow : Window
     public void EnterScriptedMode()
     {
         _scripted = true;
-        _inertiaActive = false;
-        _dockedUntil = DateTime.MinValue;
-        _velocity = default;
+        _physics.StopInertia();
+        _behavior.ClearDock();
     }
 
     public void LeaveScriptedMode()
@@ -357,14 +358,9 @@ public partial class PetWindow : Window
         }
         if (e.LeftButton != MouseButtonState.Pressed) return;
 
-        _isDragging = true;
-        _inertiaActive = false;
-        _dockedUntil = DateTime.MinValue;
-        _velocity = default;
-        _dragVelocity = default;
-        _dragDistance = 0;
-        _lastDragPoint = GetCursorPositionInDips();
-        _lastDragTicks = _clock.ElapsedTicks;
+        _physics.StopInertia();
+        _behavior.ClearDock();
+        _drag.StartDrag(GetCursorPositionInDips());
         CaptureMouse();
         ShowReaction(_controller.GetInteractionWord("grab", "轻点，我的像素会掉渣。"));
         PetStage.Cursor = Cursors.SizeAll;
@@ -373,52 +369,42 @@ public partial class PetWindow : Window
 
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
-        if (!_isDragging) return;
+        if (!_drag.IsDragging) return;
         if (e.LeftButton != MouseButtonState.Pressed)
         {
             FinishDrag();
             return;
         }
 
-        var nowTicks = _clock.ElapsedTicks;
-        var point = GetCursorPositionInDips();
-        var delta = point - _lastDragPoint;
-        var seconds = Math.Max(0.001, (nowTicks - _lastDragTicks) / (double)Stopwatch.Frequency);
+        var delta = _drag.UpdateDrag(GetCursorPositionInDips());
         Left += delta.X;
         Top += delta.Y;
-        _dragDistance += delta.Length;
-        var instantVelocity = delta / seconds;
-        _dragVelocity = (_dragVelocity * 0.58) + (instantVelocity * 0.42);
-        _lastDragPoint = point;
-        _lastDragTicks = nowTicks;
-        UpdateFacing(_dragVelocity.X);
+        UpdateFacing(_drag.DragVelocity.X);
     }
 
     private void OnMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (!_isDragging) return;
+        if (!_drag.IsDragging) return;
         FinishDrag();
         e.Handled = true;
     }
 
     private void FinishDrag()
     {
-        if (!_isDragging) return;
-        _isDragging = false;
+        if (!_drag.IsDragging) return;
+        var (isThrow, throwVelocity, isHardThrow) = _drag.EndDrag();
         ReleaseMouseCapture();
         PetStage.Cursor = Cursors.Hand;
 
-        var speed = _dragVelocity.Length;
-        if (_dragDistance > 14 && speed > 115)
+        if (isThrow)
         {
-            _velocity = ClampVector(_dragVelocity * 0.9, 1650);
-            _inertiaActive = true;
-            if (speed > 900) RegisterHardThrow();
+            _physics.StartInertia(PetPhysicsEngine.ClampVector(throwVelocity, MaximumThrowVelocity));
+            if (isHardThrow) RegisterHardThrow();
         }
         else
         {
-            _velocity = default;
-            TrySnapToEdge(34);
+            _physics.StopInertia();
+            TrySnapToEdge(EdgeSnapThreshold);
             SavePosition();
         }
         TryCornerSecret();
@@ -430,11 +416,17 @@ public partial class PetWindow : Window
         var elapsed = (nowTicks - _lastFrameTicks) / (double)Stopwatch.Frequency;
         _lastFrameTicks = nowTicks;
         var dt = Math.Clamp(elapsed, 0.001, 0.05);
-        if (!IsVisible || _isDragging) return;
+        if (!IsVisible)
+        {
+            // 窗口不可见时没有可播的动画，但等待中的脚本运动必须立即结算，
+            // 否则 await MoveToAsync 会永远挂住调用方（小剧场会整场冻结）。
+            if (_scripted && _scriptTarget is not null) CompleteScriptMotion();
+            return;
+        }
+        if (_drag.IsDragging) return;
         if (IsInteractionVisible)
         {
-            _inertiaActive = false;
-            _velocity = default;
+            _physics.StopInertia();
             return;
         }
 
@@ -444,16 +436,13 @@ public partial class PetWindow : Window
             return;
         }
 
-        if (_inertiaActive)
+        if (_physics.IsInertiaActive)
         {
-            _velocity.Y += 420 * dt;
-            _velocity *= Math.Pow(0.986, dt * 60);
+            _physics.UpdateInertia(dt);
             MoveAndBounce(dt);
-            if (_velocity.Length < 34)
+            if (_physics.TrySettle())
             {
-                _inertiaActive = false;
-                _velocity = default;
-                TrySnapToEdge(38);
+                TrySnapToEdge(EdgeSnapThreshold);
                 SavePosition();
             }
             return;
@@ -462,60 +451,62 @@ public partial class PetWindow : Window
         if (!_isCompanion && !_scripted) UpdateAutonomousMotion(dt);
     }
 
+    /// <summary>把窗口落到脚本终点并唤醒等待中的 MoveToAsync。</summary>
+    private void CompleteScriptMotion()
+    {
+        if (_scriptTarget is { } target)
+        {
+            Left = target.X;
+            Top = target.Y;
+        }
+        _physics.SetVelocity(default);
+        _scriptTarget = null;
+        _scriptCancellation.Dispose();
+        _scriptCompletion?.TrySetResult(true);
+        _scriptCompletion = null;
+    }
+
     private void UpdateScriptMotion(double dt)
     {
         if (_scriptTarget is not { } target) return;
         var delta = target - new Point(Left, Top);
         if (delta.Length < 3)
         {
-            Left = target.X;
-            Top = target.Y;
-            _velocity = default;
-            _scriptTarget = null;
-            _scriptCancellation.Dispose();
-            _scriptCompletion?.TrySetResult(true);
-            _scriptCompletion = null;
+            CompleteScriptMotion();
             return;
         }
 
         var desired = delta;
         desired.Normalize();
         desired *= Math.Min(_scriptSpeed, Math.Max(70, delta.Length * 4.5));
-        ApproachVelocity(desired, 1250, dt);
+        _physics.ApproachVelocity(desired, 1250, dt);
+        UpdateFacing(_physics.Velocity.X);
         MoveAndBounce(dt, false);
     }
 
     private void UpdateAutonomousMotion(double dt)
     {
-        var now = DateTime.UtcNow;
-        if (now < _dockedUntil)
+        if (_behavior.IsDocked)
         {
-            _velocity = default;
+            _physics.SetVelocity(default);
             return;
         }
-        if (now >= _nextBehaviorDecision) DecideActivity();
+        var options = BehaviorOptions;
+        if (_behavior.ShouldMakeDecision())
+        {
+            var speechKey = _behavior.Decide(options, GetWorkingArea(), new System.Windows.Size(Width, Height));
+            if (speechKey == "chase")
+                ShowReaction(_controller.GetInteractionWord("chase", "鼠标别跑，我还没热身完。"));
+            else if (speechKey == "dodge")
+                ShowReaction(_controller.GetInteractionWord("dodge", "差点！你下手太突然了。"));
+        }
 
         var cursor = GetCursorPositionInDips();
         var center = new Point(Left + Width / 2, Top + Height * 0.67);
         var cursorDelta = cursor - center;
         var cursorDistance = cursorDelta.Length;
-        var personality = _controller.Settings.Personality;
-        var active = _activity;
-
-        if (_controller.Settings.MouseInteractionEnabled)
-        {
-            if (personality == "shy" && cursorDistance < 350) active = Activity.Avoid;
-            if (personality == "clingy") active = cursorDistance > 115 ? Activity.Chase : Activity.Idle;
-            if (personality == "chaotic" && cursorDistance < 120 && Random.Shared.NextDouble() < 0.035)
-                active = Activity.Avoid;
-        }
-        else if (active is Activity.Chase or Activity.Avoid)
-        {
-            active = Activity.Idle;
-        }
-
-        if (!_controller.Settings.RandomMovementEnabled && active is Activity.Wander or Activity.Dock)
-            active = Activity.Idle;
+        var personality = options.Personality;
+        var active = _behavior.GetEffectiveActivity(cursorDistance, options);
 
         switch (active)
         {
@@ -523,164 +514,55 @@ public partial class PetWindow : Window
                 if (cursorDistance > 82)
                     Steer(cursorDelta, personality == "clingy" ? 175 : 225, 620, dt);
                 else
-                    DampVelocity(0.78, dt);
+                    _physics.DampVelocity(0.78, dt);
                 break;
             case Activity.Avoid:
                 if (cursorDistance < 470)
                     Steer(-cursorDelta, personality == "shy" ? 270 : 245, 820, dt);
                 else
-                    DampVelocity(0.72, dt);
+                    _physics.DampVelocity(0.72, dt);
                 break;
             case Activity.Wander:
             case Activity.Dock:
-                var targetDelta = _wanderTarget - new Point(Left, Top);
+                var targetDelta = _behavior.WanderTarget - new Point(Left, Top);
                 if (targetDelta.Length > 12)
                     Steer(targetDelta, personality == "chaotic" ? 310 : 120, 430, dt);
                 else
                 {
-                    _velocity = default;
+                    _physics.SetVelocity(default);
                     if (active == Activity.Dock) TrySnapToEdge(80);
                 }
                 break;
             default:
-                DampVelocity(0.66, dt);
+                _physics.DampVelocity(0.66, dt);
                 break;
         }
 
         MoveAndBounce(dt);
     }
 
-    private void DecideActivity()
-    {
-        var personality = _controller.Settings.Personality;
-        var roll = Random.Shared.Next(100);
-        _activity = personality switch
-        {
-            "shy" => roll < 28 ? Activity.Wander : roll < 72 ? Activity.Dock : Activity.Idle,
-            "clingy" => roll < 72 ? Activity.Chase : roll < 87 ? Activity.Wander : Activity.Dock,
-            "chaotic" => roll < 30 ? Activity.Chase : roll < 57 ? Activity.Avoid : roll < 90 ? Activity.Wander : Activity.Dock,
-            _ => roll < 42 ? Activity.Chase : roll < 72 ? Activity.Wander : roll < 88 ? Activity.Avoid : Activity.Dock
-        };
-
-        if (!_controller.Settings.MouseInteractionEnabled && _activity is Activity.Chase or Activity.Avoid)
-            _activity = _controller.Settings.RandomMovementEnabled ? Activity.Wander : Activity.Idle;
-        if (!_controller.Settings.RandomMovementEnabled && _activity is Activity.Wander or Activity.Dock)
-            _activity = _controller.Settings.MouseInteractionEnabled
-                ? personality == "shy" ? Activity.Avoid : Activity.Chase
-                : Activity.Idle;
-
-        var seconds = personality switch
-        {
-            "shy" => Random.Shared.NextDouble() * 5 + 5,
-            "clingy" => Random.Shared.NextDouble() * 3 + 3,
-            "chaotic" => Random.Shared.NextDouble() * 1.8 + 0.8,
-            _ => Random.Shared.NextDouble() * 3.5 + 2.5
-        };
-        _nextBehaviorDecision = DateTime.UtcNow.AddSeconds(seconds);
-        _wanderTarget = PickTarget(_activity == Activity.Dock);
-
-        if (DateTime.UtcNow - _lastBehaviorSpeech > TimeSpan.FromSeconds(38) && Random.Shared.NextDouble() < 0.13)
-        {
-            if (_activity == Activity.Chase)
-                ShowReaction(_controller.GetInteractionWord("chase", "鼠标别跑，我还没热身完。"));
-            else if (_activity == Activity.Avoid)
-                ShowReaction(_controller.GetInteractionWord("dodge", "差点！你下手太突然了。"));
-            _lastBehaviorSpeech = DateTime.UtcNow;
-        }
-    }
-
-    private Point PickTarget(bool edge)
-    {
-        var area = GetWorkingArea();
-        var maxX = Math.Max(area.Left, area.Right - Width);
-        var maxY = Math.Max(area.Top, area.Bottom - Height);
-        if (!edge)
-        {
-            return new Point(
-                area.Left + Random.Shared.NextDouble() * Math.Max(1, maxX - area.Left),
-                area.Top + Random.Shared.NextDouble() * Math.Max(1, maxY - area.Top));
-        }
-
-        return Random.Shared.Next(4) switch
-        {
-            0 => new Point(area.Left, area.Top + Random.Shared.NextDouble() * Math.Max(1, maxY - area.Top)),
-            1 => new Point(maxX, area.Top + Random.Shared.NextDouble() * Math.Max(1, maxY - area.Top)),
-            2 => new Point(area.Left + Random.Shared.NextDouble() * Math.Max(1, maxX - area.Left), area.Top),
-            _ => new Point(area.Left + Random.Shared.NextDouble() * Math.Max(1, maxX - area.Left), maxY)
-        };
-    }
-
     private void Steer(Vector direction, double speed, double acceleration, double dt)
     {
         if (direction.LengthSquared < 0.01)
         {
-            DampVelocity(0.7, dt);
+            _physics.DampVelocity(0.7, dt);
             return;
         }
         direction.Normalize();
-        ApproachVelocity(direction * speed, acceleration, dt);
-    }
-
-    private void ApproachVelocity(Vector desired, double acceleration, double dt)
-    {
-        var change = desired - _velocity;
-        var maxChange = acceleration * dt;
-        if (change.Length > maxChange)
-        {
-            change.Normalize();
-            change *= maxChange;
-        }
-        _velocity += change;
-        UpdateFacing(_velocity.X);
-    }
-
-    private void DampVelocity(double frameFactor, double dt)
-    {
-        _velocity *= Math.Pow(frameFactor, dt * 60);
-        if (_velocity.Length < 2) _velocity = default;
+        _physics.ApproachVelocity(direction * speed, acceleration, dt);
+        UpdateFacing(_physics.Velocity.X);
     }
 
     private void MoveAndBounce(double dt, bool react = true)
     {
         var area = GetWorkingArea();
-        var minX = area.Left;
-        var minY = area.Top;
-        var maxX = Math.Max(minX, area.Right - Width);
-        var maxY = Math.Max(minY, area.Bottom - Height);
-        var nextX = Left + _velocity.X * dt;
-        var nextY = Top + _velocity.Y * dt;
-        var impactSpeed = _velocity.Length;
-        var bounced = false;
-
-        if (nextX < minX)
-        {
-            nextX = minX;
-            _velocity.X = Math.Abs(_velocity.X) * 0.72;
-            bounced = true;
-        }
-        else if (nextX > maxX)
-        {
-            nextX = maxX;
-            _velocity.X = -Math.Abs(_velocity.X) * 0.72;
-            bounced = true;
-        }
-        if (nextY < minY)
-        {
-            nextY = minY;
-            _velocity.Y = Math.Abs(_velocity.Y) * 0.68;
-            bounced = true;
-        }
-        else if (nextY > maxY)
-        {
-            nextY = maxY;
-            _velocity.Y = -Math.Abs(_velocity.Y) * 0.62;
-            bounced = true;
-        }
-
-        Left = nextX;
-        Top = nextY;
-        UpdateFacing(_velocity.X);
-        if (bounced && react && impactSpeed > 330 && DateTime.UtcNow - _lastBounceSpeech > TimeSpan.FromSeconds(7))
+        var (position, bounced, impactSpeed) = _physics.ApplyBounce(
+            new Point(Left, Top), area, new System.Windows.Size(Width, Height), dt);
+        Left = position.X;
+        Top = position.Y;
+        UpdateFacing(_physics.Velocity.X);
+        if (bounced && react && impactSpeed > BounceSpeechImpactSpeed
+            && DateTime.UtcNow - _lastBounceSpeech > TimeSpan.FromSeconds(7))
         {
             ShowReaction(_controller.GetInteractionWord("bounce", "碰到边啦，这不叫撞，叫折返。"));
             _lastBounceSpeech = DateTime.UtcNow;
@@ -703,7 +585,7 @@ public partial class PetWindow : Window
         if (nearest.Distance > threshold) return;
         Left = nearest.Position.X;
         Top = nearest.Position.Y;
-        _velocity = default;
+        _physics.SetVelocity(default);
         var seconds = _controller.Settings.Personality switch
         {
             "shy" => 11,
@@ -711,7 +593,7 @@ public partial class PetWindow : Window
             "chaotic" => 3,
             _ => 7
         };
-        _dockedUntil = DateTime.UtcNow.AddSeconds(seconds);
+        _behavior.Dock(seconds);
     }
 
     private void RegisterHardThrow()
@@ -747,7 +629,7 @@ public partial class PetWindow : Window
     private void CancelScriptMotion()
     {
         _scriptTarget = null;
-        _velocity = default;
+        _physics.SetVelocity(default);
         _scriptCancellation.Dispose();
         _scriptCompletion?.TrySetCanceled();
         _scriptCompletion = null;
@@ -770,13 +652,6 @@ public partial class PetWindow : Window
         if (horizontalVelocity < -18) _facing = -1;
         else if (horizontalVelocity > 18) _facing = 1;
         MirrorTransform.ScaleX = (_controller.Settings.Mirrored ? -1 : 1) * _facing;
-    }
-
-    private static Vector ClampVector(Vector value, double maximum)
-    {
-        if (value.Length <= maximum) return value;
-        value.Normalize();
-        return value * maximum;
     }
 }
 

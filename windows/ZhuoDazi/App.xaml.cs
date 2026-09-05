@@ -64,10 +64,29 @@ public partial class App : System.Windows.Application
                     if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
                     else freeModeMessage = "七天完整体验结束啦，基础陪伴继续。";
                 }
-                catch
+                catch (Exception ex)
                 {
-                    if (_licenseService.IsTrialActive) ScheduleTrialCheck(_licenseService.RemainingTrialSeconds);
-                    else freeModeMessage = "先用基础陪伴就好，桌搭子还在。";
+                    // 网络故障时，仅当本地缓存的试用期尚未过期时才允许继续
+                    // 这里不能无条件信任本地状态，需要限制离线使用时长
+                    if (_licenseService.IsTrialActive)
+                    {
+                        var remaining = _licenseService.RemainingTrialSeconds;
+                        // 如果剩余时间过长且无法验证，限制为较短的宽限期
+                        if (remaining > 86400) // 超过 24 小时
+                        {
+                            System.Diagnostics.Trace.TraceWarning($"Trial verification failed, network error: {ex.Message}");
+                            freeModeMessage = "无法验证试用状态，请检查网络连接。";
+                            ScheduleTrialCheck(3600); // 1 小时后重试验证
+                        }
+                        else
+                        {
+                            ScheduleTrialCheck(Math.Min(remaining, 3600));
+                        }
+                    }
+                    else
+                    {
+                        freeModeMessage = "无法连接服务器验证，基础功能可用。";
+                    }
                 }
             }
             Controller = new AppController(_licenseService);

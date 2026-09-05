@@ -1022,7 +1022,7 @@ public final class PetOverlayService extends Service {
         }
         String fallback = reminder.message.isEmpty() ? "休息一下吧" : reminder.message;
         if (overlay != null) {
-            say(reminder.emotion, fallback, 6200);
+            sayText(fallback, 6200);
             if (!reminder.expressionPetId.isEmpty() && !reminder.expressionPetId.equals(currentPet)) {
                 showReminderExpression(reminder.expressionPetId);
             }
@@ -1095,17 +1095,22 @@ public final class PetOverlayService extends Service {
     }
 
     private void receiveVisit(CompanionService.Visit visit) {
-        if (theaterActive) {
-            visit.file().delete();
-            return;
-        }
-        if (overlay == null || settings.petHidden() || settings.clickThrough()) {
-            if (pendingVisit != null) pendingVisit.file().delete();
-            pendingVisit = visit;
-            showVisitorNotification(visit.senderName());
+        // 来访下载时已经向服务端 acknowledge 过，服务端不会再投递第二次，
+        // 所以任何"现在不方便展示"的情况都必须留存待看，不能直接删文件。
+        if (theaterActive || overlay == null || settings.petHidden() || settings.clickThrough()) {
+            deferVisit(visit);
         } else {
             showVisitor(visit);
         }
+    }
+
+    /** 暂存来访待用户查看，并发出通知。 */
+    private void deferVisit(CompanionService.Visit visit) {
+        if (pendingVisit != null && pendingVisit.file() != visit.file()) {
+            pendingVisit.file().delete();
+        }
+        pendingVisit = visit;
+        showVisitorNotification(visit.senderName());
     }
 
     @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
@@ -1150,7 +1155,7 @@ public final class PetOverlayService extends Service {
 
     private void showVisitor(CompanionService.Visit visit) {
         if (theaterActive) {
-            visit.file().delete();
+            deferVisit(visit);
             return;
         }
         removeVisitor(true);
@@ -1196,8 +1201,19 @@ public final class PetOverlayService extends Service {
             visitorOverlay = null;
             visitorParams = null;
         }
+        // 删文件前看 theaterVisitor：如果是小剧场虚拟角色就删，
+        // 如果是真实来访就转回 pending 保留数据（已向服务端确认过，丢了永远收不到第二次）。
         if (deleteFile && visitorFile != null) {
-            visitorFile.delete();
+            if (theaterVisitor) {
+                visitorFile.delete();
+            } else {
+                if (pendingVisit != null && pendingVisit.file() != visitorFile) {
+                    pendingVisit.file().delete();
+                }
+                if (pendingVisit == null || pendingVisit.file() != visitorFile) {
+                    pendingVisit = new CompanionService.Visit("deferred", "待查看的来访", visitorFile);
+                }
+            }
         }
         visitorFile = null;
     }

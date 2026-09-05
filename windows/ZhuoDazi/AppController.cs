@@ -566,7 +566,7 @@ public sealed class AppController : IDisposable
         if (!_licenses.IsActivated)
         {
             ShowActivation(_settingsWindow, "打开大厅和陌生人互动前，请先激活完整版本。");
-            return;
+            throw new InvalidOperationException("需要激活完整版本");
         }
         var path = CurrentPetPath();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -860,10 +860,25 @@ public sealed class AppController : IDisposable
         SaveAndRefresh();
     }
 
+    /// <summary>
+    /// 请求终止正在进行的小剧场。脚本运动依赖主窗口的帧循环，
+    /// 窗口一旦隐藏帧循环就停摆，必须先取消演出才能让 RunTheaterAsync 正常收尾。
+    /// </summary>
+    private void CancelTheater()
+    {
+        if (!_theaterActive) return;
+        try { _theaterCancellation?.Cancel(); } catch (ObjectDisposedException) { }
+    }
+
     public void TogglePetVisibility()
     {
         if (_petWindow is null) return;
-        if (_petWindow.IsVisible) _petWindow.Hide(); else _petWindow.Show();
+        if (_petWindow.IsVisible)
+        {
+            CancelTheater();
+            _petWindow.Hide();
+        }
+        else _petWindow.Show();
         RefreshTray();
     }
 

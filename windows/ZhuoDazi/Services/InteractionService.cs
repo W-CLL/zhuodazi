@@ -15,6 +15,12 @@ public sealed class InteractionService : IDisposable
     private const int MaximumResponseBytes = 20 * 1024 * 1024;
     private const int TargetCacheSize = 60;
     private const int EventBatchSize = 50;
+
+    // 指数退避配置
+    private const int MaxRetryAttempts = 3;
+    private const int InitialRetryDelayMs = 1000; // 1 秒
+    private const int MaxRetryDelayMs = 30000; // 30 秒
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -220,7 +226,7 @@ public sealed class InteractionService : IDisposable
         try
         {
             var totalAdded = 0;
-            for (var attempt = 0; attempt < 2; attempt++)
+            for (var attempt = 0; attempt < MaxRetryAttempts; attempt++)
             {
                 string[] exclusions;
                 int cachedCount;
@@ -230,18 +236,32 @@ public sealed class InteractionService : IDisposable
                     exclusions = BuildExclusionsLocked();
                 }
                 if (cachedCount >= TargetCacheSize) break;
-                using var request = JsonRequest(HttpMethod.Post, BatchUrl, new
+
+                try
                 {
-                    types = new[] { "joke", "math", "trivia", "riddle", "tip", "care" },
-                    limit = 30,
-                    excludeIds = exclusions
-                });
-                Authorize(request);
-                var envelope = await SendAsync<SignedContentEnvelope>(request, cancellationToken);
-                var payload = ContentEnvelopeVerifier.Validate(envelope, "batch");
-                var added = ApplyPayload(payload, replace: false);
-                totalAdded += added;
-                if (added == 0) break;
+                    using var request = JsonRequest(HttpMethod.Post, BatchUrl, new
+                    {
+                        types = new[] { "joke", "math", "trivia", "riddle", "tip", "care" },
+                        limit = 30,
+                        excludeIds = exclusions
+                    });
+                    Authorize(request);
+                    var envelope = await SendAsync<SignedContentEnvelope>(request, cancellationToken);
+                    var payload = ContentEnvelopeVerifier.Validate(envelope, "batch");
+                    var added = ApplyPayload(payload, replace: false);
+                    totalAdded += added;
+                    if (added == 0) break;
+                }
+                catch (InvalidOperationException) when (attempt < MaxRetryAttempts - 1)
+                {
+                    // 指数退避：计算延迟时间
+                    var delayMs = Math.Min(
+                        InitialRetryDelayMs * (1 << attempt), // 2^attempt
+                        MaxRetryDelayMs
+                    );
+                    await Task.Delay(delayMs, cancellationToken);
+                    continue;
+                }
             }
             return totalAdded;
         }
@@ -377,10 +397,22 @@ public sealed class InteractionService : IDisposable
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken);
         }
-        catch (Exception error)
+        catch (HttpRequestException error)
         {
-            var message = NetworkConnectionErrors.Format(error, "连接互动服务超时，请稍后重试。");
+            var message = NetworkConnectionErrors.Format(error, "连接互动服务失败，请检查网络。");
+            System.Diagnostics.Trace.TraceError($"Network request failed: {error}");
             throw new InvalidOperationException(message, error);
+        }
+        catch (TaskCanceledException error) when (!cancellationToken.IsCancellationRequested)
+        {
+            // 超时（非用户取消）
+            System.Diagnostics.Trace.TraceWarning($"Network request timeout: {error.Message}");
+            throw new InvalidOperationException("连接互动服务超时，请稍后重试。", error);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // 用户主动取消
+            throw;
         }
 
         using (response)

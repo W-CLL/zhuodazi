@@ -91,8 +91,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                             }
                         }
                     } catch {
+                        // 网络验证失败时不长期信任本地状态：最迟 1 小时后重新验证
                         if licenses.isTrialActive {
-                            scheduleTrialCheck(licenses.remainingTrialSecondsNow)
+                            scheduleTrialCheck(min(licenses.remainingTrialSecondsNow, 3600))
                         }
                     }
                     petController.refreshPremiumAccess()

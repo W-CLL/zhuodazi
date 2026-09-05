@@ -83,9 +83,25 @@ public partial class SettingsWindow : Window
         else RenderUpdateState(state);
     }
 
+    /// <summary>
+    /// 重建整个设置窗的显示。_refreshing 必须在 finally 里复位：
+    /// 一旦它卡在 true，所有控件的写回守卫都会静默失效，整个窗口"点了没反应"。
+    /// </summary>
     private void RefreshAll()
     {
         _refreshing = true;
+        try
+        {
+            RefreshAllCore();
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private void RefreshAllCore()
+    {
         var settings = _controller.Settings;
         var premium = _controller.HasPremiumAccess;
         SizeSlider.Value = settings.Size;
@@ -130,8 +146,10 @@ public partial class SettingsWindow : Window
         libraryItems.AddRange(settings.Libraries.Select(item => new LibraryListItem(
             item.Id, item.Name, item.Path, false)));
         LibraryList.ItemsSource = libraryItems;
+        // 配置里的 ActiveLibraryId 可能指向已被删除的目录，此时回落到内置图鉴，
+        // 不能用 First()——找不到会抛 InvalidOperationException 打断整个刷新。
         LibraryList.SelectedItem = premium
-            ? libraryItems.First(item => item.Id == settings.ActiveLibraryId)
+            ? libraryItems.FirstOrDefault(item => item.Id == settings.ActiveLibraryId) ?? libraryItems[0]
             : libraryItems[0];
         LibrarySummary.Text = premium
             ? $"已绑定 {settings.Libraries.Count}/3 个目录 · 当前 {_controller.LibraryName} · {_controller.LibraryCount} 个 GIF"
@@ -150,7 +168,7 @@ public partial class SettingsWindow : Window
             item.Id, item.Name, $"{item.WordCount} 条互动台词", false)));
         WordPackList.ItemsSource = wordPackItems;
         WordPackList.SelectedItem = premium
-            ? wordPackItems.First(item => item.Id == settings.ActiveInteractionWordPackId)
+            ? wordPackItems.FirstOrDefault(item => item.Id == settings.ActiveInteractionWordPackId) ?? wordPackItems[0]
             : wordPackItems[0];
         WordPackSummary.Text = $"已上传 {settings.InteractionWordPacks.Count}/5 个词包 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "内置提示语")}";
         DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
@@ -243,7 +261,6 @@ public partial class SettingsWindow : Window
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
         LicenseStatusText.Text = _controller.LicenseSummary;
         RenderUpdateState(_controller.Updates.State);
-        _refreshing = false;
     }
 
     private void RenderUpdateState(UpdateState state)
@@ -734,7 +751,7 @@ public partial class SettingsWindow : Window
     }
 
     private async void PairCompanion_Click(object sender, RoutedEventArgs e)
-        => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text));
+        => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text), clearPairCode: true);
 
     private async void SendCompanionGif_Click(object sender, RoutedEventArgs e)
         => await RunCompanionActionAsync(() => _controller.SendCurrentGifToCompanionAsync());
@@ -751,7 +768,7 @@ public partial class SettingsWindow : Window
         if (_controller.ShowActivation(this, "绑定一位熟人后，可以把当前 GIF 发到对方桌角。")) _ = LoadCompanionAsync();
     }
 
-    private async Task RunCompanionActionAsync(Func<Task> action)
+    private async Task RunCompanionActionAsync(Func<Task> action, bool clearPairCode = false)
     {
         if (_companionLoading) return;
         _companionLoading = true;
@@ -760,7 +777,7 @@ public partial class SettingsWindow : Window
         try
         {
             await action();
-            PairCodeText.Clear();
+            if (clearPairCode) PairCodeText.Clear();
         }
         catch (Exception error)
         {

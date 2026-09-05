@@ -419,7 +419,7 @@ final class PetWindowController {
     @discardableResult
     func startTheater() -> Bool {
         guard hasPremiumAccess else { return false }
-        guard theaterTask == nil, visitorWindow == nil, !interactionActive else { return false }
+        guard window.isVisible, theaterTask == nil, visitorWindow == nil, !interactionActive else { return false }
         let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
         let originalOrigin = window.frame.origin
@@ -480,6 +480,7 @@ final class PetWindowController {
     }
 
     func showReminder(_ reminder: ReminderDefinition) {
+        guard theaterTask == nil, !interactionActive else { return }
         showBubble(reminder.message)
         NSSound(named: "Glass")?.play()
         guard let path = reminder.expressionPath, FileManager.default.fileExists(atPath: path) else { return }
@@ -815,15 +816,22 @@ final class PetWindowController {
         NSSize(width: petSize, height: petSize + 30)
     }
 
+    // 与 Windows / Android 版一致的图库文件数上限，防止超大目录拖慢扫描
+    private static let maxLibraryGIFs = 500
+
     private static func scanPetURLs(in directory: URL) -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
             includingPropertiesForKeys: [.isRegularFileKey],
             options: [.skipsHiddenFiles, .skipsPackageDescendants]
         ) else { return [] }
-        return enumerator.compactMap { $0 as? URL }
-            .filter { $0.pathExtension.caseInsensitiveCompare("gif") == .orderedSame }
-            .sorted { $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending }
+        var urls: [URL] = []
+        for case let url as URL in enumerator {
+            guard url.pathExtension.caseInsensitiveCompare("gif") == .orderedSame else { continue }
+            urls.append(url)
+            if urls.count >= maxLibraryGIFs { break }
+        }
+        return urls.sorted { $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending }
     }
 
     private static func builtInPetURLs() -> [URL] {

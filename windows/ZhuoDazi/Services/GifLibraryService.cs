@@ -15,13 +15,56 @@ public sealed class GifLibraryService
     public IReadOnlyList<string> Scan(string? customDirectory)
     {
         var directory = string.IsNullOrWhiteSpace(customDirectory) ? BuiltInDirectory : customDirectory;
+
+        // 防止路径遍历攻击：验证并规范化路径
+        if (!string.IsNullOrWhiteSpace(customDirectory))
+        {
+            try
+            {
+                var fullPath = Path.GetFullPath(customDirectory);
+                // 确保路径不包含危险的遍历模式
+                if (fullPath.Contains("..", StringComparison.Ordinal) ||
+                    !Path.IsPathFullyQualified(fullPath))
+                {
+                    return [];
+                }
+                directory = fullPath;
+            }
+            catch (ArgumentException)
+            {
+                // 路径格式无效
+                return [];
+            }
+            catch (System.Security.SecurityException)
+            {
+                // 没有访问权限
+                return [];
+            }
+            catch (NotSupportedException)
+            {
+                // 路径格式不受支持
+                return [];
+            }
+        }
+
         if (!Directory.Exists(directory)) return [];
+
         try
         {
             return Directory.EnumerateFiles(directory, "*.gif", SearchOption.AllDirectories)
                 .OrderBy(item => item, StringComparer.CurrentCultureIgnoreCase)
                 .Take(500)
                 .ToArray();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // 没有访问权限，返回空列表而不是暴露异常
+            return [];
+        }
+        catch (PathTooLongException)
+        {
+            // 路径过长
+            return [];
         }
         catch
         {
