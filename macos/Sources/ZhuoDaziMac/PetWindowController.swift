@@ -134,8 +134,9 @@ final class PetWindowController {
 
     func show() { window.orderFrontRegardless() }
     func hide() {
-        interactionPanel.dismiss()
         window.orderOut(nil)
+        visitorWindow?.orderOut(nil)
+        interactionPanel.dismiss()
     }
     func showBubble(_ text: String) { petView.showBubble(text) }
 
@@ -144,7 +145,14 @@ final class PetWindowController {
     }
 
     func showVisitor(at url: URL, senderName: String, message: String = "") async {
-        guard window.isVisible, theaterTask == nil, visitorWindow == nil else { return }
+        while !window.isVisible || isBusyWithScene {
+            do {
+                try await Task.sleep(for: .milliseconds(250))
+            } catch {
+                return
+            }
+        }
+        guard !Task.isCancelled else { return }
         let visitor = makeCompanionWindow(petURL: url)
         visitorWindow = visitor.window
         positionCompanion(visitor.window)
@@ -226,7 +234,7 @@ final class PetWindowController {
         interactionTimer?.invalidate()
         interactionTimer = nil
         guard hasPremiumAccess else { return }
-        guard !interactionActive, theaterTask == nil, window.isVisible else {
+        guard !interactionActive, theaterTask == nil, visitorWindow == nil, window.isVisible else {
             restartInteractionTimer()
             return
         }

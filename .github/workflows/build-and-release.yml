@@ -7,11 +7,15 @@ on:
       - "windows/**"
       - "macos/**"
       - ".github/workflows/**"
+      - "scripts/prepare-desktop-releases.py"
+      - "scripts/tests/**"
   pull_request:
     paths:
       - "windows/**"
       - "macos/**"
       - ".github/workflows/**"
+      - "scripts/prepare-desktop-releases.py"
+      - "scripts/tests/**"
   workflow_dispatch:
 
 permissions:
@@ -29,9 +33,11 @@ jobs:
     outputs:
       windows_version: ${{ steps.version.outputs.windows }}
       macos_version: ${{ steps.version.outputs.macos }}
-      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+
+      - name: Test independent platform releases
+        run: python3 -m unittest discover -s scripts/tests -v
 
       - name: Read application version
         id: version
@@ -57,90 +63,90 @@ jobs:
               raise SystemExit(f"Windows file version must be {windows_version}.0, received {windows_file_version!r}.")
           if macos_build_version != macos_version:
               raise SystemExit(f"macOS build version must be {macos_version}, received {macos_build_version!r}.")
-          if windows_version != macos_version:
-              raise SystemExit(f"Windows and macOS versions must match: {windows_version} != {macos_version}.")
           print(f"windows={windows_version}")
           print(f"macos={macos_version}")
-          print(f"version={windows_version}")
           PY
 
   prepare-release:
-    name: Prepare unified draft release
+    name: Prepare platform draft releases
     needs: metadata
     runs-on: ubuntu-latest
     outputs:
-      release_published: ${{ steps.release.outputs.published }}
+      windows_published: ${{ steps.release.outputs.windows_published }}
+      macos_published: ${{ steps.release.outputs.macos_published }}
+      macos_tag: ${{ steps.release.outputs.macos_tag }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Create or update draft release
+      - name: Create or update platform draft releases
         id: release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          APP_VERSION: ${{ needs.metadata.outputs.version }}
+          WINDOWS_VERSION: ${{ needs.metadata.outputs.windows_version }}
+          MACOS_VERSION: ${{ needs.metadata.outputs.macos_version }}
           TARGET_SHA: ${{ github.sha }}
-        run: |
-          tag="v${APP_VERSION}"
-          title="桌搭子 ${APP_VERSION}"
-          notes="更新/修复了一些功能"
-          state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
-          if [[ "$state" == "false" ]]; then
-            application_changes="$(git diff --name-only "$tag" "$TARGET_SHA" -- windows macos)"
-            if [[ -n "$application_changes" ]]; then
-              echo "Release $tag is already published and application files changed; bump the version before rebuilding." >&2
-              echo "$application_changes" >&2
-              exit 1
-            fi
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "Release $tag already contains the same application code; skipping duplicate packages."
-            exit 0
-          fi
-          echo "published=false" >> "$GITHUB_OUTPUT"
-          if [[ -z "$state" ]]; then
-            gh release create "$tag" --draft --target "$TARGET_SHA" --title "$title" --notes "$notes"
-          else
-            gh release edit "$tag" --target "$TARGET_SHA" --title "$title" --notes "$notes"
-          fi
+        run: python3 scripts/prepare-desktop-releases.py
 
   build-windows:
     name: Build Windows
     needs: [metadata, prepare-release]
-    if: needs.prepare-release.outputs.release_published != 'true'
+    if: needs.prepare-release.outputs.windows_published != 'true'
     uses: ./.github/workflows/build-windows.yml
 
   build-macos:
     name: Build macOS
     needs: [metadata, prepare-release]
-    if: needs.prepare-release.outputs.release_published != 'true'
+    if: needs.prepare-release.outputs.macos_published != 'true'
     uses: ./.github/workflows/build-macos.yml
+    with:
+      release_tag: ${{ needs.prepare-release.outputs.macos_tag }}
 
   verify-release:
-    name: Verify unified draft release
-    if: github.event_name != 'pull_request' && needs.prepare-release.outputs.release_published != 'true'
+    name: Verify platform draft releases
+    if: always() && !cancelled() && github.event_name != 'pull_request' && needs.prepare-release.result == 'success'
     needs: [metadata, prepare-release, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
-      - name: Check all platform packages
+      - name: Check Windows packages
+        if: needs.prepare-release.outputs.windows_published != 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          APP_VERSION: ${{ needs.metadata.outputs.version }}
+          APP_VERSION: ${{ needs.metadata.outputs.windows_version }}
         run: |
           tag="v${APP_VERSION}"
           test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true"
           assets="$(gh release view "$tag" --json assets --jq '.assets[].name')"
           for expected in \
             "ZhuoDazi-Desktop-Pet-${APP_VERSION}.exe" \
-            "ZhuoDazi-Desktop-Pet-${APP_VERSION}-portable.zip" \
+            "ZhuoDazi-Desktop-Pet-${APP_VERSION}-portable.zip"
+          do
+            grep -Fx "$expected" <<< "$assets" >/dev/null || {
+              echo "Missing release asset: $expected" >&2
+              exit 1
+            }
+          done
+
+      - name: Check macOS packages
+        if: needs.prepare-release.outputs.macos_published != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          APP_VERSION: ${{ needs.metadata.outputs.macos_version }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.macos_tag }}
+        run: |
+          test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = "true"
+          assets="$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name')"
+          for expected in \
             "ZhuoDazi-macOS-${APP_VERSION}-arm64.zip" \
             "ZhuoDazi-macOS-${APP_VERSION}-x86_64.zip"
           do
             grep -Fx "$expected" <<< "$assets" >/dev/null || {
-              echo "Missing release asset: $expected" >&2
+              echo "Missing macOS asset: $expected" >&2
               exit 1
             }
           done

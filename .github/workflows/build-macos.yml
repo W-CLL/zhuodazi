@@ -2,6 +2,10 @@ name: Build macOS
 
 on:
   workflow_call:
+    inputs:
+      release_tag:
+        required: false
+        type: string
   workflow_dispatch:
 
 permissions:
@@ -50,12 +54,14 @@ jobs:
           file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
 
-      - name: Upload macOS package to unified draft release
+      - name: Upload macOS package to platform draft release
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          tag="v${APP_VERSION}"
+          tag="${RELEASE_TAG:-macos-v${APP_VERSION}}"
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true"
           asset="macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.zip"
           gh release upload "$tag" "$asset" --clobber

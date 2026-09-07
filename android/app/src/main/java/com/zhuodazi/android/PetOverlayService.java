@@ -1110,7 +1110,7 @@ public final class PetOverlayService extends Service {
             pendingVisit.file().delete();
         }
         pendingVisit = visit;
-        showVisitorNotification(visit.senderName());
+        showVisitorNotification(visit.senderName(), visit.message());
     }
 
     @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
@@ -1191,7 +1191,7 @@ public final class PetOverlayService extends Service {
             handler.postDelayed(() -> removeVisitor(true), 10_000);
         } catch (Exception error) {
             visit.file().delete();
-            showVisitorNotification(visit.senderName());
+            showVisitorNotification(visit.senderName(), visit.message());
         }
     }
 
@@ -1433,12 +1433,16 @@ public final class PetOverlayService extends Service {
         getSystemService(NotificationManager.class).notify(REMINDER_NOTIFICATION_ID, notification);
     }
 
-    private void showVisitorNotification(String sender) {
+    private void showVisitorNotification(String sender, String message) {
         PendingIntent show = servicePendingIntent(REQUEST_SHOW, ACTION_SHOW);
+        String contentText = message == null || message.trim().isEmpty()
+            ? "点一下显示桌宠并查看来访"
+            : message.trim();
         Notification notification = new Notification.Builder(this, VISITOR_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_pet)
             .setContentTitle(sender + " 的桌宠来串门了")
-            .setContentText("点一下显示桌宠并查看来访")
+            .setContentText(contentText)
+            .setStyle(new Notification.BigTextStyle().bigText(contentText))
             .setContentIntent(show)
             .setAutoCancel(true)
             .addAction(new Notification.Action.Builder(R.drawable.ic_pet, "查看", show).build())
