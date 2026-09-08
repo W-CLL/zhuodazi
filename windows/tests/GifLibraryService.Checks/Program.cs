@@ -25,6 +25,7 @@ internal static class Program
         CheckSignedInteractionContent();
         CheckInteractionCacheNormalization();
         CheckInteractionSchedulerBounds();
+        InteractionCardLayoutChecks.Run();
         var reproductionPath = Environment.GetEnvironmentVariable("ZHUODAZI_GIF_REPRO_PATH");
         if (!string.IsNullOrWhiteSpace(reproductionPath))
         {

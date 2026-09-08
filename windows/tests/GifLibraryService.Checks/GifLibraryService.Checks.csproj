@@ -7,6 +7,8 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="..\..\ZhuoDazi\PetWindow.xaml" Link="assets\PetWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="..\..\ZhuoDazi\Controls\InteractionCardLayout.cs" Link="InteractionCardLayout.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\GifLibraryService.cs" Link="GifLibraryService.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\NetworkConnectionErrors.cs" Link="NetworkConnectionErrors.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\Ed25519SignatureVerifier.cs" Link="Ed25519SignatureVerifier.cs" />

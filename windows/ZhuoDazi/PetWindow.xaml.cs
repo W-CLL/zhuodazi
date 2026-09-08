@@ -224,20 +224,11 @@ public partial class PetWindow : Window
             MinimumInteractionBubbleHeight,
             CollapsedBubbleHeight + area.Height - _baseWindowHeight - WindowEdgeGap);
 
-        InteractionMessageScroll.ClearValue(MaxHeightProperty);
-        InteractionCard.Measure(new System.Windows.Size(Width, double.PositiveInfinity));
-
-        if (InteractionCard.DesiredSize.Height > maximumBubbleHeight)
-        {
-            var overflow = InteractionCard.DesiredSize.Height - maximumBubbleHeight;
-            InteractionMessageScroll.MaxHeight = Math.Max(
-                MinimumScrollableMessageHeight,
-                InteractionMessageScroll.DesiredSize.Height - overflow);
-            InteractionCard.Measure(new System.Windows.Size(Width, double.PositiveInfinity));
-        }
-
+        var measuredHeight = InteractionCardLayout.MeasureHeight(
+            InteractionCard, InteractionMessageScroll, InteractionMessage,
+            Width, maximumBubbleHeight, MinimumScrollableMessageHeight);
         var bubbleHeight = Math.Clamp(
-            Math.Ceiling(InteractionCard.DesiredSize.Height),
+            measuredHeight,
             MinimumInteractionBubbleHeight,
             maximumBubbleHeight);
         BubbleRow.Height = new GridLength(bubbleHeight);
