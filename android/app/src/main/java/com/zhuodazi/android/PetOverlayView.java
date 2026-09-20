@@ -3,6 +3,7 @@ package com.zhuodazi.android;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.text.LineBreaker;
 import java.util.ArrayList;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
@@ -346,7 +347,7 @@ final class PetOverlayView extends FrameLayout {
         int lines = Math.max(1, (available - bubble.getPaddingTop() - bubble.getPaddingBottom()) / Math.max(bubble.getLineHeight(), (int) Math.ceil(bubble.getTextSize() * 1.3f)));
         bubble.setMaxLines(lines);
         bubble.setEllipsize(null);
-        bubble.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
+        bubble.setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE);
         bubble.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
     }
 
