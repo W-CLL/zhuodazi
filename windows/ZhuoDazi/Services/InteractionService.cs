@@ -71,8 +71,7 @@ public sealed class InteractionService : IDisposable
         {
             lock (_sync)
             {
-                var catalog = _state.CatalogVersion == 0 ? "尚未同步" : $"目录 v{_state.CatalogVersion}";
-                return $"{catalog} · {_state.Items.Count} 条可用 · {_state.PendingEvents.Count} 条待上传";
+                return _state.Items.Count == 0 ? "找点新趣事，陪你聊一会。" : $"口袋里有 {_state.Items.Count} 条小趣事";
             }
         }
     }
@@ -443,7 +442,11 @@ public sealed class InteractionService : IDisposable
 
     private static string? TryReadError(byte[] bytes)
     {
-        try { return JsonSerializer.Deserialize<InteractionErrorResponse>(bytes, JsonOptions)?.Message; }
+        try
+        {
+            var error = JsonSerializer.Deserialize<InteractionErrorResponse>(bytes, JsonOptions);
+            return error?.Error ?? error?.Message;
+        }
         catch { return null; }
     }
 

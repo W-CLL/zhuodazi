@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'app_controller.dart';
 import 'host_api.dart';
+part 'hall_page.dart';
+part 'onboarding_card.dart';
 
 const _ink = Color(0xff17201e);
 const _muted = Color(0xff5d6b67);
@@ -19,7 +23,8 @@ const _sun = Color(0xfff2c861);
 void main() => runApp(const ZhuoDaziApp());
 
 class ZhuoDaziApp extends StatelessWidget {
-  const ZhuoDaziApp({super.key});
+  const ZhuoDaziApp({this.controller, super.key});
+  final AppController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -142,7 +147,7 @@ class ZhuoDaziApp extends StatelessWidget {
           ),
         ),
       ),
-      home: AppShell(controller: AppController()),
+      home: AppShell(controller: controller ?? AppController()),
     );
   }
 }
@@ -156,13 +161,14 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _index = 0;
+  bool _welcomeShown = false;
   late final AppController _controller = widget.controller;
-  static const _titles = ['首页', '互动', '桌宠', '搭子', '我的'];
+  static const _titles = ['首页', '互动', '桌宠', '大厅', '我的'];
   static const _icons = [
     Icons.home_outlined,
     Icons.chat_bubble_outline,
     Icons.pets_outlined,
-    Icons.people_outline,
+    Icons.public_outlined,
     Icons.person_outline,
   ];
 
@@ -170,14 +176,34 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _controller.addListener(_noticeFirstWelcome);
     _controller.initialize();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _controller.removeListener(_noticeFirstWelcome);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _noticeFirstWelcome() {
+    final state = _controller.snapshot;
+    if (_welcomeShown ||
+        !state.guideActive ||
+        state.guideStep != 0 ||
+        !state.petVisible) {
+      return;
+    }
+    _welcomeShown = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          _controller.snapshot.guideActive &&
+          _controller.snapshot.petVisible) {
+        setState(() => _index = 0);
+      }
+    });
   }
 
   @override
@@ -209,7 +235,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               HomePage(controller: _controller),
               InteractionPage(controller: _controller),
               PetPage(controller: _controller),
-              CompanionPage(controller: _controller),
+              HallPage(controller: _controller, active: _index == 3),
               AccountPage(controller: _controller),
             ],
           ),
@@ -236,7 +262,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     0 => Icons.home_rounded,
     1 => Icons.chat_bubble_rounded,
     2 => Icons.pets,
-    3 => Icons.people_rounded,
+    3 => Icons.public,
     _ => Icons.person_rounded,
   };
 
@@ -260,6 +286,101 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   void selectTab(int index) => setState(() => _index = index);
 }
+
+class QuietControls extends StatelessWidget {
+  const QuietControls({required this.controller, super.key});
+  final AppController controller;
+  @override
+  Widget build(BuildContext context) {
+    final snapshot = controller.snapshot;
+    final until = DateTime.fromMillisecondsSinceEpoch(snapshot.quietUntilUtc)
+        .toLocal();
+    return Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('日常气泡 · 动作台词'),
+            value: snapshot.dailySpeechEnabled,
+            onChanged: (value) => runAction(
+              context,
+              controller.setSetting(settingDailySpeech, value),
+              (_) => '',
+            ),
+          ),
+          const Divider(height: 16),
+          Text(
+            snapshot.isQuiet
+                ? '暂停至 ${until.hour.toString().padLeft(2, '0')}:${until.minute.toString().padLeft(2, '0')}'
+                : '安静一会儿',
+            style: const TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 7),
+          const Text('提醒和手动操作照常。'),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: controller.busy
+                ? null
+                : () => runAction(
+                    context,
+                    controller.setSetting(
+                      settingQuietUntil,
+                      snapshot.isQuiet
+                          ? 0
+                          : DateTime.now()
+                                .add(const Duration(hours: 1))
+                                .millisecondsSinceEpoch,
+                    ),
+                    (_) =>
+                        snapshot.isQuiet ? '已恢复陪伴，待看来访将依次出现' : '已暂停主动打扰 1 小时',
+                  ),
+            icon: Icon(
+              snapshot.isQuiet ? Icons.play_arrow : Icons.bedtime_outlined,
+            ),
+            label: Text(snapshot.isQuiet ? '恢复陪伴' : '暂停打扰 1 小时'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> showUsageGuide(BuildContext context) => showDialog<void>(
+  context: context,
+  builder: (context) => AlertDialog(
+    title: const Text('三步认识桌搭子'),
+    content: const SingleChildScrollView(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('1 · 让它出现', style: TextStyle(fontWeight: FontWeight.w800)),
+          SizedBox(height: 6),
+          Text('在首页允许“显示在其他应用上层”。返回应用后桌宠会启动。拖动可以换位置，点一下打开快捷菜单。'),
+          SizedBox(height: 16),
+          Text('2 · 随时安静，也能找回来', style: TextStyle(fontWeight: FontWeight.w800)),
+          SizedBox(height: 6),
+          Text(
+            '在“互动”暂停打扰 1 小时。隐藏或开启穿透后，从常驻通知点“显示桌宠 / 恢复触摸”。彻底关闭请选择通知里的“完全退出”；提醒需要后台运行。',
+          ),
+          SizedBox(height: 16),
+          Text('3 · 主动选择一起玩', style: TextStyle(fontWeight: FontWeight.w800)),
+          SizedBox(height: 6),
+          Text(
+            '试用期可加入“大厅”，向在线的人发送 GIF。女友 / 好友来访只是模拟演示。与熟人长期配对，请从“大厅 / 我的 → 我的搭子”查看正式激活说明。',
+          ),
+        ],
+      ),
+    ),
+    actions: [
+      FilledButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('知道了'),
+      ),
+    ],
+  ),
+);
 
 class _TopBar extends StatelessWidget {
   const _TopBar({
@@ -342,37 +463,33 @@ class HomePage extends StatelessWidget {
       if (trialVisits) ...[
         QuickAction(
           icon: Icons.favorite_outline,
-          label: '女友来访',
-          onTap: () => playTrialVisit(context, controller, 'trialVisitGirlfriend'),
+          label: '女友来访·演示',
+          onTap: () =>
+              playTrialVisit(context, controller, 'trialVisitGirlfriend'),
         ),
         QuickAction(
           icon: Icons.group_outlined,
-          label: '好友来访',
+          label: '好友来访·演示',
           onTap: () => playTrialVisit(context, controller, 'trialVisitFriend'),
         ),
         QuickAction(
           icon: Icons.pets_outlined,
-          label: '搭子来访',
-          onTap: () => playTrialVisit(context, controller, 'trialVisitCompanion'),
+          label: '搭子来访·演示',
+          onTap: () =>
+              playTrialVisit(context, controller, 'trialVisitCompanion'),
         ),
       ],
       QuickAction(
         icon: Icons.shuffle_rounded,
         label: '切换形象',
-        onTap: () => runAction(
-          context,
-          controller.service('next'),
-          (_) => '已换好桌宠',
-        ),
+        onTap: () =>
+            runAction(context, controller.service('next'), (_) => '已换好桌宠'),
       ),
       QuickAction(
         icon: Icons.touch_app_outlined,
         label: '说句话',
-        onTap: () => runAction(
-          context,
-          controller.service('interact'),
-          (_) => '桌宠回应你了',
-        ),
+        onTap: () =>
+            runAction(context, controller.service('interact'), (_) => '桌宠回应你了'),
       ),
       QuickAction(
         icon: Icons.theater_comedy_outlined,
@@ -394,14 +511,10 @@ class HomePage extends StatelessWidget {
       children: [
         PageIntro(
           title: '今天也一起',
-          subtitle: !snapshot.overlayAllowed
-              ? (trialVisits
-                  ? '先打开悬浮窗，桌宠才会出来。点一下就能叫女友、好友或搭子来串门。'
-                  : '先打开悬浮窗，桌宠才会待在屏幕边角。')
-              : trialVisits
-              ? '先让桌宠出来，再点一下叫人来串门。发给对象需要激活。'
-              : '先让桌宠出来，再随手发一张给搭子。',
+          subtitle: !snapshot.overlayAllowed ? '允许悬浮窗，让桌宠陪你。' : '今天想一起玩点什么？',
         ),
+        OnboardingCard(controller: controller),
+        const SizedBox(height: 14),
         PetStage(snapshot: snapshot, gif: controller.petGif, height: 206),
         const SizedBox(height: 14),
         if (snapshot.announcement.isNotEmpty) ...[
@@ -423,12 +536,16 @@ class HomePage extends StatelessWidget {
               icon: Icons.timer_outlined,
               title: '完整体验还剩 ${trialClock(controller.liveTrialSeconds)}',
               detail: trialVisits
-                  ? '点一下模仿女友、好友或搭子来访。发给对象需要正式激活。'
-                  : '发给对象需要正式激活。',
+                  ? '来访按钮仅作演示；体验期也可去大厅真实互发。'
+                  : '体验期可用大厅；私人搭子需正式激活。',
               color: _brand,
             ),
           ),
           const SizedBox(height: 14),
+        ],
+        if (controller.operationStatus.isNotEmpty) ...[
+          Text(controller.operationStatus),
+          const SizedBox(height: 10),
         ],
         _HomeStatus(controller: controller),
         const SizedBox(height: 22),
@@ -453,10 +570,8 @@ class _HomeStatus extends StatelessWidget {
           children: [
             StatusLine(
               icon: Icons.layers_outlined,
-              title: '先打开悬浮窗，才会看到来访',
-              detail: controller.snapshot.activated
-                  ? '安卓要把桌宠贴在别的应用上面。打开后回到这里，它会自己出来。'
-                  : '安卓要把桌宠贴在别的应用上面。打开后回到这里，它会自己出来；过几秒会有一只来串门。',
+              title: '允许桌宠显示在其他应用上',
+              detail: '允许悬浮窗后返回，桌宠会自动出现。',
               color: _coral,
             ),
             const SizedBox(height: 14),
@@ -481,9 +596,7 @@ class _HomeStatus extends StatelessWidget {
             StatusLine(
               icon: Icons.bedtime_outlined,
               title: '桌宠还在等你',
-              detail: controller.snapshot.activated
-                  ? '启动后会待在屏幕边角。点它打开菜单，也可以从这里发给搭子。'
-                  : '启动后会待在屏幕边角。点一下就能叫人来串门。',
+              detail: '启动后，轻点桌宠打开菜单。',
               color: _brand,
             ),
             const SizedBox(height: 14),
@@ -504,12 +617,10 @@ class _HomeStatus extends StatelessWidget {
     final trial = !snapshot.activated && controller.liveTrialSeconds > 0;
     final trialVisits = trial && snapshot.trialVisitsEnabled;
     final detail = snapshot.hidden
-        ? '桌宠仍在后台运行，随时可以恢复显示。'
+        ? '已隐藏，可随时恢复。'
         : snapshot.clickThrough
-        ? '当前触摸会直接交给桌宠下方的应用。'
-        : trialVisits
-        ? '点桌宠打开菜单，或从这里叫女友、好友、搭子来串门。'
-        : '点桌宠打开菜单，或直接把当前形象发给搭子。';
+        ? '触摸会穿过桌宠。'
+        : '轻点打开菜单，拖动换位置。';
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -528,12 +639,16 @@ class _HomeStatus extends StatelessWidget {
               width: double.infinity,
               child: FilledButton.icon(
                 onPressed: () => trialVisits
-                    ? playTrialVisit(context, controller, 'trialVisitGirlfriend')
+                    ? playTrialVisit(
+                        context,
+                        controller,
+                        'trialVisitGirlfriend',
+                      )
                     : sendHomeGif(context, controller),
                 icon: Icon(
                   trialVisits ? Icons.favorite_outline : Icons.send_outlined,
                 ),
-                label: Text(trialVisits ? '女友来访' : '发给搭子'),
+                label: Text(trialVisits ? '女友来访·演示' : '发给搭子'),
               ),
             ),
             const SizedBox(height: 9),
@@ -541,11 +656,13 @@ class _HomeStatus extends StatelessWidget {
           AdaptiveActionRow(
             children: [
               OutlinedButton.icon(
-                onPressed: () => runAction(
-                  context,
-                  controller.service(inactiveTouch ? 'show' : 'clickThrough'),
-                  (_) => '',
-                ),
+                onPressed: controller.busy
+                    ? null
+                    : () => runRecoveryAction(
+                        context,
+                        controller,
+                        inactiveTouch ? 'show' : 'clickThrough',
+                      ),
                 icon: Icon(
                   inactiveTouch
                       ? Icons.visibility_outlined
@@ -557,10 +674,10 @@ class _HomeStatus extends StatelessWidget {
                 onPressed: () => runAction(
                   context,
                   controller.service('stop'),
-                  (_) => '桌宠已暂停',
+                  (_) => '已完全退出桌宠，提醒和来访暂停接收',
                 ),
                 icon: const Icon(Icons.stop_circle_outlined),
-                label: const Text('暂停'),
+                label: const Text('完全退出'),
               ),
             ],
           ),
@@ -580,7 +697,7 @@ class PetPage extends StatelessWidget {
     return PageScroll(
       onRefresh: controller.refresh,
       children: [
-        const PageIntro(title: '桌宠', subtitle: '选择形象，调整悬浮显示与自动行为。'),
+        const PageIntro(title: '桌宠', subtitle: '选一只喜欢的，陪在屏幕边角。'),
         PetStage(snapshot: snapshot, gif: controller.petGif, height: 180),
         const SizedBox(height: 12),
         Panel(
@@ -654,7 +771,7 @@ class PetPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
-        const SectionTitle(label: '图鉴目录'),
+        const SectionTitle(label: '桌宠图鉴'),
         const SizedBox(height: 8),
         LibraryPanel(controller: controller),
         const SizedBox(height: 22),
@@ -760,35 +877,29 @@ class InteractionPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final snapshot = controller.snapshot;
-    final canInteract = snapshot.running && snapshot.premium;
-    final interactionStatus = !snapshot.running
-        ? '先启动桌宠，互动会显示在桌宠旁边。'
-        : !snapshot.premium
-        ? '体验或正式激活后可使用随机互动。'
-        : '桌宠已准备好，也会按设定的频率主动出现。';
+    final canInteract =
+        snapshot.premium &&
+        !controller.busy &&
+        !snapshot.interactionBusy &&
+        !snapshot.theaterActive;
     return PageScroll(
       onRefresh: controller.refresh,
       children: [
-        const PageIntro(title: '互动', subtitle: '随机带来心情问候、笑话、趣味内容和关怀。'),
-        Panel(
-          color: canInteract ? _mint : _coralSoft,
-          child: Row(
-            children: [
-              Icon(
-                canInteract ? Icons.forum_outlined : Icons.info_outline,
-                color: canInteract ? _brand : _coral,
-                size: 27,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  interactionStatus,
-                  style: Theme.of(context).textTheme.bodyLarge,
-                ),
-              ),
-            ],
+        const PageIntro(title: '互动', subtitle: '聊心情、听笑话、看小剧场。'),
+        if (snapshot.interactionBusy || snapshot.theaterActive) ...[
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: controller.busy
+                ? null
+                : () => runAction(
+                    context,
+                    controller.service('endScene'),
+                    (_) => '',
+                  ),
+            icon: const Icon(Icons.stop_circle_outlined),
+            label: Text(snapshot.theaterActive ? '结束演出' : '结束互动'),
           ),
-        ),
+        ],
         const SizedBox(height: 22),
         const SectionTitle(label: '立即互动'),
         const SizedBox(height: 8),
@@ -809,8 +920,6 @@ class InteractionPage extends StatelessWidget {
                           '随机来一个',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
-                        const SizedBox(height: 4),
-                        const Text('桌宠会随机选择问候、笑话、趣味题、小贴士或关怀内容。'),
                       ],
                     ),
                   ),
@@ -824,13 +933,13 @@ class InteractionPage extends StatelessWidget {
                       ? () => runAction(
                           context,
                           controller.service('interact'),
-                          (_) => '互动已经出现在桌宠旁边',
+                          (_) => '',
                         )
                       : null,
                   icon: const Icon(Icons.auto_awesome_outlined),
                   label: Text(
                     !snapshot.running
-                        ? '先启动桌宠'
+                        ? '启动并互动'
                         : snapshot.premium
                         ? '开始随机互动'
                         : '体验或激活后可用',
@@ -841,44 +950,10 @@ class InteractionPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
-        const SectionTitle(label: '线上趣味内容'),
-        const SizedBox(height: 8),
         Panel(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Icon(
-                    snapshot.interactionOnlineCount > 0
-                        ? Icons.cloud_done_outlined
-                        : Icons.storage_outlined,
-                    color: _brand,
-                    size: 26,
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${snapshot.interactionCachedCount} 条可用内容',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          snapshot.interactionOnlineCount > 0
-                              ? '${snapshot.interactionOnlineCount} 条来自线上 · 目录 v${snapshot.interactionCatalogVersion}'
-                              : snapshot.interactionSyncError.isNotEmpty
-                              ? '同步失败：${snapshot.interactionSyncError}'
-                              : '当前使用随包内容，联网刷新后会补充新内容。',
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 15),
               const Wrap(
                 spacing: 14,
                 runSpacing: 10,
@@ -909,22 +984,31 @@ class InteractionPage extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 15),
-              OutlinedButton.icon(
+              if (snapshot.interactionSyncError.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                const Text('暂时无法更新，已有内容仍可使用。'),
+              ],
+              const SizedBox(height: 10),
+              TextButton.icon(
                 onPressed: snapshot.premium
                     ? () => runAction(
                         context,
                         controller.syncInteractions(),
-                        (_) =>
-                            '${controller.snapshot.interactionCachedCount} 条内容可用',
+                        (_) => '已更新',
                       )
                     : null,
                 icon: const Icon(Icons.sync),
-                label: const Text('刷新线上内容'),
+                label: const Text('换一批内容'),
               ),
             ],
           ),
         ),
+        const SizedBox(height: 22),
+        const SectionTitle(label: '小剧场'),
+        const SizedBox(height: 8),
+        TheaterPanel(controller: controller),
+        const SizedBox(height: 22),
+        QuietControls(controller: controller),
         const SizedBox(height: 22),
         const SectionTitle(label: '自动出现'),
         const SizedBox(height: 8),
@@ -934,9 +1018,7 @@ class InteractionPage extends StatelessWidget {
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('允许桌宠主动互动'),
-                subtitle: Text(
-                  snapshot.premium ? '按下面的频率随机发起一次互动' : '体验或正式激活后可开启',
-                ),
+                subtitle: Text(snapshot.premium ? '关闭后仍可手动玩' : '体验或激活后可开启'),
                 value: snapshot.interactions,
                 onChanged: snapshot.premium
                     ? (value) =>
@@ -969,8 +1051,8 @@ class InteractionPage extends StatelessWidget {
                 : null,
             isExpanded: true,
             decoration: const InputDecoration(
-              labelText: '互动词包',
-              helperText: '用于拖动、换宠和普通气泡台词。',
+              labelText: '选择台词',
+              helperText: '改变拖动、换宠时说的话。',
             ),
             items: snapshot.wordPacks
                 .map(
@@ -990,10 +1072,6 @@ class InteractionPage extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 22),
-        const SectionTitle(label: '小剧场'),
-        const SizedBox(height: 8),
-        TheaterPanel(controller: controller),
-        const SizedBox(height: 22),
         const SectionTitle(label: '提醒'),
         const SizedBox(height: 8),
         ReminderPanel(controller: controller),
@@ -1003,8 +1081,9 @@ class InteractionPage extends StatelessWidget {
 }
 
 class CompanionPage extends StatefulWidget {
-  const CompanionPage({required this.controller, super.key});
+  const CompanionPage({required this.controller, this.onActivate, super.key});
   final AppController controller;
+  final VoidCallback? onActivate;
   @override
   State<CompanionPage> createState() => _CompanionPageState();
 }
@@ -1012,14 +1091,13 @@ class CompanionPage extends StatefulWidget {
 class _CompanionPageState extends State<CompanionPage> {
   final _nameController = TextEditingController();
   final _codeController = TextEditingController();
-  final _hallMessageController = TextEditingController();
-  String? _selectedHallId;
+
   bool _requested = false;
   @override
   void dispose() {
     _nameController.dispose();
     _codeController.dispose();
-    _hallMessageController.dispose();
+
     super.dispose();
   }
 
@@ -1030,10 +1108,7 @@ class _CompanionPageState extends State<CompanionPage> {
       final trial = widget.controller.liveTrialSeconds > 0;
       return PageScroll(
         children: [
-          const PageIntro(
-            title: '搭子联机',
-            subtitle: '电脑和手机填同一组激活码后，搭子码是同一对。',
-          ),
+          const PageIntro(title: '搭子联机', subtitle: '同一账号的电脑和手机共用搭子关系。'),
           Panel(
             color: trial ? _mint : _coralSoft,
             child: Column(
@@ -1046,18 +1121,14 @@ class _CompanionPageState extends State<CompanionPage> {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  trial ? '体验期先自己叫人来串门' : '正式激活后可以互发',
+                  trial ? '私人搭子需正式激活' : '激活后可配对搭子',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 5),
-                Text(
-                  trial
-                      ? '点首页或桌宠菜单，模仿女友、好友、搭子来访。想发给对象，激活后换一对码。'
-                      : '激活后即可配对，把当前桌宠发给搭子。这组码也可以填到电脑上。',
-                ),
+                Text(trial ? '体验期可去大厅真实互发，首页来访按钮仅作演示。' : '配对后，就能互发桌宠。'),
                 const SizedBox(height: 14),
                 FilledButton.icon(
-                  onPressed: () => tabToAccount(context),
+                  onPressed: widget.onActivate ?? () => tabToAccount(context),
                   icon: const Icon(Icons.key_outlined),
                   label: Text(trial ? '去看看激活' : '前往激活'),
                 ),
@@ -1085,7 +1156,7 @@ class _CompanionPageState extends State<CompanionPage> {
       final connectionError = widget.controller.companionError;
       return PageScroll(
         children: [
-          const PageIntro(title: '搭子联机', subtitle: '电脑和手机是同一对搭子码，不用重新绑定。'),
+          const PageIntro(title: '搭子联机', subtitle: '电脑和手机共用搭子关系。'),
           Panel(
             child: Column(
               children: [
@@ -1132,24 +1203,12 @@ class _CompanionPageState extends State<CompanionPage> {
       );
     }
     final partner = profile['partner'] as Map?;
-    final hall = widget.controller.companionHall;
-    final hallEnabled = profile['hallEnabled'] == true;
-    final hallPeople = (hall?['people'] as List?)
-            ?.whereType<Map>()
-            .map((item) => Map<String, dynamic>.from(item))
-            .where((item) => item['online'] != false)
-            .toList() ??
-        <Map<String, dynamic>>[];
-    if (_selectedHallId != null &&
-        !hallPeople.any((item) => item['id'] == _selectedHallId)) {
-      _selectedHallId = null;
-    }
     if (_nameController.text.isEmpty) {
       _nameController.text = '${profile['displayName'] ?? ''}';
     }
     return PageScroll(
       children: [
-        const PageIntro(title: '搭子联机', subtitle: '电脑和手机是同一对搭子码，不用重新绑定。'),
+        const PageIntro(title: '搭子联机', subtitle: '电脑和手机共用搭子关系。'),
         const SectionTitle(label: '我的资料'),
         const SizedBox(height: 8),
         Panel(
@@ -1157,10 +1216,10 @@ class _CompanionPageState extends State<CompanionPage> {
             children: [
               TextField(
                 controller: _nameController,
-                maxLength: 20,
+                maxLength: 12,
                 decoration: const InputDecoration(
                   labelText: '搭子昵称',
-                  counterText: '',
+                  helperText: '大厅与搭子共用昵称，最多 12 个字符',
                 ),
               ),
               const SizedBox(height: 9),
@@ -1327,100 +1386,6 @@ class _CompanionPageState extends State<CompanionPage> {
               ],
             ),
           ),
-        if (widget.controller.snapshot.companionHallEnabled) ...[
-        const SizedBox(height: 22),
-        const SectionTitle(label: '桌宠大厅'),
-        const SizedBox(height: 8),
-        Panel(
-          color: hallEnabled ? _mint : _surface,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SwitchListTile.adaptive(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('允许陌生人看到我在线'),
-                subtitle: Text(
-                  hallEnabled ? '开启后，在线用户可以向你发送表情。' : '关闭后，你不会出现在陌生人列表里。',
-                ),
-                value: hallEnabled,
-                onChanged: widget.controller.busy
-                    ? null
-                    : (enabled) => runAction(
-                        context,
-                        widget.controller.setCompanionHall(enabled),
-                        (_) => enabled ? '大厅已开启' : '大厅已关闭',
-                      ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      hallPeople.isEmpty ? '暂时没有在线陌生人' : '在线用户 · ${hallPeople.length}',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: widget.controller.busy
-                        ? null
-                        : () => runAction(
-                            context,
-                            widget.controller.refreshCompanionHall(),
-                            (_) => '大厅已刷新',
-                          ),
-                    icon: const Icon(Icons.refresh),
-                    tooltip: '刷新大厅',
-                  ),
-                ],
-              ),
-              if (hallEnabled && hallPeople.isNotEmpty)
-                ...hallPeople.map(
-                  (person) => RadioListTile<String>(
-                    contentPadding: EdgeInsets.zero,
-                    value: '${person['id']}',
-                    groupValue: _selectedHallId,
-                    onChanged: (value) => setState(() => _selectedHallId = value),
-                    title: Text('${person['displayName'] ?? '桌搭子'}'),
-                    subtitle: const Text('在线，可以收到你的表情'),
-                    secondary: const Icon(Icons.circle, color: _brand, size: 12),
-                  ),
-                ),
-              if (hallEnabled) ...[
-                const SizedBox(height: 6),
-                TextField(
-                  controller: _hallMessageController,
-                  maxLength: 120,
-                  decoration: const InputDecoration(
-                    labelText: '给对方留一句话（可选）',
-                    counterText: '',
-                  ),
-                ),
-                const SizedBox(height: 9),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    onPressed: _selectedHallId == null || widget.controller.busy
-                        ? null
-                        : () => runAction<String>(
-                            context,
-                            widget.controller.sendCompanionHall(
-                              _selectedHallId!,
-                              _hallMessageController.text.trim(),
-                            ),
-                            (recipient) {
-                              _hallMessageController.clear();
-                              return '已发送给 $recipient';
-                            },
-                          ),
-                    icon: const Icon(Icons.send_outlined),
-                    label: const Text('发送当前桌宠'),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-        ],
       ],
     );
   }
@@ -1443,9 +1408,9 @@ class AccountPage extends StatelessWidget {
           title: '我的',
           subtitle: snapshot.activated
               ? (snapshot.deviceCount >= 2
-                  ? '这台也连上了，搭子码和另一台是同一对。'
-                  : '这组码也可以填到另一台电脑或手机。')
-              : '一组码最多填两台。电脑激活后，手机再填同一组码也能进同一个账号。',
+                    ? '这台也连上了，搭子码和另一台是同一对。'
+                    : '这组码也可以填到另一台电脑或手机。')
+              : '一组激活码可绑定两台电脑或手机。',
         ),
         if (snapshot.announcement.isNotEmpty) ...[
           Panel(
@@ -1506,14 +1471,14 @@ class AccountPage extends StatelessWidget {
                   color: Color(0xffeef6f3),
                   border: Color(0xffc7ddd6),
                   titleColor: Color(0xff167d6c),
-                  items: ['桌宠还在角落', '走动、拖动、换一只', '内置图鉴和 3 个自定义 GIF'],
+                  items: ['桌宠还在角落', '走动、拖动、换一只', '内置图鉴；已导入的 GIF 保留'],
                 ),
                 _KeepPauseCard(
                   title: '想接着玩再回来',
                   color: Color(0xfffbf6f1),
                   border: Color(0xffe6d6c6),
                   titleColor: Color(0xff9a6a3a),
-                  items: ['给搭子发 GIF', '小剧场、提醒', '词包和外部图鉴'],
+                  items: ['大厅互动与私密搭子', '小剧场、提醒', '词包和外部图鉴'],
                 ),
               ],
             ),
@@ -1523,7 +1488,10 @@ class AccountPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('已有 6 位激活码', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  '已有 6 位激活码',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 10),
                 FilledButton.icon(
                   onPressed: () => _activateWithPrompt(context),
@@ -1560,12 +1528,16 @@ class AccountPage extends StatelessWidget {
                         width: stacked ? double.infinity : 148,
                         height: stacked ? 168 : 148,
                         fit: BoxFit.contain,
-                        errorBuilder: (_, __, ___) => SizedBox(
+                        errorBuilder: (_, _, _) => SizedBox(
                           width: stacked ? double.infinity : 148,
                           height: stacked ? 168 : 148,
                           child: const ColoredBox(
                             color: _mint,
-                            child: Icon(Icons.qr_code_2, color: _brand, size: 48),
+                            child: Icon(
+                              Icons.qr_code_2,
+                              color: _brand,
+                              size: 48,
+                            ),
                           ),
                         ),
                       ),
@@ -1573,9 +1545,14 @@ class AccountPage extends StatelessWidget {
                     final copy = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。'),
+                        const Text(
+                          '加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。',
+                        ),
                         const SizedBox(height: 10),
-                        const Text('微信号', style: TextStyle(color: _muted, fontSize: 12)),
+                        const Text(
+                          '微信号',
+                          style: TextStyle(color: _muted, fontSize: 12),
+                        ),
                         SelectableText(
                           snapshot.wechatId,
                           style: const TextStyle(
@@ -1693,10 +1670,46 @@ class AccountPage extends StatelessWidget {
             children: [
               InfoRow(label: '当前版本', value: 'Android v${snapshot.version}'),
               const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => tabToCompanion(context),
+                icon: const Icon(Icons.favorite_outline),
+                label: Text(snapshot.activated ? '我的搭子' : '私密搭子 · 激活后可用'),
+              ),
+              OutlinedButton.icon(
+                onPressed: controller.busy
+                    ? null
+                    : () async {
+                        await runAction(
+                          context,
+                          controller.guide(
+                            controller.snapshot.guideStep == 5
+                                ? 'replay'
+                                : 'begin',
+                          ),
+                          (_) => '',
+                        );
+                        if (context.mounted) {
+                          context
+                              .findAncestorStateOfType<_AppShellState>()
+                              ?.selectTab(0);
+                        }
+                      },
+                icon: const Icon(Icons.explore_outlined),
+                label: Text(snapshot.guideStep == 5 ? '重玩新手体验' : '开始 / 继续新手体验'),
+              ),
+              TextButton.icon(
+                onPressed: () => showUsageGuide(context),
+                icon: const Icon(Icons.help_outline),
+                label: const Text('使用手册'),
+              ),
               Text(
                 controller.update.message,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
+              if (controller.update.notes.trim().isNotEmpty) ...[
+                const SizedBox(height: 8),
+                SelectableText(controller.update.notes),
+              ],
               if (controller.update.downloading ||
                   controller.update.downloaded) ...[
                 const SizedBox(height: 12),
@@ -1820,7 +1833,7 @@ class AccountPage extends StatelessWidget {
           content: TextField(
             controller: input,
             autofocus: true,
-            maxLength: 8,
+            maxLength: 6,
             textCapitalization: TextCapitalization.characters,
             decoration: const InputDecoration(hintText: '6 位激活码'),
           ),
@@ -1889,7 +1902,11 @@ class _KeepPauseCard extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: 4),
             child: Text(
               '· $item',
-              style: TextStyle(color: titleColor.withValues(alpha: 0.92), fontSize: 12, height: 1.35),
+              style: TextStyle(
+                color: titleColor.withValues(alpha: 0.92),
+                fontSize: 12,
+                height: 1.35,
+              ),
             ),
           ),
       ],
@@ -1950,8 +1967,8 @@ class LibraryPanel extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             snapshot.premium
-                ? '选择手机里的 GIF 文件夹，目录中的动图都会进入轮换池，最多 3 个目录、每个最多 500 张。'
-                : '体验或正式激活后，可以把相册或文件里的整个 GIF 文件夹当作图鉴。',
+                ? '添加 GIF 文件夹，最多 3 个，每个最多 500 张。'
+                : '体验或激活后可添加 GIF 文件夹。',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           if (libraries.isNotEmpty) ...[
@@ -2015,12 +2032,38 @@ class TheaterPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          const Text('两只桌宠演小故事，无需好友或自备剧本。'),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed:
+                  snapshot.premium &&
+                      !controller.busy &&
+                      !snapshot.theaterActive &&
+                      !snapshot.interactionBusy
+                  ? () => startTheater(context, controller)
+                  : null,
+              icon: const Icon(Icons.theater_comedy_outlined),
+              label: Text(
+                !snapshot.running
+                    ? '启动并看一场'
+                    : snapshot.premium
+                    ? '看一场'
+                    : '体验或激活后可用',
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            scripts.isEmpty ? '内置 3 场小剧场' : '自编剧本 ${scripts.length}/10 · 随机上演',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 12),
           SwitchListTile.adaptive(
             contentPadding: EdgeInsets.zero,
             title: const Text('自动随机上演'),
-            subtitle: Text(
-              snapshot.premium ? '按间隔从剧本池里抽一场' : '体验或正式激活后可开启',
-            ),
+            subtitle: Text(snapshot.premium ? '按下方间隔上演' : '体验或激活后可开启'),
             value: snapshot.theaterEnabled,
             onChanged: snapshot.premium
                 ? (value) => controller.setSetting(settingTheaterEnabled, value)
@@ -2041,68 +2084,59 @@ class TheaterPanel extends StatelessWidget {
             onChanged: (value) =>
                 controller.setSetting(settingTheaterInterval, int.parse(value)),
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: FilledButton.icon(
-              onPressed: snapshot.premium
-                  ? () => startTheater(context, controller)
-                  : null,
-              icon: const Icon(Icons.theater_comedy_outlined),
-              label: Text(
-                !snapshot.running
-                    ? '先启动桌宠再演'
-                    : snapshot.premium
-                    ? '立即上演'
-                    : '体验或激活后可用',
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            scripts.isEmpty
-                ? '还没有导入剧本，先用内置的三场小剧场。'
-                : '已导入 ${scripts.length}/10 个剧本 · 每次演出随机抽取',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          if (scripts.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            for (final script in scripts)
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: Text(script.name),
-                subtitle: Text('${script.sceneCount} 轮对白'),
-                trailing: IconButton(
-                  tooltip: '删除剧本',
-                  onPressed: snapshot.premium
-                      ? () => runAction(
-                          context,
-                          controller.deleteTheaterScript(script.id),
-                          (_) => '剧本已删除',
-                        )
-                      : null,
-                  icon: const Icon(Icons.delete_outline, color: _coral),
-                ),
-              ),
-          ],
-          const SizedBox(height: 8),
-          AdaptiveActionRow(
+          const Divider(height: 20),
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('自定义剧本'),
+            subtitle: const Text('导入自己的双人对白'),
             children: [
-              OutlinedButton.icon(
-                onPressed: snapshot.premium
-                    ? () => runAction(
-                        context,
-                        controller.importTheaterScript(),
-                        (_) => '剧本已导入',
-                      )
-                    : null,
-                icon: const Icon(Icons.file_upload_outlined),
-                label: const Text('导入剧本'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () => showTheaterGuide(context),
-                icon: const Icon(Icons.help_outline),
-                label: const Text('格式说明'),
+              if (scripts.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                for (final script in scripts)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(script.name),
+                    subtitle: Text('${script.sceneCount} 轮对白'),
+                    trailing: IconButton(
+                      tooltip: '删除剧本',
+                      onPressed: snapshot.premium
+                          ? () => runAction(
+                              context,
+                              controller.deleteTheaterScript(script.id),
+                              (_) => '剧本已删除',
+                            )
+                          : null,
+                      icon: const Icon(Icons.delete_outline, color: _coral),
+                    ),
+                  ),
+              ],
+              const SizedBox(height: 8),
+              AdaptiveActionRow(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed:
+                        snapshot.premium &&
+                            scripts.length < 10 &&
+                            !controller.busy
+                        ? () => runAction(
+                            context,
+                            controller.importTheaterScript(),
+                            (_) => '剧本已导入',
+                          )
+                        : null,
+                    icon: const Icon(Icons.file_upload_outlined),
+                    label: Text(
+                      scripts.length >= 10
+                          ? '剧本已满 10/10'
+                          : '导入剧本 · ${scripts.length}/10',
+                    ),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () => showTheaterGuide(context),
+                    icon: const Icon(Icons.help_outline),
+                    label: const Text('格式说明'),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2129,18 +2163,21 @@ class ReminderPanel extends StatelessWidget {
                 ? '体验或正式激活后，桌宠会在设定时间提醒你。'
                 : reminders.isEmpty
                 ? '暂无提醒'
-                : '共 ${reminders.length} 个提醒',
+                : '已保存 ${reminders.length}/20 个提醒',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 12),
+          const Text('需保持后台运行；提醒可能延后，不能替代精确闹钟。'),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: FilledButton.icon(
-              onPressed: snapshot.premium
+              onPressed:
+                  snapshot.premium && reminders.length < 20 && !controller.busy
                   ? () => editReminder(context, controller)
                   : null,
               icon: const Icon(Icons.add_alert_outlined),
-              label: const Text('新建提醒'),
+              label: Text(reminders.length >= 20 ? '提醒已满 20/20' : '新建提醒'),
             ),
           ),
           if (reminders.isNotEmpty) ...[
@@ -2162,7 +2199,8 @@ class ReminderPanel extends StatelessWidget {
                 ),
                 trailing: const Icon(Icons.chevron_right, color: _muted),
                 onTap: snapshot.premium
-                    ? () => editReminder(context, controller, reminder: reminder)
+                    ? () =>
+                          editReminder(context, controller, reminder: reminder)
                     : null,
               ),
           ],
@@ -2180,7 +2218,12 @@ class PageScroll extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 360;
     final list = ListView(
-      padding: EdgeInsets.fromLTRB(compact ? 14 : 20, 10, compact ? 14 : 20, 26),
+      padding: EdgeInsets.fromLTRB(
+        compact ? 14 : 20,
+        10,
+        compact ? 14 : 20,
+        26,
+      ),
       children: children,
     );
     return onRefresh == null
@@ -2293,7 +2336,10 @@ class AdaptiveActionRow extends StatelessWidget {
     if (children.length > 3 && width < 560) {
       final rows = <Widget>[];
       for (var i = 0; i < children.length; i += 2) {
-        final pair = children.sublist(i, i + 2 > children.length ? children.length : i + 2);
+        final pair = children.sublist(
+          i,
+          i + 2 > children.length ? children.length : i + 2,
+        );
         rows.add(
           Row(
             children: [
@@ -2855,68 +2901,68 @@ Future<void> showPetPicker(
                       mainAxisSpacing: 10,
                       childAspectRatio: columns == 1 ? 3.1 : 1.55,
                     ),
-                itemCount: controller.snapshot.pets.length,
-                itemBuilder: (context, index) {
-                  final pet = controller.snapshot.pets[index];
-                  final selected = pet.id == controller.snapshot.activePet;
-                  return InkWell(
-                    onTap: () async {
-                      await runAction(
-                        context,
-                        controller.setSetting(settingActivePet, pet.id),
-                        (_) => '',
-                      );
-                      if (context.mounted) Navigator.pop(context);
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: selected ? _mint : _surface,
-                        border: Border.all(
-                          color: selected ? _brand : _line,
-                          width: selected ? 1.5 : 1,
-                        ),
+                    itemCount: controller.snapshot.pets.length,
+                    itemBuilder: (context, index) {
+                      final pet = controller.snapshot.pets[index];
+                      final selected = pet.id == controller.snapshot.activePet;
+                      return InkWell(
+                        onTap: () async {
+                          await runAction(
+                            context,
+                            controller.setSetting(settingActivePet, pet.id),
+                            (_) => '',
+                          );
+                          if (context.mounted) Navigator.pop(context);
+                        },
                         borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          FutureBuilder<Uint8List?>(
-                            future: controller.gifFor(pet.id),
-                            builder: (context, shot) => SizedBox(
-                              width: 57,
-                              height: 57,
-                              child: shot.data == null
-                                  ? const Icon(Icons.pets, color: _brand)
-                                  : Image.memory(
-                                      shot.data!,
-                                      fit: BoxFit.contain,
-                                    ),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: selected ? _mint : _surface,
+                            border: Border.all(
+                              color: selected ? _brand : _line,
+                              width: selected ? 1.5 : 1,
                             ),
+                            borderRadius: BorderRadius.circular(8),
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              pet.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: selected ? _brandDark : _ink,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 13,
+                          child: Row(
+                            children: [
+                              FutureBuilder<Uint8List?>(
+                                future: controller.gifFor(pet.id),
+                                builder: (context, shot) => SizedBox(
+                                  width: 57,
+                                  height: 57,
+                                  child: shot.data == null
+                                      ? const Icon(Icons.pets, color: _brand)
+                                      : Image.memory(
+                                          shot.data!,
+                                          fit: BoxFit.contain,
+                                        ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  pet.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: selected ? _brandDark : _ink,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
+                              if (selected)
+                                const Icon(
+                                  Icons.check_circle,
+                                  color: _brand,
+                                  size: 18,
+                                ),
+                            ],
                           ),
-                          if (selected)
-                            const Icon(
-                              Icons.check_circle,
-                              color: _brand,
-                              size: 18,
-                            ),
-                        ],
-                      ),
-                    ),
-                  );
+                        ),
+                      );
                     },
                   );
                 },
@@ -2941,39 +2987,36 @@ void tabToAccount(BuildContext context) {
 
 void tabToCompanion(BuildContext context) {
   final shell = context.findAncestorStateOfType<_AppShellState>();
-  shell?.selectTab(3);
+  if (shell == null) return;
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (context) => Scaffold(
+        appBar: AppBar(title: const Text('我的搭子')),
+        body: SafeArea(
+          child: AnimatedBuilder(
+            animation: shell._controller,
+            builder: (context, _) => CompanionPage(
+              controller: shell._controller,
+              onActivate: () {
+                Navigator.of(context).pop();
+                shell.selectTab(4);
+              },
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
 }
 
 Future<void> startTheater(
   BuildContext context,
   AppController controller,
 ) async {
-  final snapshot = controller.snapshot;
-  if (!snapshot.overlayAllowed) {
-    await runAction(
-      context,
-      controller.requestOverlayPermission(),
-      (_) => '打开悬浮窗后回来，就能上演小剧场',
-    );
-    return;
-  }
-  if (!snapshot.running) {
-    await runAction(context, controller.service('start'), (_) => '');
-    if (!controller.snapshot.running) return;
-  }
-  if (!controller.snapshot.premium) {
-    if (context.mounted) tabToAccount(context);
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('小剧场需要体验或正式激活')),
-      );
-    }
-    return;
-  }
   await runAction(
     context,
     controller.service('theater'),
-    (_) => '小剧场已经开演',
+    (_) => '小剧场已经开始，桌宠旁边可以看到搭档',
   );
 }
 
@@ -2991,9 +3034,7 @@ Future<void> showTheaterGuide(BuildContext context) async {
           children: [
             Text('小剧场剧本格式', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
-            const Text(
-              '每个 JSON 剧本包含 3–5 轮双人对白。导入后每次演出会从剧本池随机抽取。',
-            ),
+            const Text('每个 JSON 剧本包含 3–5 轮双人对白。导入后每次演出会从剧本池随机抽取。'),
             const SizedBox(height: 12),
             const SelectableText(
               '{"name":"周一摸鱼大会","scenes":[\n'
@@ -3001,7 +3042,11 @@ Future<void> showTheaterGuide(BuildContext context) async {
               '  {"main":"要是临时又来需求呢？","companion":"先深呼吸，再把优先级问清楚。"},\n'
               '  {"main":"计划听起来很稳。","companion":"最后记得保存文件，我们撤！"}\n'
               ']}',
-              style: TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.4),
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                height: 1.4,
+              ),
             ),
             const SizedBox(height: 12),
             const Text('也兼容 actorA / actorB 字段。每句最多 60 个字符。'),
@@ -3050,7 +3095,8 @@ Future<void> editReminder(
   var repeatDaily = reminder?.repeatDaily ?? false;
   var emotion = reminder?.emotion ?? 'happy';
   var expressionPetId = reminder?.expressionPetId ?? '';
-  var at = reminder?.localTime ?? DateTime.now().add(const Duration(minutes: 10));
+  var at =
+      reminder?.localTime ?? DateTime.now().add(const Duration(minutes: 10));
   final message = TextEditingController(text: reminder?.message ?? '休息一下吧');
   final saved = await showModalBottomSheet<bool>(
     context: context,
@@ -3089,7 +3135,9 @@ Future<void> editReminder(
                       final date = await showDatePicker(
                         context: context,
                         initialDate: at,
-                        firstDate: DateTime.now().subtract(const Duration(days: 1)),
+                        firstDate: DateTime.now().subtract(
+                          const Duration(days: 1),
+                        ),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (date == null || !context.mounted) return;
@@ -3099,12 +3147,20 @@ Future<void> editReminder(
                       );
                       if (time == null) return;
                       setModalState(() {
-                        at = DateTime(date.year, date.month, date.day, time.hour, time.minute);
+                        at = DateTime(
+                          date.year,
+                          date.month,
+                          date.day,
+                          time.hour,
+                          time.minute,
+                        );
                       });
                     },
                   ),
                   DropdownButtonFormField<String>(
-                    initialValue: _emotionLabels.containsKey(emotion) ? emotion : 'happy',
+                    initialValue: _emotionLabels.containsKey(emotion)
+                        ? emotion
+                        : 'happy',
                     decoration: const InputDecoration(labelText: '情绪'),
                     items: _emotionLabels.entries
                         .map(
@@ -3144,7 +3200,8 @@ Future<void> editReminder(
                     contentPadding: EdgeInsets.zero,
                     title: const Text('每天重复'),
                     value: repeatDaily,
-                    onChanged: (value) => setModalState(() => repeatDaily = value),
+                    onChanged: (value) =>
+                        setModalState(() => repeatDaily = value),
                   ),
                   const SizedBox(height: 8),
                   AdaptiveActionRow(
@@ -3173,8 +3230,20 @@ Future<void> editReminder(
     return;
   }
   if (saved == false && reminder != null) {
-    await runAction(context, controller.deleteReminder(reminder.id), (_) => '提醒已删除');
+    await runAction(
+      context,
+      controller.deleteReminder(reminder.id),
+      (_) => '提醒已删除',
+    );
   } else if (saved == true) {
+    if (!await explainNotificationUse(context, controller, reminder: true)) {
+      message.dispose();
+      return;
+    }
+    if (!context.mounted) {
+      message.dispose();
+      return;
+    }
     await runAction(
       context,
       controller.saveReminder(
@@ -3208,19 +3277,12 @@ Future<void> playTrialVisit(
   }
   if (!snapshot.running) {
     await runAction(context, controller.service('start'), (_) => '');
-    if (!controller.snapshot.running) return;
+    if (!context.mounted || !controller.snapshot.running) return;
   }
-  await runAction(
-    context,
-    controller.service(action),
-    (_) => '来访正在过来',
-  );
+  await runAction(context, controller.service(action), (_) => '来访正在过来');
 }
 
-Future<void> sendHomeGif(
-  BuildContext context,
-  AppController controller,
-) async {
+Future<void> sendHomeGif(BuildContext context, AppController controller) async {
   final snapshot = controller.snapshot;
   if (!snapshot.overlayAllowed) {
     await runAction(
@@ -3232,14 +3294,13 @@ Future<void> sendHomeGif(
   }
   if (!snapshot.running) {
     await runAction(context, controller.service('start'), (_) => '');
-    if (!controller.snapshot.running) return;
+    if (!context.mounted || !controller.snapshot.running) return;
   }
   if (!controller.snapshot.activated) {
     if (context.mounted) tabToCompanion(context);
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('发给搭子需要正式激活，先看看怎么配对')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('发给搭子需要正式激活，先看看怎么配对')));
     }
     return;
   }

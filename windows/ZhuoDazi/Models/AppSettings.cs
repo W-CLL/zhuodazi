@@ -1,9 +1,16 @@
+using System.IO;
 using System.Text.Json.Serialization;
 
 namespace ZhuoDazi.Models;
 
 public sealed class AppSettings
 {
+    [JsonPropertyName("onboarding")]
+    public OnboardingProgress Onboarding { get; set; } = new();
+
+    [JsonPropertyName("hideRecoveryHintSeen")]
+    public bool HideRecoveryHintSeen { get; set; }
+
     [JsonPropertyName("pets")]
     public List<PetDefinition> Pets { get; set; } = [];
 
@@ -39,6 +46,15 @@ public sealed class AppSettings
 
     [JsonPropertyName("randomInteractionsEnabled")]
     public bool RandomInteractionsEnabled { get; set; } = true;
+
+    [JsonPropertyName("dailySpeechEnabled")]
+    public bool DailySpeechEnabled { get; set; } = true;
+
+    [JsonPropertyName("quietUntilUtc")]
+    public DateTimeOffset? QuietUntilUtc { get; set; }
+
+    [JsonPropertyName("selectedLibraryPetPath")]
+    public string? SelectedLibraryPetPath { get; set; }
 
     [JsonPropertyName("interactionMode")]
     public string InteractionMode { get; set; } = "standard";
@@ -108,6 +124,8 @@ public sealed class AppSettings
 
     public void Normalize()
     {
+        Onboarding ??= new();
+        Onboarding.Normalize();
         Pets = (Pets ?? []).Where(item => !string.IsNullOrWhiteSpace(item.Id)
             && !string.IsNullOrWhiteSpace(item.Path) && File.Exists(item.Path)).Take(3).ToList();
         Size = Math.Clamp(Size, 140, 300);
@@ -125,7 +143,7 @@ public sealed class AppSettings
         NormalizeLibraries();
         NormalizeInteractionWordPacks();
         Reminders = (Reminders ?? []).Take(20).ToList();
-        if (!Pets.Any(item => item.Id == ActivePetId)) ActivePetId = Pets.FirstOrDefault()?.Id;
+        if (ActivePetId is not null && !Pets.Any(item => item.Id == ActivePetId)) ActivePetId = Pets.FirstOrDefault()?.Id;
     }
 
     private void NormalizeLibraries()

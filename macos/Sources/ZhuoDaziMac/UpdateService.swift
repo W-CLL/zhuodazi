@@ -73,7 +73,10 @@ final class UpdateService {
             var request = URLRequest(url: components.url!)
             request.timeoutInterval = 25
             request.setValue("application/json", forHTTPHeaderField: "Accept")
-            try licenses.authorize(&request)
+            request.setValue(AppVersion.current, forHTTPHeaderField: "X-DeskPet-Version")
+            request.setValue("macos", forHTTPHeaderField: "X-DeskPet-Platform")
+            request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+            if licenses.hasPremiumAccess { try licenses.authorize(&request) }
 
             let (data, response) = try await URLSession.shared.data(for: request)
             guard data.count <= 512 * 1024, let http = response as? HTTPURLResponse else {
@@ -109,7 +112,7 @@ final class UpdateService {
         do {
             var request = URLRequest(url: manifest.url)
             request.timeoutInterval = 10 * 60
-            try licenses.authorize(&request)
+            if licenses.hasPremiumAccess { try licenses.authorize(&request) }
             let destination = try archiveURL(version: manifest.version)
             let delegate = UpdateDownloadDelegate(destination: destination) { [weak self] progress in
                 DispatchQueue.main.async {

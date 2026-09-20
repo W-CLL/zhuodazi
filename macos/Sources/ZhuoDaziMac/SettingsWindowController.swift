@@ -36,6 +36,10 @@ final class SettingsWindowController: NSWindowController {
     private let feedbackService: FeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private let openCompanion: () -> Void
+    private let openHall: () -> Void
+    private let showUsageGuide: () -> Void
+    private let openExperienceGuide: () -> Void
+    private let experienceGuideButton = NSButton(title: "开始体验", target: nil, action: nil)
     private let openFakeAd: () -> Void
     private let announcementLabel = NSTextField(wrappingLabelWithString: "")
     private let fishModeButton = NSButton(title: "打开摸鱼广告", target: nil, action: nil)
@@ -53,7 +57,10 @@ final class SettingsWindowController: NSWindowController {
     private let personalityPopup = NSPopUpButton()
     private let mouseCheckbox = NSButton(checkboxWithTitle: "跟随与躲避鼠标", target: nil, action: nil)
     private let movementCheckbox = NSButton(checkboxWithTitle: "自动随机走动", target: nil, action: nil)
-    private let randomInteractionCheckbox = NSButton(checkboxWithTitle: "允许桌搭子随机发起互动", target: nil, action: nil)
+    private let randomInteractionCheckbox = NSButton(checkboxWithTitle: "让桌搭子主动找我玩", target: nil, action: nil)
+    private let dailySpeechCheckbox = NSButton(checkboxWithTitle: "日常气泡（自动移动与换宠时说话）", target: nil, action: nil)
+    private let quietButton = NSButton(title: "暂停打扰 1 小时", target: nil, action: nil)
+    private let quietLabel = NSTextField(labelWithString: "")
     private let interactionModePopup = NSPopUpButton()
     private let theaterCheckbox = NSButton(checkboxWithTitle: "自动随机上演小剧场", target: nil, action: nil)
     private let theaterIntervalPopup = NSPopUpButton()
@@ -75,8 +82,8 @@ final class SettingsWindowController: NSWindowController {
     private let scriptsPopup = NSPopUpButton()
     private let scriptDetail = NSTextField(labelWithString: "")
     private let interactionStatusLabel = NSTextField(wrappingLabelWithString: "")
-    private let syncInteractionButton = NSButton(title: "在线补充", target: nil, action: nil)
-    private let downloadInteractionButton = NSButton(title: "下载离线包", target: nil, action: nil)
+    private let syncInteractionButton = NSButton(title: "找点新乐趣", target: nil, action: nil)
+    private let downloadInteractionButton = NSButton(title: "留些乐趣离线玩", target: nil, action: nil)
     private let companionButton = NSButton(title: "", target: nil, action: nil)
     private let companionStatusIcon = NSImageView()
     private let companionStatusLabel = NSTextField(labelWithString: "")
@@ -84,14 +91,13 @@ final class SettingsWindowController: NSWindowController {
     private let remindersPopup = NSPopUpButton()
     private let reminderDatePicker = NSDatePicker()
     private let reminderMessage = NSTextField(string: "休息一下吧")
-    private let reminderEmotionPopup = NSPopUpButton()
     private let reminderExpressionPath = NSTextField(string: "")
     private let reminderEnabledCheckbox = NSButton(checkboxWithTitle: "启用提醒", target: nil, action: nil)
     private let reminderDailyCheckbox = NSButton(checkboxWithTitle: "每天重复", target: nil, action: nil)
 
     private let feedbackQuotaLabel = NSTextField(labelWithString: "正在获取当前设备的反馈记录…")
     private let feedbackHistoryPopup = NSPopUpButton()
-    private let feedbackDetail = NSTextField(wrappingLabelWithString: "")
+    private let feedbackDetail = NSTextView()
     private let feedbackTypePopup = NSPopUpButton()
     private let feedbackTitle = NSTextField(string: "")
     private let feedbackContent = NSTextView()
@@ -101,6 +107,11 @@ final class SettingsWindowController: NSWindowController {
     private let autoUpdateCheckbox = NSButton(checkboxWithTitle: "自动检查更新", target: nil, action: nil)
     private let activationLabel = NSTextField(labelWithString: "")
     private let updateLabel = NSTextField(labelWithString: "")
+    private let releaseNotes = NSTextView()
+    private let hallButton = NSButton(title: "打开桌宠大厅", target: nil, action: nil)
+    private let hallAccessLabel = NSTextField(wrappingLabelWithString: "")
+    private let currentPetLabel = NSTextField(wrappingLabelWithString: "")
+    private let currentPetPreview = NSImageView()
     private let updateProgress = NSProgressIndicator()
     private let checkUpdateButton = NSButton(title: "检查更新", target: nil, action: nil)
     private let downloadUpdateButton = NSButton(title: "下载更新", target: nil, action: nil)
@@ -111,7 +122,6 @@ final class SettingsWindowController: NSWindowController {
     private let interactionModes = ["quiet", "standard", "lively"]
     private let theaterIntervals = [60, 180, 300, 600, 1800]
     private let randomIntervals = [30, 60, 300, 600, 1800]
-    private let emotionValues = ["happy", "cheer", "shy", "surprised", "angry", "confused", "sad", "sleepy", "calm"]
     init(
         petController: PetWindowController,
         licenses: LicenseService,
@@ -119,6 +129,9 @@ final class SettingsWindowController: NSWindowController {
         remoteConfig: @escaping () -> RemoteConfig,
         dockVisibilityChanged: @escaping (Bool) -> Void,
         openCompanion: @escaping () -> Void,
+        openHall: @escaping () -> Void,
+        showUsageGuide: @escaping () -> Void,
+        openExperienceGuide: @escaping () -> Void,
         openFakeAd: @escaping () -> Void
     ) {
         self.petController = petController
@@ -128,6 +141,9 @@ final class SettingsWindowController: NSWindowController {
         self.feedbackService = FeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
+        self.openHall = openHall
+        self.showUsageGuide = showUsageGuide
+        self.openExperienceGuide = openExperienceGuide
         self.openFakeAd = openFakeAd
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
@@ -135,7 +151,7 @@ final class SettingsWindowController: NSWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "桌搭子设置"
+        window.title = "桌搭子 · 陪伴设置"
         window.isReleasedWhenClosed = false
         window.minSize = NSSize(width: 820, height: 620)
         window.toolbarStyle = .preference
@@ -167,6 +183,7 @@ final class SettingsWindowController: NSWindowController {
         tabs.addChild(buildLibrariesPage())
         tabs.addChild(buildContentPage())
         tabs.addChild(buildCompanionPage())
+        tabs.addChild(buildHallPage())
         tabs.addChild(buildRemindersPage())
         tabs.addChild(buildFeedbackPage())
         tabs.addChild(buildUpdatePage())
@@ -174,8 +191,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildCompanionPage() -> NSViewController {
-        let (page, stack) = makePage("搭子联机")
-        addTitle("搭子联机", to: stack)
+        let (page, stack) = makePage("私人搭子")
+        addTitle("私人搭子", to: stack)
         companionStatusIcon.image = NSImage(systemSymbolName: "person.2.fill", accessibilityDescription: "搭子联机状态")
         companionStatusIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         companionStatusLabel.font = .systemFont(ofSize: 14, weight: .medium)
@@ -192,9 +209,29 @@ final class SettingsWindowController: NSWindowController {
         return page
     }
 
+    private func buildHallPage() -> NSViewController {
+        let (page, stack) = makePage("桌宠大厅")
+        addTitle("桌宠大厅", to: stack)
+        stack.addArrangedSubview(hint("体验期间和正式激活后都可加入大厅，向在线用户发送当前 GIF 和一句留言。"))
+        stack.addArrangedSubview(hint("只有你主动加入后，昵称与在线状态才会公开。退出大厅不会解除私人搭子绑定。"))
+        hallAccessLabel.maximumNumberOfLines = 0
+        hallAccessLabel.textColor = .secondaryLabelColor
+        stack.addArrangedSubview(hallAccessLabel)
+        hallButton.target = self
+        hallButton.action = #selector(openHallAction)
+        hallButton.controlSize = .large
+        hallButton.bezelStyle = .rounded
+        stack.addArrangedSubview(hallButton)
+        return page
+    }
+
     private func buildBehaviorPage() -> NSViewController {
-        let (page, stack) = makePage("外观与行为")
-        addTitle("外观与行为", to: stack)
+        let (page, stack) = makePage("陪伴日常")
+        addTitle("把陪伴调成喜欢的样子", to: stack)
+        stack.addArrangedSubview(hint("设置会自动保存。关闭设置后桌宠继续运行；菜单栏中的“退出桌搭子”会完全退出。"))
+        experienceGuideButton.target = self
+        experienceGuideButton.action = #selector(openExperienceGuideAction)
+        stack.addArrangedSubview(buttonRow([experienceGuideButton, NSButton(title: "文字使用指南", target: self, action: #selector(showUsageGuideAction))]))
         announcementLabel.textColor = .systemOrange
         announcementLabel.maximumNumberOfLines = 3
         announcementLabel.widthAnchor.constraint(equalToConstant: 650).isActive = true
@@ -224,21 +261,38 @@ final class SettingsWindowController: NSWindowController {
         interactionModePopup.addItems(withTitles: ["安静（60–120 分钟）", "标准（30–60 分钟）", "活跃（10–30 分钟）"])
         interactionModePopup.target = self
         interactionModePopup.action = #selector(behaviorChanged(_:))
-        let interactNow = NSButton(title: "立即互动", target: self, action: #selector(startRandomInteraction))
+        let interactNow = NSButton(title: "陪我玩一会", target: self, action: #selector(startRandomInteraction))
         stack.addArrangedSubview(randomInteractionCheckbox)
         stack.addArrangedSubview(labeledRow("互动频率", controls: [interactionModePopup, interactNow]))
+        stack.addArrangedSubview(hint("一起聊心情、猜小问题、听笑话；关闭主动互动后，仍可点“陪我玩一会”。“安静”频率只是减少次数，不会关闭日常台词。"))
+        dailySpeechCheckbox.target = self
+        dailySpeechCheckbox.action = #selector(dailySpeechChanged)
+        stack.addArrangedSubview(dailySpeechCheckbox)
+        quietButton.target = self
+        quietButton.action = #selector(toggleQuiet)
+        stack.addArrangedSubview(buttonRow([quietButton, quietLabel]))
+        stack.addArrangedSubview(hint("暂停期间不主动说话、发起互动、自动演剧场或展示来访。提醒与手动操作继续有效；来访会排队等待恢复。"))
         stack.addArrangedSubview(separator())
 
-        for control in [mouseCheckbox, movementCheckbox, theaterCheckbox, alwaysOnTopCheckbox, startupCheckbox, mirrorCheckbox, clickThroughCheckbox, dockCheckbox] {
+        addSection("小剧场 · 先看一场", to: stack)
+        stack.addArrangedSubview(hint("两只小搭子演一段小故事，不需要邀请好友，也不必先准备剧本。看一次不会开启自动上演；想先试试，可点“开始体验”。"))
+        stack.addArrangedSubview(NSButton(title: "看一场小剧场", target: self, action: #selector(startTheater)))
+        theaterCheckbox.target = self
+        theaterCheckbox.action = #selector(behaviorChanged(_:))
+        stack.addArrangedSubview(theaterCheckbox)
+        theaterIntervalPopup.addItems(withTitles: ["每 1 分钟", "每 3 分钟", "每 5 分钟", "每 10 分钟", "每 30 分钟"])
+        theaterIntervalPopup.target = self
+        theaterIntervalPopup.action = #selector(behaviorChanged(_:))
+        stack.addArrangedSubview(labeledRow("自动上演间隔", controls: [theaterIntervalPopup]))
+        stack.addArrangedSubview(NSButton(title: "停止当前剧场或来访", target: self, action: #selector(stopCurrentScene)))
+        stack.addArrangedSubview(hint("想自己写对白，可到“灵感口袋”页的“小剧场 · 自编小故事”导入剧本。也可以直接欣赏内置小故事。"))
+        stack.addArrangedSubview(separator())
+        addSection("桌宠行动与窗口", to: stack)
+        for control in [mouseCheckbox, movementCheckbox, alwaysOnTopCheckbox, startupCheckbox, mirrorCheckbox, clickThroughCheckbox, dockCheckbox] {
             control.target = self
             control.action = #selector(behaviorChanged(_:))
             stack.addArrangedSubview(control)
         }
-        theaterIntervalPopup.addItems(withTitles: ["每 1 分钟", "每 3 分钟", "每 5 分钟", "每 10 分钟", "每 30 分钟"])
-        theaterIntervalPopup.target = self
-        theaterIntervalPopup.action = #selector(behaviorChanged(_:))
-        let play = NSButton(title: "立即上演", target: self, action: #selector(startTheater))
-        stack.addArrangedSubview(labeledRow("小剧场间隔", controls: [theaterIntervalPopup, play]))
         stack.addArrangedSubview(separator())
         let fishTitle = NSTextField(labelWithString: "摸鱼模式")
         fishTitle.font = .systemFont(ofSize: 15, weight: .semibold)
@@ -253,37 +307,44 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildPetsPage() -> NSViewController {
-        let (page, stack) = makePage("我的桌宠")
-        addTitle("我的桌宠", to: stack)
-        stack.addArrangedSubview(hint("最多可添加 3 个自己的 GIF 桌宠，文件会复制到桌搭子目录中。"))
+        let (page, stack) = makePage("桌宠小窝")
+        addTitle("桌宠小窝", to: stack)
+        currentPetPreview.imageScaling = .scaleProportionallyUpOrDown
+        currentPetPreview.animates = true
+        currentPetPreview.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        currentPetPreview.heightAnchor.constraint(equalToConstant: 100).isActive = true
+        currentPetLabel.widthAnchor.constraint(equalToConstant: 440).isActive = true
+        currentPetLabel.maximumNumberOfLines = 0
+        stack.addArrangedSubview(buttonRow([currentPetPreview, currentPetLabel]))
+        stack.addArrangedSubview(hint("把喜欢的 GIF 接回小窝，最多可添加 3 只。添加后会为你保存一份副本。"))
         petsPopup.target = self
         petsPopup.action = #selector(petSelectionChanged(_:))
         stack.addArrangedSubview(labeledRow("可用桌宠", controls: [petsPopup]))
         petsDetail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(petsDetail)
-        let add = NSButton(title: "添加 GIF", target: self, action: #selector(addPet))
-        let use = NSButton(title: "使用所选", target: self, action: #selector(useSelectedPet))
-        let useDefault = NSButton(title: "使用默认", target: self, action: #selector(useDefaultPet))
+        let add = NSButton(title: "接一只回家", target: self, action: #selector(addPet))
+        let use = NSButton(title: "让它陪我", target: self, action: #selector(useSelectedPet))
+        let useDefault = NSButton(title: "返回内置图鉴", target: self, action: #selector(useDefaultPet))
         let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedPet))
         stack.addArrangedSubview(buttonRow([add, use, useDefault, delete]))
         return page
     }
 
     private func buildLibrariesPage() -> NSViewController {
-        let (page, stack) = makePage("资源库")
-        addTitle("GIF 资源库", to: stack)
-        stack.addArrangedSubview(hint("可绑定 3 个包含 GIF 的目录；“内置资源库”始终可用。"))
+        let (page, stack) = makePage("桌宠图鉴")
+        addTitle("桌宠图鉴", to: stack)
+        stack.addArrangedSubview(hint("让一整个文件夹的小搭子轮流来陪你。最多可添加 3 个 GIF 文件夹，也能随时回到内置图鉴。"))
         librariesPopup.target = self
         librariesPopup.action = #selector(librarySelectionChanged(_:))
-        stack.addArrangedSubview(labeledRow("可用资源库", controls: [librariesPopup]))
+        stack.addArrangedSubview(labeledRow("选择图鉴", controls: [librariesPopup]))
         libraryDetail.textColor = .secondaryLabelColor
         libraryDetail.lineBreakMode = .byTruncatingMiddle
         stack.addArrangedSubview(libraryDetail)
-        let bind = NSButton(title: "绑定目录", target: self, action: #selector(addLibrary))
+        let bind = NSButton(title: "添加 GIF 文件夹", target: self, action: #selector(addLibrary))
         let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedLibrary))
         stack.addArrangedSubview(buttonRow([bind, delete]))
         stack.addArrangedSubview(separator())
-        addSection("随机切换", to: stack)
+        addSection("小搭子轮流陪你", to: stack)
         randomPetCheckbox.target = self
         randomPetCheckbox.action = #selector(randomSettingsChanged(_:))
         stack.addArrangedSubview(randomPetCheckbox)
@@ -296,10 +357,11 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildContentPage() -> NSViewController {
-        let (page, stack) = makePage("互动内容")
-        addTitle("互动内容", to: stack)
+        let (page, stack) = makePage("灵感口袋")
+        addTitle("灵感口袋", to: stack)
+        stack.addArrangedSubview(hint("听个笑话、猜个小问题，或收到一句关心。用“悄悄话”换一套日常台词，还能给两只桌宠写小故事。互动偏好随账号同步，自己导入的台词和剧本保存在这台设备。"))
         interactionStatusLabel.textColor = .secondaryLabelColor
-        interactionStatusLabel.maximumNumberOfLines = 2
+        interactionStatusLabel.maximumNumberOfLines = 0
         interactionStatusLabel.widthAnchor.constraint(equalToConstant: 430).isActive = true
         syncInteractionButton.target = self
         syncInteractionButton.action = #selector(syncInteractionContent)
@@ -307,18 +369,18 @@ final class SettingsWindowController: NSWindowController {
         downloadInteractionButton.action = #selector(downloadInteractionPack)
         stack.addArrangedSubview(buttonRow([interactionStatusLabel, syncInteractionButton, downloadInteractionButton]))
         stack.addArrangedSubview(separator())
-        addSection("互动词包", to: stack)
+        addSection("悄悄话", to: stack)
         wordPacksPopup.target = self
         wordPacksPopup.action = #selector(wordPackSelectionChanged(_:))
-        stack.addArrangedSubview(labeledRow("可用词包", controls: [wordPacksPopup]))
+        stack.addArrangedSubview(labeledRow("选择悄悄话", controls: [wordPacksPopup]))
         wordPackDetail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(wordPackDetail)
-        let importWords = NSButton(title: "导入词包", target: self, action: #selector(importWordPack))
+        let importWords = NSButton(title: "带来新台词", target: self, action: #selector(importWordPack))
         let deleteWords = NSButton(title: "删除所选", target: self, action: #selector(deleteWordPack))
-        let wordGuide = NSButton(title: "格式与 AI 生成", target: self, action: #selector(showWordGuide))
+        let wordGuide = NSButton(title: "怎么写悄悄话", target: self, action: #selector(showWordGuide))
         stack.addArrangedSubview(buttonRow([importWords, deleteWords, wordGuide]))
         stack.addArrangedSubview(separator())
-        addSection("小剧场剧本", to: stack)
+        addSection("小剧场 · 自编小故事", to: stack)
         scriptsPopup.target = self
         scriptsPopup.action = #selector(scriptSelectionChanged(_:))
         stack.addArrangedSubview(labeledRow("可用剧本", controls: [scriptsPopup]))
@@ -326,15 +388,15 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(scriptDetail)
         let importScript = NSButton(title: "导入剧本", target: self, action: #selector(importScriptFile))
         let deleteScript = NSButton(title: "删除所选", target: self, action: #selector(deleteScript))
-        let scriptGuide = NSButton(title: "剧本格式与 AI 生成", target: self, action: #selector(showScriptGuide))
+        let scriptGuide = NSButton(title: "怎么写小故事", target: self, action: #selector(showScriptGuide))
         stack.addArrangedSubview(buttonRow([importScript, deleteScript, scriptGuide]))
         return page
     }
 
     private func buildRemindersPage() -> NSViewController {
-        let (page, stack) = makePage("提醒")
-        addTitle("提醒", to: stack)
-        stack.addArrangedSubview(hint("最多可保存 20 条提醒，到点后桌宠会显示消息并播放提示音。"))
+        let (page, stack) = makePage("贴心提醒")
+        addTitle("贴心提醒", to: stack)
+        stack.addArrangedSubview(hint("最多 20 条。需要保持应用运行；到点后请求系统通知，桌宠忙碌时排队展示。暂停打扰不会暂停提醒，隐藏时在恢复显示后补看。"))
         remindersPopup.target = self
         remindersPopup.action = #selector(reminderSelectionChanged(_:))
         let newButton = NSButton(title: "新建提醒", target: self, action: #selector(newReminder))
@@ -347,8 +409,6 @@ final class SettingsWindowController: NSWindowController {
         reminderMessage.placeholderString = "提醒内容（最多 40 字）"
         reminderMessage.widthAnchor.constraint(equalToConstant: 360).isActive = true
         stack.addArrangedSubview(labeledRow("提醒内容", controls: [reminderMessage]))
-        reminderEmotionPopup.addItems(withTitles: ["开心", "加油", "害羞", "惊讶", "生气", "疑惑", "难过", "困倦", "安静"])
-        stack.addArrangedSubview(labeledRow("情绪", controls: [reminderEmotionPopup]))
         reminderExpressionPath.isEditable = false
         reminderExpressionPath.placeholderString = "不指定则保持当前桌宠"
         reminderExpressionPath.widthAnchor.constraint(equalToConstant: 360).isActive = true
@@ -364,8 +424,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildFeedbackPage() -> NSViewController {
-        let (page, stack) = makePage("反馈与建议")
-        addTitle("问题反馈与建议", to: stack)
+        let (page, stack) = makePage("心愿信箱")
+        addTitle("心愿信箱 · 问题与建议", to: stack)
 
         feedbackQuotaLabel.textColor = .secondaryLabelColor
         feedbackQuotaLabel.maximumNumberOfLines = 2
@@ -378,10 +438,7 @@ final class SettingsWindowController: NSWindowController {
         feedbackHistoryPopup.action = #selector(feedbackSelectionChanged(_:))
         feedbackHistoryPopup.widthAnchor.constraint(equalToConstant: 500).isActive = true
         stack.addArrangedSubview(labeledRow("反馈记录", controls: [feedbackHistoryPopup]))
-        feedbackDetail.textColor = .secondaryLabelColor
-        feedbackDetail.maximumNumberOfLines = 7
-        feedbackDetail.widthAnchor.constraint(equalToConstant: 650).isActive = true
-        stack.addArrangedSubview(feedbackDetail)
+        stack.addArrangedSubview(readOnlyTextArea(feedbackDetail, height: 180))
 
         stack.addArrangedSubview(separator())
         addSection("提交新反馈", to: stack)
@@ -412,8 +469,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildUpdatePage() -> NSViewController {
-        let (page, stack) = makePage("更新")
-        addTitle("软件更新", to: stack)
+        let (page, stack) = makePage("成长日记")
+        addTitle("成长日记 · 软件更新", to: stack)
         autoUpdateCheckbox.target = self
         autoUpdateCheckbox.action = #selector(autoUpdateChanged(_:))
         stack.addArrangedSubview(autoUpdateCheckbox)
@@ -441,13 +498,20 @@ final class SettingsWindowController: NSWindowController {
         ignoreUpdateButton.target = self
         ignoreUpdateButton.action = #selector(ignoreUpdate)
         stack.addArrangedSubview(buttonRow([checkUpdateButton, downloadUpdateButton, installUpdateButton, ignoreUpdateButton]))
+        addSection("这个版本更新了什么", to: stack)
+        stack.addArrangedSubview(readOnlyTextArea(releaseNotes, height: 180))
         return page
     }
 
     private func makePage(_ title: String) -> (NSViewController, NSStackView) {
         let controller = NSViewController()
         controller.title = title
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 880, height: 620))
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 880, height: 620))
+        scroll.hasVerticalScroller = true
+        scroll.drawsBackground = false
+        let view = SettingsDocumentView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = view
         let stack = NSStackView()
         stack.orientation = .vertical
         stack.alignment = .leading
@@ -457,10 +521,32 @@ final class SettingsWindowController: NSWindowController {
         NSLayoutConstraint.activate([
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 42),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -42),
-            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 32)
+            stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 32),
+            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -32),
+            view.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor)
         ])
-        controller.view = view
+        controller.view = scroll
         return (controller, stack)
+    }
+
+    private func readOnlyTextArea(_ text: NSTextView, height: CGFloat) -> NSScrollView {
+        text.isEditable = false
+        text.isSelectable = true
+        text.isRichText = false
+        text.font = .systemFont(ofSize: 13)
+        text.textContainerInset = NSSize(width: 10, height: 10)
+        text.isVerticallyResizable = true
+        text.isHorizontallyResizable = false
+        text.autoresizingMask = [.width]
+        text.frame = NSRect(x: 0, y: 0, width: 650, height: height)
+        text.textContainer?.widthTracksTextView = true
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.borderType = .bezelBorder
+        scroll.documentView = text
+        scroll.widthAnchor.constraint(equalToConstant: 650).isActive = true
+        scroll.heightAnchor.constraint(equalToConstant: height).isActive = true
+        return scroll
     }
 
     private func addTitle(_ text: String, to stack: NSStackView) {
@@ -479,7 +565,7 @@ final class SettingsWindowController: NSWindowController {
     private func hint(_ text: String) -> NSTextField {
         let label = NSTextField(wrappingLabelWithString: text)
         label.textColor = .secondaryLabelColor
-        label.maximumNumberOfLines = 2
+        label.maximumNumberOfLines = 0
         label.widthAnchor.constraint(equalToConstant: 650).isActive = true
         return label
     }
@@ -522,6 +608,10 @@ final class SettingsWindowController: NSWindowController {
         mouseCheckbox.state = settings.mouseInteractionEnabled ? .on : .off
         movementCheckbox.state = settings.randomMovementEnabled ? .on : .off
         randomInteractionCheckbox.state = settings.randomInteractionsEnabled ? .on : .off
+        dailySpeechCheckbox.state = settings.dailySpeechEnabled ? .on : .off
+        quietButton.title = petController.isQuiet ? "恢复主动陪伴" : "暂停打扰 1 小时"
+        quietLabel.stringValue = petController.isQuiet && settings.quietUntilUtc != nil
+            ? "暂停至 \(DateFormatter.localizedString(from: settings.quietUntilUtc!, dateStyle: .none, timeStyle: .short))" : "主动陪伴正常"
         interactionModePopup.isEnabled = settings.randomInteractionsEnabled
         interactionModePopup.selectItem(at: interactionModes.firstIndex(of: settings.interactionMode) ?? 1)
         theaterCheckbox.state = settings.theaterEnabled ? .on : .off
@@ -535,6 +625,8 @@ final class SettingsWindowController: NSWindowController {
         randomIntervalPopup.selectItem(at: randomIntervals.firstIndex(of: settings.randomPetIntervalSeconds) ?? 0)
         autoUpdateCheckbox.state = settings.autoCheckUpdates ? .on : .off
         let config = remoteConfig()
+        hallButton.isEnabled = config.companionHall
+        hallAccessLabel.stringValue = !config.companionHall ? "大厅暂时关闭。" : premium ? "现在可以打开大厅并选择加入。" : "有效体验或正式激活后可以加入大厅。"
         announcementLabel.stringValue = config.announcement
         announcementLabel.isHidden = config.announcement.isEmpty
         autoUpdateCheckbox.isHidden = !config.autoUpdates
@@ -545,12 +637,20 @@ final class SettingsWindowController: NSWindowController {
         refreshReminders(settings)
         refreshUpdateState()
         if !premium {
-            interactionStatusLabel.stringValue = "激活后可使用随机互动、在线内容和互动词包"
-            libraryDetail.stringValue = "免费版正在使用内置资源库；激活可导入外部目录"
+            interactionStatusLabel.stringValue = "激活后可继续玩趣味互动、听悄悄话"
+            libraryDetail.stringValue = "基础陪伴可使用内置图鉴；激活后可添加自己的 GIF 文件夹"
         }
     }
 
+    func refreshCurrentPetPreview() {
+        let guide = petController.currentSettings.guide
+        experienceGuideButton.title = guide.isDone ? "重新体验" : guide.step == 0 ? "开始体验" : "继续体验"
+        currentPetLabel.stringValue = petController.currentPetSummary
+        currentPetPreview.image = petController.currentGIFURL.flatMap { NSImage(contentsOf: $0) }
+    }
+
     private func refreshPets(_ settings: AppSettings) {
+        refreshCurrentPetPreview()
         let selected = petsPopup.selectedItem?.representedObject as? String
         petsPopup.removeAllItems()
         for pet in settings.pets {
@@ -558,12 +658,12 @@ final class SettingsWindowController: NSWindowController {
             petsPopup.lastItem?.representedObject = pet.id
         }
         select(popup: petsPopup, id: selected ?? settings.activePetId)
-        petsDetail.stringValue = settings.pets.isEmpty ? "尚未添加自定义桌宠" : "已添加 \(settings.pets.count)/3；当前使用：\(settings.pets.first(where: { $0.id == settings.activePetId })?.name ?? "资源库桌宠")"
+        petsDetail.stringValue = "小窝里有 \(settings.pets.count)/3 只自选桌宠；选好后点“让它陪我”。"
     }
 
     private func refreshLibraries(_ settings: AppSettings) {
         librariesPopup.removeAllItems()
-        librariesPopup.addItem(withTitle: "内置资源库")
+        librariesPopup.addItem(withTitle: "内置桌宠图鉴")
         for library in settings.libraries {
             librariesPopup.addItem(withTitle: library.name)
             librariesPopup.lastItem?.representedObject = library.id
@@ -576,7 +676,7 @@ final class SettingsWindowController: NSWindowController {
         if let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
             libraryDetail.stringValue = library.path
         } else {
-            libraryDetail.stringValue = "正在使用随应用提供的 GIF 资源库"
+            libraryDetail.stringValue = "正在由内置图鉴里的小搭子陪你"
         }
     }
 
@@ -585,7 +685,7 @@ final class SettingsWindowController: NSWindowController {
         syncInteractionButton.isEnabled = !interactionLoading
         downloadInteractionButton.isEnabled = !interactionLoading
         wordPacksPopup.removeAllItems()
-        wordPacksPopup.addItem(withTitle: "内置互动词包")
+        wordPacksPopup.addItem(withTitle: "内置悄悄话")
         for pack in settings.interactionWordPacks {
             wordPacksPopup.addItem(withTitle: pack.name)
             wordPacksPopup.lastItem?.representedObject = pack.id
@@ -596,9 +696,9 @@ final class SettingsWindowController: NSWindowController {
             wordPacksPopup.selectItem(at: 0)
         }
         if let pack = settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId }) {
-            wordPackDetail.stringValue = "\(pack.wordCount) 句互动台词"
+            wordPackDetail.stringValue = "\(pack.wordCount) 句悄悄话"
         } else {
-            wordPackDetail.stringValue = "正在使用内置互动台词"
+            wordPackDetail.stringValue = "正在说内置悄悄话"
         }
         let selectedScript = scriptsPopup.selectedItem?.representedObject as? String
         scriptsPopup.removeAllItems()
@@ -634,6 +734,8 @@ final class SettingsWindowController: NSWindowController {
             ? licenses.summary
             : licenses.hasPremiumAccess ? "七天完整功能体验中" : "免费版 - 激活可解锁完整功能"
         let status = updates.status
+        let notes = updates.availableManifest?.notes.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        releaseNotes.string = notes.isEmpty ? "检查更新后，会在这里展示本次新增与修复说明。" : notes
         updateLabel.stringValue = "当前版本 v\(AppVersion.current) - \(status.message)"
         updateProgress.doubleValue = Double(status.progress)
         let ignored = updates.availableManifest.map { $0.version == petController.currentSettings.ignoredUpdateVersion } ?? false
@@ -689,15 +791,16 @@ final class SettingsWindowController: NSWindowController {
     private func refreshFeedbackDetail() {
         guard let id = feedbackHistoryPopup.selectedItem?.representedObject as? String,
               let item = feedbackItems.first(where: { $0.id == id }) else {
-            feedbackDetail.stringValue = feedbackItems.isEmpty ? "提交后可在这里查看处理状态和后台回复。" : ""
+            feedbackDetail.string = feedbackItems.isEmpty ? "提交后可在这里查看处理状态和后台回复。" : ""
             return
         }
         let timestamp = feedbackDate(item.updatedAt)
-        var detail = "\(feedbackType(item.type)) · \(feedbackStatus(item.status)) · 更新于 \(timestamp)\n\(item.content)"
+        var detail = "\(item.title)\n\(feedbackType(item.type)) · \(feedbackStatus(item.status)) · 更新于 \(timestamp)\n\n\(item.content)"
         if !item.adminNote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             detail += "\n后台回复：\(item.adminNote)"
         }
-        feedbackDetail.stringValue = detail
+        feedbackDetail.string = detail
+        feedbackDetail.scrollToBeginningOfDocument(nil)
     }
 
     private func setFeedbackFormEnabled(_ enabled: Bool) {
@@ -735,7 +838,7 @@ final class SettingsWindowController: NSWindowController {
         if let item = popup.itemArray.first(where: { ($0.representedObject as? String) == id }) { popup.select(item) }
     }
 
-    private func requirePremium(_ feature: String) -> Bool {
+    private func requirePremium(_ feature: String, continuation: (@MainActor () -> Void)? = nil) -> Bool {
         if licenses.hasPremiumAccess { return true }
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -746,6 +849,7 @@ final class SettingsWindowController: NSWindowController {
             ) {
                 petController.refreshPremiumAccess()
                 refresh()
+                continuation?()
             }
         }
         return false
@@ -792,19 +896,19 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func startTheater() {
-        guard requirePremium("小剧场") else { return }
+        guard requirePremium("小剧场", continuation: { [weak self] in _ = self?.petController.startTheater() }) else { return }
         _ = petController.startTheater()
     }
 
     @objc private func startRandomInteraction() {
-        guard requirePremium("互动内容") else { return }
+        guard requirePremium("互动内容", continuation: { [weak self] in self?.petController.startRandomInteraction() }) else { return }
         petController.startRandomInteraction()
     }
 
     @objc private func syncInteractionContent() {
         guard requirePremium("在线互动内容") else { return }
         guard !interactionLoading else { return }
-        setInteractionLoading(true, status: "正在同步互动设置与内容…")
+        setInteractionLoading(true, status: "正在找新的小乐趣…")
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
@@ -822,14 +926,14 @@ final class SettingsWindowController: NSWindowController {
     @objc private func downloadInteractionPack() {
         guard requirePremium("互动内容包") else { return }
         guard !interactionLoading else { return }
-        setInteractionLoading(true, status: "正在下载并验证离线内容包…")
+        setInteractionLoading(true, status: "正在准备离线也能玩的内容…")
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
                 let count = try await petController.downloadInteractionPack()
                 interactionLoading = false
                 refresh()
-                setInteractionLoading(false, status: "\(petController.interactionStatus) · 离线包共 \(count) 条")
+                setInteractionLoading(false, status: "已准备好 \(count) 条离线小乐趣。")
             } catch {
                 setInteractionLoading(false, status: petController.interactionStatus)
                 show(error)
@@ -885,10 +989,10 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func addLibrary() {
-        guard requirePremium("外部 GIF 资源库") else { return }
-        guard petController.currentSettings.libraries.count < 3 else { show(ContentImportError.limitReached("最多只能绑定 3 个 GIF 资源库")); return }
+        guard requirePremium("自选桌宠图鉴") else { return }
+        guard petController.currentSettings.libraries.count < 3 else { show(ContentImportError.limitReached("最多可添加 3 个 GIF 文件夹")); return }
         let panel = NSOpenPanel()
-        panel.title = "选择包含 GIF 的资源库目录"
+        panel.title = "为桌宠图鉴选择 GIF 文件夹"
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         guard panel.runModal() == .OK, let url = panel.url else { return }
@@ -902,7 +1006,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func librarySelectionChanged(_ sender: NSPopUpButton) {
         guard !refreshing else { return }
         let id = sender.selectedItem?.representedObject as? String
-        if id != nil, !requirePremium("外部 GIF 资源库") { refresh(); return }
+        if id != nil, !requirePremium("自选桌宠图鉴") { refresh(); return }
         petController.update { $0.activeLibraryId = id; $0.activePetId = nil }
         refresh()
     }
@@ -922,19 +1026,19 @@ final class SettingsWindowController: NSWindowController {
         }
     }
 
-    @objc private func randomizeNow() { _ = petController.randomizePet() }
+    @objc private func randomizeNow() { _ = petController.randomizePet(); refresh() }
 
     @objc private func importWordPack() {
-        guard requirePremium("互动词包导入") else { return }
-        guard petController.currentSettings.interactionWordPacks.count < 5 else { show(ContentImportError.limitReached("最多只能导入 5 个互动词包")); return }
+        guard requirePremium("自选悄悄话") else { return }
+        guard petController.currentSettings.interactionWordPacks.count < 5 else { show(ContentImportError.limitReached("最多可导入 5 套悄悄话")); return }
         let panel = NSOpenPanel()
-        panel.title = "导入互动词包"
+        panel.title = "导入悄悄话（JSON 或 TXT）"
         panel.allowedFileTypes = ["json", "txt"]
         panel.allowsMultipleSelection = true
         guard panel.runModal() == .OK else { return }
         do {
             let remaining = 5 - petController.currentSettings.interactionWordPacks.count
-            guard panel.urls.count <= remaining else { throw ContentImportError.limitReached("最多只能导入 5 个互动词包") }
+            guard panel.urls.count <= remaining else { throw ContentImportError.limitReached("最多可导入 5 套悄悄话") }
             let packs = try panel.urls.map { try InteractionWordPackImporter.load(from: $0) }
             petController.update { $0.interactionWordPacks.append(contentsOf: packs); $0.activeInteractionWordPackId = packs.last?.id }
             refresh()
@@ -944,7 +1048,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func wordPackSelectionChanged(_ sender: NSPopUpButton) {
         guard !refreshing else { return }
         let id = sender.selectedItem?.representedObject as? String
-        if id != nil, !requirePremium("互动词包") { refresh(); return }
+        if id != nil, !requirePremium("悄悄话") { refresh(); return }
         petController.update { $0.activeInteractionWordPackId = id }
         refresh()
     }
@@ -956,7 +1060,7 @@ final class SettingsWindowController: NSWindowController {
         refresh()
     }
 
-    @objc private func showWordGuide() { showGuide(title: "互动词包格式", text: InteractionWordPackImporter.guide) }
+    @objc private func showWordGuide() { showGuide(title: "怎么写悄悄话", text: InteractionWordPackImporter.guide) }
 
     @objc private func importScriptFile() {
         guard requirePremium("小剧场剧本导入") else { return }
@@ -992,7 +1096,6 @@ final class SettingsWindowController: NSWindowController {
         editingReminderId = id
         reminderDatePicker.dateValue = reminder.at
         reminderMessage.stringValue = reminder.message
-        reminderEmotionPopup.selectItem(at: emotionValues.firstIndex(of: reminder.emotion) ?? 0)
         reminderExpressionPath.stringValue = reminder.expressionPath ?? ""
         reminderEnabledCheckbox.state = reminder.enabled ? .on : .off
         reminderDailyCheckbox.state = reminder.repeatDaily ? .on : .off
@@ -1004,7 +1107,6 @@ final class SettingsWindowController: NSWindowController {
         remindersPopup.selectItem(at: 0)
         reminderDatePicker.dateValue = Date().addingTimeInterval(600)
         reminderMessage.stringValue = "休息一下吧"
-        reminderEmotionPopup.selectItem(at: 0)
         reminderExpressionPath.stringValue = ""
         reminderEnabledCheckbox.state = .on
         reminderDailyCheckbox.state = .off
@@ -1014,13 +1116,16 @@ final class SettingsWindowController: NSWindowController {
         guard requirePremium("提醒") else { return }
         let message = reminderMessage.stringValue.cleaned(limit: 40)
         guard !message.isEmpty else { show(ContentImportError.limitReached("请输入提醒内容")); return }
+        if reminderEnabledCheckbox.state == .on, reminderDailyCheckbox.state != .on, reminderDatePicker.dateValue <= Date() {
+            show(ContentImportError.limitReached("一次性提醒需要选择未来的日期与时间。"))
+            return
+        }
         if editingReminderId == nil, petController.currentSettings.reminders.count >= 20 { show(ContentImportError.limitReached("最多只能保存 20 条提醒")); return }
         let reminder = ReminderDefinition(
             id: editingReminderId ?? "reminder-\(UUID().uuidString)",
             enabled: reminderEnabledCheckbox.state == .on,
             at: reminderDatePicker.dateValue,
             message: message,
-            emotion: emotionValues[reminderEmotionPopup.indexOfSelectedItem],
             expressionPath: reminderExpressionPath.stringValue.isEmpty ? nil : reminderExpressionPath.stringValue,
             repeatDaily: reminderDailyCheckbox.state == .on
         )
@@ -1159,6 +1264,15 @@ final class SettingsWindowController: NSWindowController {
     @objc func checkForUpdatesFromMenu() { checkForUpdates() }
 
     @objc private func openCompanionAction() { openCompanion() }
+    @objc private func openHallAction() { openHall() }
+    @objc private func showUsageGuideAction() { showUsageGuide() }
+    @objc private func openExperienceGuideAction() { openExperienceGuide() }
+    @objc private func dailySpeechChanged() { petController.update { $0.dailySpeechEnabled = dailySpeechCheckbox.state == .on } }
+    @objc private func toggleQuiet() {
+        if petController.isQuiet { petController.resumeProactive() } else { petController.pauseProactiveForOneHour() }
+        refresh()
+    }
+    @objc private func stopCurrentScene() { petController.stopCurrentScene() }
 
     @objc private func openFakeAdAction() { openFakeAd() }
 
@@ -1209,4 +1323,8 @@ final class SettingsWindowController: NSWindowController {
             NSPasteboard.general.setString(text, forType: .string)
         }
     }
+}
+
+private final class SettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }

@@ -13,7 +13,6 @@ public partial class App : System.Windows.Application
     private EventWaitHandle? _showSettingsSignal;
     private EventWaitHandle? _showFakeAdSignal;
     private Thread? _signalThread;
-    private ActivationWindow? _activationWindow;
     private LicenseService? _licenseService;
     private DispatcherTimer? _trialTimer;
     private volatile bool _stopping;
@@ -55,46 +54,14 @@ public partial class App : System.Windows.Application
         {
             StartSettingsSignalListener();
             _licenseService = new LicenseService();
-            string? freeModeMessage = null;
-            if (!_licenseService.IsActivated)
-            {
-                try
-                {
-                    var trial = await _licenseService.CheckTrialAsync();
-                    if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
-                    else freeModeMessage = "七天完整体验结束啦，基础陪伴继续。";
-                }
-                catch (Exception ex)
-                {
-                    // 网络故障时，仅当本地缓存的试用期尚未过期时才允许继续
-                    // 这里不能无条件信任本地状态，需要限制离线使用时长
-                    if (_licenseService.IsTrialActive)
-                    {
-                        var remaining = _licenseService.RemainingTrialSeconds;
-                        // 如果剩余时间过长且无法验证，限制为较短的宽限期
-                        if (remaining > 86400) // 超过 24 小时
-                        {
-                            System.Diagnostics.Trace.TraceWarning($"Trial verification failed, network error: {ex.Message}");
-                            freeModeMessage = "无法验证试用状态，请检查网络连接。";
-                            ScheduleTrialCheck(3600); // 1 小时后重试验证
-                        }
-                        else
-                        {
-                            ScheduleTrialCheck(Math.Min(remaining, 3600));
-                        }
-                    }
-                    else
-                    {
-                        freeModeMessage = "无法连接服务器验证，基础功能可用。";
-                    }
-                }
-            }
             Controller = new AppController(_licenseService);
+            Controller.TrialVerificationRequested += async () => await VerifyTrialAsync();
             Controller.Start();
-            if (freeModeMessage is not null) Controller.RefreshPremiumAccess(freeModeMessage);
+            var verification = VerifyTrialAsync();
             if (e.Args.Any(arg => arg.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
                 Controller.ShowSettings();
-            if (e.Args.Any(arg => arg.Equals("--fake-ad", StringComparison.OrdinalIgnoreCase)))
+            await verification;
+            if (!_stopping && e.Args.Any(arg => arg.Equals("--fake-ad", StringComparison.OrdinalIgnoreCase)))
                 Controller.ShowFakeAdWindow();
         }
         catch (Exception error)
@@ -102,6 +69,39 @@ public partial class App : System.Windows.Application
             WriteCrashLog(error);
             System.Windows.MessageBox.Show(error.ToString(), "桌搭子启动失败", MessageBoxButton.OK, MessageBoxImage.Error);
             Shutdown(1);
+        }
+    }
+
+    private async Task VerifyTrialAsync()
+    {
+        if (_stopping || _licenseService is null || Controller is null || _licenseService.IsActivated || Controller.IsTrialVerificationPending) return;
+        Controller.SetTrialVerificationState(true);
+        string? status = null;
+        try
+        {
+            var trial = await _licenseService.CheckTrialAsync();
+            if (_stopping) return;
+            if (_licenseService.IsActivated) return;
+            if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
+            else status = "七天完整体验结束啦，基础陪伴继续。";
+        }
+        catch
+        {
+            if (_stopping) return;
+            if (_licenseService.IsTrialActive)
+            {
+                ScheduleTrialCheck(Math.Min(_licenseService.RemainingTrialSeconds, 3600));
+                status = "暂时连不上服务器，按本机尚未到期的体验继续；可在设置重试。";
+            }
+            else status = "暂时连不上服务器，基础陪伴和本地引导可用；可在设置重试体验验证。";
+        }
+        finally
+        {
+            if (!_stopping)
+            {
+                Controller.SetTrialVerificationState(false, status);
+                Controller.RefreshPremiumAccess();
+            }
         }
     }
 
@@ -124,15 +124,6 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
-    private bool ShowActivation(string? status = null, bool trialEnded = false)
-    {
-        if (_licenseService is null) return false;
-        _activationWindow = new ActivationWindow(_licenseService, false, status, trialEnded);
-        var activated = _activationWindow.ShowDialog() == true;
-        _activationWindow = null;
-        return activated;
-    }
-
     private void ScheduleTrialCheck(int remainingSeconds)
     {
         _trialTimer?.Stop();
@@ -147,28 +138,42 @@ public partial class App : System.Windows.Application
     private async void TrialTimer_Tick(object? sender, EventArgs e)
     {
         _trialTimer?.Stop();
-        if (_licenseService is null || _licenseService.IsActivated) return;
+        if (_stopping || _licenseService is null || _licenseService.IsActivated || Controller is null) return;
+        if (Controller.IsTrialVerificationPending) { ScheduleTrialCheck(60); return; }
+        Controller.SetTrialVerificationState(true);
+        var expired = false;
+        string? status = null;
         try
         {
             var trial = await _licenseService.CheckTrialAsync();
-            if (trial.Allowed)
-            {
-                ScheduleTrialCheck(trial.RemainingSeconds);
-                return;
-            }
+            if (_stopping || _licenseService.IsActivated) return;
+            if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
+            else expired = true;
         }
         catch
         {
+            if (_stopping || _licenseService.IsActivated) return;
             if (_licenseService.IsTrialActive)
-            {
                 ScheduleTrialCheck(Math.Min(_licenseService.RemainingTrialSeconds, 3600));
-                return;
+            else
+            {
+                status = "暂时无法验证体验，基础陪伴和本地引导仍可用；可以在设置重试。";
+                ScheduleTrialCheck(60);
             }
         }
-
-        Controller?.RefreshPremiumAccess("七天完整体验结束啦，基础陪伴继续。");
-        ShowActivation("刚才试过的互动、小剧场和摸鱼模式，激活后都可以继续使用。", trialEnded: true);
-        Controller?.RefreshPremiumAccess();
+        finally
+        {
+            if (!_stopping)
+            {
+                Controller.SetTrialVerificationState(false, status);
+                Controller.RefreshPremiumAccess();
+            }
+        }
+        if (_stopping || _licenseService.IsActivated || !expired) return;
+        Controller.RefreshPremiumAccess("七天完整体验结束啦，基础陪伴继续。");
+        if (!Controller.IsGuideActive)
+            Controller.ShowActivation(status: "刚才试过的互动、小剧场和摸鱼模式，激活后都可以继续使用。", trialEnded: true);
+        Controller.RefreshPremiumAccess();
     }
 
     private void StartSettingsSignalListener()
@@ -184,9 +189,9 @@ public partial class App : System.Windows.Application
                 if (_stopping) return;
                 if (signaled == 0) Dispatcher.BeginInvoke(() =>
                 {
-                    if (_activationWindow?.IsVisible == true)
+                    if (Windows.OfType<ActivationWindow>().FirstOrDefault(window => window.IsVisible) is { } activationWindow)
                     {
-                        _activationWindow.Activate();
+                        activationWindow.Activate();
                         return;
                     }
                     Controller?.ShowSettings();

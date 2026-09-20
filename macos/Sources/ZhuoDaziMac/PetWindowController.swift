@@ -25,12 +25,28 @@ final class PetWindowController {
         set { update { $0.clickThrough = newValue } }
     }
     var isVisible: Bool { window.isVisible }
-    var isBusyWithScene: Bool { theaterTask != nil || visitorWindow != nil || interactionActive }
+    var isBusyWithScene: Bool { theaterTask != nil || guideTheaterTask != nil || visitorWindow != nil || interactionActive || reminderExpressionTask != nil }
+    private(set) var isTeaching = false
+    var guideControlsUsed: (() -> Void)?
+    var guideInterrupted: (() -> Void)?
+    var isGuideDemoPlaying: Bool { guideInteractionCompletion != nil || guideTheaterTask != nil }
+    var isQuiet: Bool { AttentionPolicy.isQuiet(until: settings.quietUntilUtc) }
     var canRandomizePet: Bool { petURLs.count > 1 }
     var currentSettings: AppSettings { settings }
-    var interactionStatus: String { interactions.statusSummary }
+    var interactionStatus: String {
+        (settings.randomInteractionsEnabled ? "主动互动已开启" : "主动互动已关闭，仍可手动体验") + " · " + interactions.statusSummary
+    }
     var hasPremiumAccess: Bool { premiumAccess() }
     var currentGIFURL: URL? { currentPetURL }
+    var currentPetSummary: String {
+        let name = currentPetURL?.deletingPathExtension().lastPathComponent ?? "内置桌宠"
+        let source: String
+        if settings.pets.contains(where: { $0.id == settings.activePetId }) { source = "我的 GIF" }
+        else if hasPremiumAccess, let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }),
+                let url = currentPetURL, url.path.hasPrefix(library.path + "/") { source = library.name }
+        else { source = "内置图鉴" }
+        return "\(name) · 来自\(source)"
+    }
     var contextMenu: NSMenu? {
         get { petView.menu }
         set { petView.menu = newValue }
@@ -65,6 +81,12 @@ final class PetWindowController {
     private var interactionActive = false
     private var interactionSyncTask: Task<Void, Never>?
     private var interactionSyncRequested = false
+    private var interactionServicesStarted = false
+    private var interactionGeneration = 0
+    private var visitorGeneration = 0
+    private var guideTheaterTask: Task<Void, Never>?
+    private var guideInteractionCompletion: ((Bool) -> Void)?
+    private var dragStartOrigin = NSPoint.zero
     private var localKeyMonitor: Any?
     private var globalKeyMonitor: Any?
 
@@ -125,6 +147,7 @@ final class PetWindowController {
         interactionTimer?.invalidate()
         interactionSyncTimer?.invalidate()
         theaterTask?.cancel()
+        guideTheaterTask?.cancel()
         reminderExpressionTask?.cancel()
         interactionSyncTask?.cancel()
         visitorWindow?.orderOut(nil)
@@ -132,54 +155,218 @@ final class PetWindowController {
         if let globalKeyMonitor { NSEvent.removeMonitor(globalKeyMonitor) }
     }
 
-    func show() { window.orderFrontRegardless() }
+    func show() {
+        window.orderFrontRegardless()
+        drainReminderQueue()
+    }
     func hide() {
+        stopCurrentScene(stopVisitor: false)
         window.orderOut(nil)
         visitorWindow?.orderOut(nil)
-        interactionPanel.dismiss()
+        guideInterrupted?()
+        if !settings.hideRecoveryHintSeen {
+            settings.hideRecoveryHintSeen = true
+            saveSettings()
+            showActivityExplanation("桌宠已隐藏", "点击 macOS 菜单栏的桌搭子图标，再选“显示桌搭子”就能找回。关闭设置窗口不会退出应用。")
+        }
     }
-    func showBubble(_ text: String) { petView.showBubble(text) }
+    func showBubble(_ text: String) {
+        guard !isTeaching, theaterTask == nil, guideTheaterTask == nil, reminderExpressionTask == nil else { return }
+        petView.showBubble(text)
+    }
 
     func demoVisitGIFURL() -> URL? {
         petURLs.first { $0 != currentPetURL } ?? currentPetURL ?? petURLs.first
     }
 
-    func showVisitor(at url: URL, senderName: String, message: String = "") async {
-        while !window.isVisible || isBusyWithScene {
+    func beginTeaching() {
+        guard !isTeaching else { return }
+        isTeaching = true
+        velocity = .zero
+        stopCurrentScene(stopVisitor: false)
+        applyWindowAppearance()
+        restartInteractionTimer()
+    }
+
+    func endTeaching() {
+        stopGuideDemonstration()
+        isTeaching = false
+        velocity = .zero
+        applyWindowAppearance()
+        restartTimers()
+        restartInteractionTimer()
+        drainReminderQueue()
+    }
+
+    var guideAvailabilityMessage: String? {
+        if !window.isVisible { return "桌宠已隐藏。先点“显示桌宠”，再开始这一步。" }
+        if isBusyWithScene { return "桌宠正在互动、演出、接待来访或展示提醒。可以等它忙完，或点“先停一下”后重试。" }
+        return nil
+    }
+
+    @discardableResult
+    func startGuideInteraction(completion: @escaping (Bool) -> Void) -> Bool {
+        guard isTeaching, window.isVisible, !isBusyWithScene else { return false }
+        interactionActive = true
+        guideInteractionCompletion = completion
+        interactionPanel.present(
+            title: "初次见面 · 让它回应你",
+            message: "今天想怎样开始？选一个回应，或点右上角关闭，都可以继续体验。",
+            choices: [PetInteractionChoice("慢慢来", "slow"), PetInteractionChoice("精神一点", "bright", isPrimary: true)],
+            relativeTo: window
+        ) { [weak self] choice in
+            guard let self, let callback = guideInteractionCompletion else { return }
+            guideInteractionCompletion = nil
+            interactionActive = false
+            if let choice {
+                petView.showBubble(choice.value == "bright" ? "一起精神一点！" : "好呀，我们慢慢来。")
+            }
+            callback(true)
+            drainReminderQueue()
+        }
+        guard interactionPanel.window?.isVisible == true else {
+            guideInteractionCompletion = nil
+            interactionActive = false
+            return false
+        }
+        return true
+    }
+
+    @discardableResult
+    func startGuideTheater(completion: @escaping (Bool) -> Void) -> Bool {
+        guard isTeaching, window.isVisible, !isBusyWithScene,
+              let gif = demoVisitGIFURL(), NSImage(contentsOf: gif) != nil else { return false }
+        let companion = makeCompanionWindow(petURL: gif)
+        companionWindow = companion.window
+        positionCompanion(companion.window)
+        companion.window.orderFrontRegardless()
+        guard companion.window.isVisible else { companionWindow = nil; return false }
+        let lines = [
+            ("我有一位搭档。", "我们来演一小段。"),
+            ("不用邀请好友。", "也不用导入剧本。"),
+            ("想看时点“看一场小剧场”。", "自动上演可以自己开启。")
+        ]
+        guideTheaterTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var completedLines = 0
+            var bubbleToken: PresentationLifetime.Token?
+            for (main, guest) in lines {
+                guard !Task.isCancelled, window.isVisible, isTeaching else { break }
+                bubbleToken = petView.showBubble(main, duration: 2.2)
+                do { try await Task.sleep(for: .seconds(2)) } catch { break }
+                guard !Task.isCancelled, window.isVisible, isTeaching else { break }
+                companion.view.showBubble(guest, duration: 2.2)
+                do { try await Task.sleep(for: .seconds(2)) } catch { break }
+                completedLines += 1
+            }
+            companion.window.orderOut(nil)
+            if companionWindow === companion.window { companionWindow = nil }
+            guideTheaterTask = nil
+            if let bubbleToken { petView.dismissBubble(ifCurrent: bubbleToken) }
+            completion(completedLines == lines.count && !Task.isCancelled && window.isVisible && isTeaching)
+            drainReminderQueue()
+        }
+        return true
+    }
+
+    func stopGuideDemonstration() {
+        if let completion = guideInteractionCompletion {
+            guideInteractionCompletion = nil
+            interactionPanel.dismiss(notifying: false)
+            interactionActive = false
+            completion(false)
+        }
+        guideTheaterTask?.cancel()
+        if guideTheaterTask != nil { companionWindow?.orderOut(nil) }
+    }
+
+    private func prepareManualActivity(_ feature: String) -> Bool {
+        if isTeaching {
+            showActivityExplanation("正在体验教学", "请先完成或关闭体验卡，再从这里开始普通\(feature)。教学卡中的本地演示随时可以重试。")
+            return false
+        }
+        if !window.isVisible {
+            let alert = NSAlert()
+            alert.messageText = "先显示桌宠，再开始\(feature)"
+            alert.informativeText = "桌宠目前已隐藏。以后也可以从 macOS 菜单栏选择“显示桌搭子”。"
+            alert.addButton(withTitle: "显示并开始")
+            alert.addButton(withTitle: "稍后")
+            guard alert.runModal() == .alertFirstButtonReturn else { return false }
+            show()
+        }
+        if isBusyWithScene {
+            let alert = NSAlert()
+            alert.messageText = "等桌宠忙完，就能开始\(feature)"
+            alert.informativeText = "桌宠正在互动、演出、接待来访或展示提醒。可以等它忙完后再点一次，也可点“先停一下”。提醒会继续保留。"
+            alert.addButton(withTitle: "等待结束")
+            alert.addButton(withTitle: "先停一下")
+            if alert.runModal() == .alertSecondButtonReturn { stopCurrentScene() }
+            return false
+        }
+        return true
+    }
+
+    private func showActivityExplanation(_ title: String, _ text: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = text
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
+    }
+
+    @discardableResult
+    func showVisitor(at url: URL, senderName: String, message: String = "", manual: Bool = false,
+                     canPresent: @MainActor () -> Bool = { true }) async -> Bool {
+        guard !isTeaching else { return false }
+        while !window.isVisible || isBusyWithScene || (!manual && (isQuiet || settings.clickThrough || isTeaching)) {
+            guard !isTeaching, canPresent() else { return false }
             do {
                 try await Task.sleep(for: .milliseconds(250))
             } catch {
-                return
+                return false
             }
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, !isTeaching, canPresent() else { return false }
+        visitorGeneration += 1
+        let generation = visitorGeneration
         let visitor = makeCompanionWindow(petURL: url)
         visitorWindow = visitor.window
         positionCompanion(visitor.window)
         visitor.window.orderFrontRegardless()
         let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
         visitor.view.showBubble(text.isEmpty ? "\(senderName) 来串门啦" : "\(senderName)：\(text)", duration: 5)
-        try? await Task.sleep(for: .seconds(10))
+        var completed = true
+        for _ in 0..<40 {
+            if generation != visitorGeneration { break }
+            if Task.isCancelled || isTeaching || !canPresent() || !window.isVisible || (!manual && (isQuiet || settings.clickThrough)) {
+                completed = false
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(250))
+        }
         visitor.window.orderOut(nil)
         if visitorWindow === visitor.window { visitorWindow = nil }
+        drainReminderQueue()
+        return completed
     }
 
     func startInteractionServices() {
+        interactionServicesStarted = true
         guard hasPremiumAccess else { return }
         restartInteractionTimer()
         scheduleInteractionSync(after: 1)
     }
 
     func refreshPremiumAccess() {
-        reloadPetSources(forceSelection: true)
+        reloadPetSources(forceSelection: false)
         restartTimers()
         restartInteractionTimer()
         interactionSyncTimer?.invalidate()
         interactionSyncTimer = nil
-        if hasPremiumAccess { scheduleInteractionSync(after: 1) }
+        if hasPremiumAccess && interactionServicesStarted { scheduleInteractionSync(after: 1) }
     }
 
-    func apply(_ newSettings: AppSettings) {
+    func apply(_ newSettings: AppSettings, userInitiated: Bool = true) {
         var normalized = newSettings
         normalized.normalize()
         let sourcesChanged = settings.activePetId != normalized.activePetId
@@ -188,19 +375,30 @@ final class PetWindowController {
             || settings.libraries != normalized.libraries
         let interactionChanged = settings.randomInteractionsEnabled != normalized.randomInteractionsEnabled
             || settings.interactionMode != normalized.interactionMode
+        if userInitiated && (interactionChanged || settings.personality != normalized.personality
+            || settings.theaterIntervalSeconds != normalized.theaterIntervalSeconds) {
+            normalized.remoteDefaultsApplied = true
+        }
+        let shouldExplainClickThrough = !settings.clickThrough && normalized.clickThrough && !normalized.clickThroughRecoveryHintSeen
+        if shouldExplainClickThrough { normalized.clickThroughRecoveryHintSeen = true }
         settings = normalized
         applyWindowAppearance()
         if sourcesChanged { reloadPetSources(forceSelection: true) }
         restartTimers()
         if interactionChanged {
             restartInteractionTimer()
-            interactions.markProfileDirty(
-                mode: settings.interactionMode,
-                promptsEnabled: settings.randomInteractionsEnabled
-            )
+            if userInitiated {
+                interactions.markProfileDirty(
+                    mode: settings.interactionMode,
+                    promptsEnabled: settings.randomInteractionsEnabled
+                )
+            }
             scheduleInteractionSync(after: 2)
         }
         saveSettings()
+        if shouldExplainClickThrough {
+            showActivityExplanation("鼠标穿透已开启", "桌宠不再挡住鼠标。按 Control+Shift+P，或从 macOS 菜单栏取消“鼠标穿透”即可恢复操作。教学期间会临时允许操作桌宠，结束后恢复你的选择。")
+        }
     }
 
     func update(_ mutation: (inout AppSettings) -> Void) {
@@ -211,11 +409,17 @@ final class PetWindowController {
 
     func startRandomInteraction() {
         guard hasPremiumAccess else { return }
+        guard prepareManualActivity("互动") else { return }
+        guard interactionServicesStarted else {
+            showBubble("正在加载首次设置，请稍后再点一次。")
+            return
+        }
         Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: true) }
     }
 
     func syncInteractionContent() async throws -> Int {
         guard hasPremiumAccess else { throw LicenseError.inactive }
+        guard interactionServicesStarted else { throw InteractionError.server("正在加载首次设置，请稍后重试。") }
         let profile = try await interactions.syncProfile(
             localMode: settings.interactionMode,
             localPromptsEnabled: settings.randomInteractionsEnabled
@@ -234,17 +438,19 @@ final class PetWindowController {
         interactionTimer?.invalidate()
         interactionTimer = nil
         guard hasPremiumAccess else { return }
-        guard !interactionActive, theaterTask == nil, visitorWindow == nil, window.isVisible else {
+        guard !isBusyWithScene, window.isVisible else {
             restartInteractionTimer()
             return
         }
-        guard manual || (settings.randomInteractionsEnabled && !settings.clickThrough) else {
+        guard !isTeaching, manual || (settings.randomInteractionsEnabled && !settings.clickThrough && !isQuiet) else {
             restartInteractionTimer()
             return
         }
         if manual, settings.clickThrough { update { $0.clickThrough = false } }
 
         interactionActive = true
+        interactionGeneration += 1
+        let generation = interactionGeneration
         do {
             let moodDue = interactions.isMoodPromptDue()
             if moodDue, interactions.cachedContentCount == 0 || Int.random(in: 0..<4) == 0 {
@@ -252,7 +458,9 @@ final class PetWindowController {
                 return
             }
             if interactions.cachedContentCount == 0 { _ = try await interactions.refill() }
-            guard window.isVisible, theaterTask == nil else {
+            guard generation == interactionGeneration else { return }
+            guard window.isVisible, theaterTask == nil, interactionActive,
+                  !isTeaching, manual || (!isQuiet && !settings.clickThrough && settings.randomInteractionsEnabled) else {
                 finishInteraction()
                 return
             }
@@ -260,13 +468,14 @@ final class PetWindowController {
                 if moodDue {
                     showMoodInteraction()
                 } else {
-                    if manual { showBubble("趣味内容正在补货，稍后再来找我吧。") }
+                    if manual { showBubble("这会儿还没找到合适的小乐趣，稍后再来找我吧。") }
                     finishInteraction()
                 }
                 return
             }
             showContentInteraction(item)
         } catch {
+            guard generation == interactionGeneration else { return }
             if manual { showBubble(error.localizedDescription) }
             finishInteraction()
         }
@@ -407,27 +616,33 @@ final class PetWindowController {
     }
 
     private func finishInteraction() {
+        interactionGeneration += 1
         interactionActive = false
         restartInteractionTimer()
+        drainReminderQueue()
         if interactions.shouldFlush {
             Task { @MainActor [weak self] in try? await self?.interactions.flushEvents() }
         }
     }
 
     @discardableResult
-    func randomizePet() -> Bool {
-        guard theaterTask == nil, visitorWindow == nil, !interactionActive else { return false }
+    func randomizePet(manual: Bool = true) -> Bool {
+        guard !isTeaching else { return false }
+        guard !isBusyWithScene else { return false }
         guard let selected = petBag.next(from: petURLs, excluding: currentPetURL) else { return false }
         currentPetURL = selected
         petView.showPet(at: selected)
-        showReaction("switch")
+        showReaction("switch", proactive: !manual)
+        saveSettings()
         return true
     }
 
     @discardableResult
-    func startTheater() -> Bool {
+    func startTheater(manual: Bool = true) -> Bool {
         guard hasPremiumAccess else { return false }
-        guard window.isVisible, theaterTask == nil, visitorWindow == nil, !interactionActive else { return false }
+        if manual, !prepareManualActivity("小剧场") { return false }
+        guard !isTeaching, manual || !isQuiet else { return false }
+        guard window.isVisible, !isBusyWithScene else { return false }
         let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
         let originalOrigin = window.frame.origin
@@ -457,13 +672,13 @@ final class PetWindowController {
                 await performTheaterMotion(step: index, companion: companion.window)
                 if index < script.scenes.count - 1 { try? await Task.sleep(for: .seconds(1.2)) }
             }
-            try? await Task.sleep(for: .seconds(1.8))
-            await animatePair(
-                window, to: originalOrigin,
-                companion.window, to: companionTarget,
-                duration: 0.5
-            )
-            finishTheater()
+            if !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1.8))
+                if !Task.isCancelled {
+                    await animatePair(window, to: originalOrigin, companion.window, to: companionTarget, duration: 0.5)
+                }
+            }
+            finishTheater(announce: !Task.isCancelled && (manual || !isQuiet))
         }
         return true
     }
@@ -474,11 +689,10 @@ final class PetWindowController {
         var changed = false
         for index in settings.reminders.indices where settings.reminders[index].enabled && settings.reminders[index].at <= now {
             fired.append(settings.reminders[index])
+            settings.pendingReminders.append(settings.reminders[index])
             changed = true
             if settings.reminders[index].repeatDaily {
-                var next = settings.reminders[index].at
-                repeat { next = Calendar.current.date(byAdding: .day, value: 1, to: next) ?? next.addingTimeInterval(86_400) } while next <= now
-                settings.reminders[index].at = next
+                settings.reminders[index].at = AttentionPolicy.nextDailyReminder(after: settings.reminders[index].at, now: now)
             } else {
                 settings.reminders[index].enabled = false
             }
@@ -488,18 +702,64 @@ final class PetWindowController {
     }
 
     func showReminder(_ reminder: ReminderDefinition) {
-        guard theaterTask == nil, !interactionActive else { return }
-        showBubble(reminder.message)
-        NSSound(named: "Glass")?.play()
-        guard let path = reminder.expressionPath, FileManager.default.fileExists(atPath: path) else { return }
-        let originalURL = currentPetURL
-        petView.showPet(at: URL(fileURLWithPath: path))
-        reminderExpressionTask?.cancel()
-        reminderExpressionTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(6))
-            guard let self, !Task.isCancelled, currentPetURL == originalURL, let originalURL else { return }
-            petView.showPet(at: originalURL)
+        if !settings.pendingReminders.contains(where: { $0.id == reminder.id && $0.at == reminder.at }) {
+            settings.pendingReminders.append(reminder)
+            saveSettings()
         }
+        drainReminderQueue()
+    }
+
+    private func drainReminderQueue() {
+        guard reminderExpressionTask == nil, !settings.pendingReminders.isEmpty else { return }
+        reminderExpressionTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { reminderExpressionTask = nil }
+            while let reminder = settings.pendingReminders.first, !Task.isCancelled {
+                while !window.isVisible || theaterTask != nil || guideTheaterTask != nil || interactionActive || visitorWindow != nil {
+                    do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+                }
+                let originalURL = currentPetURL
+                if let path = reminder.expressionPath, FileManager.default.fileExists(atPath: path) {
+                    petView.showPet(at: URL(fileURLWithPath: path))
+                }
+                petView.showBubble(reminder.message, duration: 6)
+                NSSound(named: "Glass")?.play()
+                var fullyShown = true
+                for _ in 0..<24 {
+                    do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+                    if !window.isVisible { fullyShown = false; break }
+                }
+                if let currentPetURL, currentPetURL == originalURL { petView.showPet(at: currentPetURL) }
+                if !fullyShown { continue }
+                if settings.pendingReminders.first?.id == reminder.id { settings.pendingReminders.removeFirst() }
+                saveSettings()
+            }
+        }
+    }
+
+    func pauseProactiveForOneHour() {
+        update { $0.quietUntilUtc = Date().addingTimeInterval(3600) }
+        stopCurrentScene(stopVisitor: false)
+        guideInterrupted?()
+    }
+
+    func resumeProactive() { update { $0.quietUntilUtc = nil } }
+
+    func stopCurrentScene(stopVisitor: Bool = true) {
+        stopGuideDemonstration()
+        theaterTask?.cancel()
+        companionWindow?.orderOut(nil)
+        if stopVisitor {
+            visitorGeneration += 1
+            visitorWindow?.orderOut(nil)
+            visitorWindow = nil
+        }
+        interactionGeneration += 1
+        interactionPanel.dismiss()
+        interactionActive = false
+        restartInteractionTimer()
+        if reminderExpressionTask == nil { petView.dismissBubble() }
+        drainReminderQueue()
     }
 
     private var clickAction: String {
@@ -511,7 +771,9 @@ final class PetWindowController {
         }
     }
 
-    private func showReaction(_ action: String) {
+    private func showReaction(_ action: String, proactive: Bool = false) {
+        guard !isTeaching, theaterTask == nil, guideTheaterTask == nil, reminderExpressionTask == nil else { return }
+        if proactive && (!settings.dailySpeechEnabled || isQuiet) { return }
         let imported = hasPremiumAccess
             ? settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId })?.words[action]
             : nil
@@ -544,7 +806,7 @@ final class PetWindowController {
             let timer = Timer(timeInterval: TimeInterval(settings.randomPetIntervalSeconds), repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in
                     guard let self, self.window.isVisible else { return }
-                    _ = self.randomizePet()
+                    _ = self.randomizePet(manual: false)
                 }
             }
             RunLoop.main.add(timer, forMode: .common)
@@ -552,7 +814,7 @@ final class PetWindowController {
         }
         if hasPremiumAccess, settings.theaterEnabled {
             let timer = Timer(timeInterval: TimeInterval(settings.theaterIntervalSeconds), repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in _ = self?.startTheater() }
+                Task { @MainActor [weak self] in _ = self?.startTheater(manual: false) }
             }
             RunLoop.main.add(timer, forMode: .common)
             theaterTimer = timer
@@ -562,7 +824,7 @@ final class PetWindowController {
     private func restartInteractionTimer() {
         interactionTimer?.invalidate()
         interactionTimer = nil
-        guard hasPremiumAccess, settings.randomInteractionsEnabled else { return }
+        guard hasPremiumAccess, interactionServicesStarted, settings.randomInteractionsEnabled, !isTeaching else { return }
         let timer = Timer(
             timeInterval: InteractionRules.nextDelay(for: settings.interactionMode),
             repeats: false
@@ -574,7 +836,7 @@ final class PetWindowController {
     }
 
     private func scheduleInteractionSync(after delay: TimeInterval) {
-        guard hasPremiumAccess else { return }
+        guard hasPremiumAccess, interactionServicesStarted else { return }
         if interactionSyncTask != nil {
             interactionSyncRequested = true
             return
@@ -625,6 +887,7 @@ final class PetWindowController {
     }
 
     private func beginDrag(at point: NSPoint) {
+        dragStartOrigin = window.frame.origin
         dragging = true
         velocity = .zero
         dragOffset = NSPoint(x: point.x - window.frame.origin.x, y: point.y - window.frame.origin.y)
@@ -651,10 +914,13 @@ final class PetWindowController {
         settings.positionX = window.frame.origin.x
         settings.positionY = window.frame.origin.y
         saveSettings()
+        if isTeaching, hypot(window.frame.origin.x - dragStartOrigin.x, window.frame.origin.y - dragStartOrigin.y) > 3 {
+            guideControlsUsed?()
+        }
     }
 
     private func tick() {
-        guard window.isVisible, !dragging, theaterTask == nil, !interactionActive else { return }
+        guard window.isVisible, !isTeaching, !dragging, theaterTask == nil, guideTheaterTask == nil, !interactionActive, reminderExpressionTask == nil else { return }
         var origin = window.frame.origin
         let frameSize = window.frame.size
         let center = NSPoint(x: origin.x + frameSize.width / 2, y: origin.y + frameSize.height / 2)
@@ -670,7 +936,7 @@ final class PetWindowController {
                 velocity.dx += deltaX / distance * force * (dodge ? -1 : 1)
                 velocity.dy += deltaY / distance * force * (dodge ? -1 : 1)
                 if Date().timeIntervalSince(lastMouseReaction) > 14 {
-                    showReaction(dodge ? "dodge" : "chase")
+                    showReaction(dodge ? "dodge" : "chase", proactive: true)
                     lastMouseReaction = Date()
                 }
             }
@@ -693,11 +959,11 @@ final class PetWindowController {
         if origin.x < bounds.minX {
             origin.x = bounds.minX
             velocity.dx = abs(velocity.dx) * 0.78
-            showReaction("bounce")
+            showReaction("bounce", proactive: true)
         } else if origin.x + frameSize.width > bounds.maxX {
             origin.x = bounds.maxX - frameSize.width
             velocity.dx = -abs(velocity.dx) * 0.78
-            showReaction("bounce")
+            showReaction("bounce", proactive: true)
         }
         if origin.y < bounds.minY {
             origin.y = bounds.minY
@@ -717,7 +983,7 @@ final class PetWindowController {
         window.isFloatingPanel = settings.alwaysOnTop
         window.level = settings.alwaysOnTop ? .floating : .normal
         window.alphaValue = CGFloat(settings.opacity) / 100
-        window.ignoresMouseEvents = settings.clickThrough
+        window.ignoresMouseEvents = settings.clickThrough && !isTeaching
         petView.setMirrored(settings.mirrored)
         interactionPanel.updateLevel(window.level)
     }
@@ -786,6 +1052,7 @@ final class PetWindowController {
         to secondOrigin: NSPoint,
         duration: TimeInterval
     ) async {
+        guard !Task.isCancelled, first.isVisible, second.isVisible else { return }
         await withCheckedContinuation { continuation in
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = duration
@@ -798,11 +1065,12 @@ final class PetWindowController {
         }
     }
 
-    private func finishTheater() {
+    private func finishTheater(announce: Bool = true) {
         companionWindow?.orderOut(nil)
         companionWindow = nil
         theaterTask = nil
-        showReaction("theater_finish")
+        if announce { showReaction("theater_finish") }
+        drainReminderQueue()
     }
 
     private func installClickThroughShortcut() {

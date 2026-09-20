@@ -26,9 +26,20 @@ dependencies {
     implementation(project(":flutter"))
     implementation("androidx.core:core:1.16.0")
     implementation("com.google.crypto.tink:tink-android:1.23.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("org.mockito:mockito-core:5.14.2")
 }
 
 android {
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            it.systemProperty("robolectric.dependency.repo.url", "https://repo.maven.apache.org/maven2")
+        }
+    }
+
     namespace = "com.zhuodazi.android"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
@@ -55,8 +66,8 @@ android {
         applicationId = "com.zhuodazi.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.3.11"
+        versionCode = 20
+        versionName = "1.4.0"
     }
 
     sourceSets["main"].assets.srcDirs(

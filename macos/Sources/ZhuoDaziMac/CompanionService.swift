@@ -20,11 +20,12 @@ struct CompanionHallPerson: Decodable {
     let online: Bool
 }
 
-struct CompanionVisit {
+struct CompanionVisit: Codable {
     let id: String
     let senderName: String
     let message: String
     let fileURL: URL
+    var acknowledged = false
 }
 
 enum CompanionError: LocalizedError {
@@ -64,7 +65,6 @@ final class CompanionService {
         session = URLSession(configuration: configuration)
         let applicationSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         inboxURL = applicationSupport.appendingPathComponent("ZhuoDazi/companion", isDirectory: true)
-        try? FileManager.default.removeItem(at: inboxURL)
     }
 
     func refreshProfile() async throws -> CompanionProfile {
@@ -74,6 +74,8 @@ final class CompanionService {
     }
 
     func updateName(_ displayName: String) async throws -> CompanionProfile {
+        guard !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              displayName.unicodeScalars.count <= 12 else { throw CompanionError.server("昵称需要 1–12 字。") }
         let result: CompanionProfile = try await sendJSON(jsonRequest(
             method: "PATCH",
             url: Self.companionURL,
@@ -84,6 +86,7 @@ final class CompanionService {
     }
 
     func pair(code: String) async throws -> CompanionProfile {
+        guard licenses.isActivated else { throw CompanionError.server("私人搭子需要正式激活。体验期间可到大厅发送表情。") }
         let result: CompanionProfile = try await sendJSON(jsonRequest(
             method: "POST",
             url: Self.pairURL,
@@ -94,6 +97,7 @@ final class CompanionService {
     }
 
     func unpair() async throws -> CompanionProfile {
+        guard licenses.isActivated else { throw LicenseError.inactive }
         let result: CompanionProfile = try await sendJSON(request(method: "DELETE", url: Self.pairURL))
         profile = result
         return result
@@ -137,6 +141,7 @@ final class CompanionService {
     }
 
     func sendCurrentGIF(_ fileURL: URL) async throws -> String {
+        guard licenses.isActivated else { throw LicenseError.inactive }
         let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey])
         guard values.isRegularFile == true, let fileSize = values.fileSize,
               fileSize >= 10, fileSize <= Self.maximumGIFBytes else {
@@ -174,11 +179,18 @@ final class CompanionService {
     }
 
     func receive() async throws -> [CompanionVisit] {
-        let pending: DeliveryList = try await sendJSON(request(method: "GET", url: Self.deliveriesURL))
-        guard !pending.deliveries.isEmpty else { return [] }
-        try FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
-        var visits: [CompanionVisit] = []
+        let directory = try prepareAccountInbox()
+        var visits = try loadVisits(in: directory)
+        let pending: DeliveryList
+        do { pending = try await sendJSON(request(method: "GET", url: Self.deliveriesURL)) }
+        catch {
+            if !visits.isEmpty { return directory == accountInboxURL ? visits.filter(\.acknowledged) : [] }
+            throw error
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         for item in pending.deliveries {
+            guard directory == accountInboxURL else { return [] }
+            guard !visits.contains(where: { $0.id == item.id }) else { continue }
             guard let downloadURL = URL(string: item.downloadPath, relativeTo: LicenseService.serviceBaseURL) else {
                 throw CompanionError.invalidResponse
             }
@@ -189,16 +201,109 @@ final class CompanionService {
             guard digest.caseInsensitiveCompare(item.sha256) == .orderedSame else {
                 throw CompanionError.invalidResponse
             }
-            let fileURL = inboxURL.appendingPathComponent("\(item.id).gif")
+            let fileURL = directory.appendingPathComponent("\(item.id).gif")
             try data.write(to: fileURL, options: .atomic)
-            let acknowledgeURL = Self.deliveriesURL
-                .appendingPathComponent(item.id)
-                .appendingPathComponent("acknowledge")
-            let (_, acknowledgeResponse) = try await session.data(for: request(method: "POST", url: acknowledgeURL))
-            try check(response: acknowledgeResponse, data: Data())
             visits.append(CompanionVisit(id: item.id, senderName: item.senderName, message: item.message, fileURL: fileURL))
+            // A durable local copy must exist before a device receipt is sent.
+            try saveVisits(visits, in: directory)
         }
-        return visits
+        for index in visits.indices where !visits[index].acknowledged {
+            guard directory == accountInboxURL else { return [] }
+            let acknowledgeURL = Self.deliveriesURL.appendingPathComponent(visits[index].id).appendingPathComponent("acknowledge")
+            do {
+                let (data, response) = try await session.data(for: request(method: "POST", url: acknowledgeURL))
+                if (response as? HTTPURLResponse)?.statusCode != 404 { try check(response: response, data: data) }
+                var acknowledgedVisits = visits
+                acknowledgedVisits[index].acknowledged = true
+                try saveVisits(acknowledgedVisits, in: directory)
+                visits = acknowledgedVisits
+            } catch {
+                // Keep this item for the next acknowledgement attempt; do not show it twice.
+            }
+        }
+        return directory == accountInboxURL ? visits.filter(\.acknowledged) : []
+    }
+
+    func isCurrentAccountVisit(_ visit: CompanionVisit) -> Bool {
+        visit.fileURL.deletingLastPathComponent() == accountInboxURL
+    }
+
+    func completeVisit(_ visit: CompanionVisit) {
+        let directory = visit.fileURL.deletingLastPathComponent()
+        do {
+            var visits = try loadVisits(in: directory)
+            visits.removeAll { $0.id == visit.id }
+            try saveVisits(visits, in: directory)
+            try? FileManager.default.removeItem(at: visit.fileURL)
+        } catch { /* Leave the local visit intact so a failed save cannot lose it. */ }
+    }
+
+    private var accountInboxURL: URL {
+        inboxDirectory(for: licenses.interactionCacheKey)
+    }
+
+    private func inboxDirectory(for accountKey: String) -> URL {
+        let key = SHA256.hash(data: Data(accountKey.utf8)).map { String(format: "%02x", $0) }.joined()
+        return inboxURL.appendingPathComponent(key, isDirectory: true)
+    }
+
+    private func prepareAccountInbox() throws -> URL {
+        let accountKey = licenses.interactionCacheKey
+        let installationId = licenses.installationId.lowercased()
+        let identityURL = inboxURL.appendingPathComponent("active-account.json")
+        let previous: InboxIdentity?
+        if FileManager.default.fileExists(atPath: identityURL.path) {
+            previous = try JSONDecoder().decode(InboxIdentity.self, from: Data(contentsOf: identityURL))
+        } else {
+            previous = nil
+        }
+        let sameInstallation = previous?.installationId == installationId
+        let destination = inboxDirectory(for: accountKey)
+        if let previous, sameInstallation, !previous.hasActivated, licenses.isActivated,
+           previous.accountKey == "pending-\(installationId)" {
+            try migrateTrialVisits(from: inboxDirectory(for: previous.accountKey), to: destination)
+        }
+        let identity = InboxIdentity(
+            accountKey: accountKey, installationId: installationId,
+            hasActivated: licenses.isActivated || (sameInstallation && previous?.hasActivated == true)
+        )
+        if identity != previous {
+            try FileManager.default.createDirectory(at: inboxURL, withIntermediateDirectories: true)
+            try JSONEncoder().encode(identity).write(to: identityURL, options: .atomic)
+        }
+        return destination
+    }
+
+    private func migrateTrialVisits(from source: URL, to destination: URL) throws {
+        let trialVisits = try loadVisits(in: source)
+        guard !trialVisits.isEmpty else { return }
+        var activatedVisits = try loadVisits(in: destination)
+        try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
+        for visit in trialVisits where !activatedVisits.contains(where: { $0.id == visit.id }) {
+            let file = destination.appendingPathComponent("\(visit.id).gif")
+            try Data(contentsOf: visit.fileURL).write(to: file, options: .atomic)
+            activatedVisits.append(CompanionVisit(
+                id: visit.id, senderName: visit.senderName, message: visit.message,
+                fileURL: file, acknowledged: visit.acknowledged
+            ))
+        }
+        // Commit the destination before touching the trial queue. A restart can retry by ID.
+        try saveVisits(activatedVisits, in: destination)
+        try saveVisits([], in: source)
+        for visit in trialVisits { try? FileManager.default.removeItem(at: visit.fileURL) }
+    }
+
+    private func loadVisits(in directory: URL) throws -> [CompanionVisit] {
+        let metadata = directory.appendingPathComponent("pending.json")
+        guard FileManager.default.fileExists(atPath: metadata.path) else { return [] }
+        let data = try Data(contentsOf: metadata)
+        let visits = try JSONDecoder().decode([CompanionVisit].self, from: data)
+        return visits.filter { FileManager.default.fileExists(atPath: $0.fileURL.path) }
+    }
+
+    private func saveVisits(_ visits: [CompanionVisit], in directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(visits).write(to: directory.appendingPathComponent("pending.json"), options: .atomic)
     }
 
     private func request(method: String, url: URL) -> URLRequest {
@@ -265,6 +370,11 @@ final class CompanionService {
     }
 
     private struct SendResponse: Decodable { let recipientName: String }
+    private struct InboxIdentity: Codable, Equatable {
+        let accountKey: String
+        let installationId: String
+        let hasActivated: Bool
+    }
     private struct TrialVisitResponse: Decodable {
         let id: String
         let senderName: String

@@ -64,6 +64,9 @@ public partial class PetWindow : Window
     private DateTime _lastBounceSpeech = DateTime.MinValue;
     private double _baseWindowHeight = 380;
     private Action<PetInteractionChoice?>? _interactionCallback;
+    private int _interactionVersion;
+    private int _speechVersion;
+    private string? _pendingReaction;
 
     public PetWindow(AppController controller, bool isCompanion = false)
     {
@@ -111,9 +114,9 @@ public partial class PetWindow : Window
         }
         PetImage.Visibility = _petLoaded ? Visibility.Visible : Visibility.Collapsed;
         DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
-        NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough);
+        NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough && !_controller.IsGuideActive);
         SetInteractionExpanded(IsInteractionVisible, bottom);
-        if (!_isCompanion && _controller.Settings.ClickThrough)
+        if (!_isCompanion && _controller.Settings.ClickThrough && !_controller.IsGuideActive)
             ShowReaction("鼠标穿透开着，Ctrl+Shift+P 可关掉。");
     }
 
@@ -126,17 +129,30 @@ public partial class PetWindow : Window
     public void ShowReaction(string message)
     {
         if (string.IsNullOrWhiteSpace(message) || !IsVisible) return;
+        _speechVersion++;
         if (IsInteractionVisible)
         {
-            Dispatcher.BeginInvoke(() => ShowReaction(message),
-                System.Windows.Threading.DispatcherPriority.Background);
+            // Keep the latest short status until the card closes. Reposting to the
+            // dispatcher here spins continuously and lets old text overwrite new scenes.
+            _pendingReaction = message;
             return;
         }
+        _pendingReaction = null;
         SpeechText.Text = message;
         SpeechBubble.Visibility = Visibility.Visible;
         _speechTimer.Stop();
         _speechTimer.Start();
     }
+
+    public void HideSpeech()
+    {
+        _speechVersion++;
+        _pendingReaction = null;
+        _speechTimer.Stop();
+        SpeechBubble.Visibility = Visibility.Collapsed;
+    }
+
+    public void DismissCurrentInteraction() => CompleteInteraction(null);
 
     public async void ShowReminder(string message, string? expressionPath)
     {
@@ -163,8 +179,8 @@ public partial class PetWindow : Window
         if (_isCompanion) return;
         if (IsInteractionVisible) CompleteInteraction(null);
 
-        _speechTimer.Stop();
-        SpeechBubble.Visibility = Visibility.Collapsed;
+        var interactionVersion = ++_interactionVersion;
+        HideSpeech();
         InteractionTitle.Text = title;
         InteractionMessage.Text = message;
         InteractionChoicePanel.Children.Clear();
@@ -184,7 +200,10 @@ public partial class PetWindow : Window
                 button.BorderBrush = button.Background;
                 button.Foreground = WpfBrushes.White;
             }
-            button.Click += (_, _) => CompleteInteraction(choice);
+            button.Click += (_, _) =>
+            {
+                if (interactionVersion == _interactionVersion) CompleteInteraction(choice);
+            };
             InteractionChoicePanel.Children.Add(button);
         }
 
@@ -200,12 +219,18 @@ public partial class PetWindow : Window
     private void CompleteInteraction(PetInteractionChoice? choice)
     {
         if (!IsInteractionVisible && _interactionCallback is null) return;
+        _interactionVersion++;
         var callback = _interactionCallback;
         _interactionCallback = null;
+        var pending = _pendingReaction;
+        var speechVersion = _speechVersion;
+        _pendingReaction = null;
         InteractionCard.Visibility = Visibility.Collapsed;
         InteractionChoicePanel.Children.Clear();
         SetInteractionExpanded(false);
         callback?.Invoke(choice);
+        if (speechVersion == _speechVersion && !IsInteractionVisible && pending is not null)
+            ShowReaction(pending);
     }
 
     private void SetInteractionExpanded(bool expanded, double? anchoredBottom = null)
@@ -307,13 +332,15 @@ public partial class PetWindow : Window
             _source?.AddHook(WindowHook);
             NativeMethods.RegisterHotKey(_source?.Handle ?? nint.Zero, HotkeyId, 0x0002 | 0x0004, 0x50);
         }
-        NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough);
+        NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough && !_controller.IsGuideActive);
         _lastFrameTicks = _clock.ElapsedTicks;
         _motionTimer.Start();
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _interactionVersion++;
+        HideSpeech();
         _motionTimer.Stop();
         _speechTimer.Stop();
         CancelScriptMotion();
@@ -340,7 +367,7 @@ public partial class PetWindow : Window
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (_isCompanion || _controller.Settings.ClickThrough || _scripted) return;
+        if (_isCompanion || _controller.Settings.ClickThrough && !_controller.IsGuideActive || _scripted) return;
         if (IsInteractionVisible && InteractionCard.IsMouseOver) return;
         if (e.ClickCount == 2)
         {
@@ -426,6 +453,8 @@ public partial class PetWindow : Window
             UpdateScriptMotion(dt);
             return;
         }
+
+        if (_controller.IsGuideActive || _controller.GuideBusy) { _physics.StopInertia(); return; }
 
         if (_physics.IsInertiaActive)
         {
@@ -595,7 +624,8 @@ public partial class PetWindow : Window
         if (_throwSecretFound || _hardThrows.Count < 3) return;
         _throwSecretFound = true;
         _hardThrows.Clear();
-        ShowReaction("连续三次起飞认证：你很会扔，我很会晕。");
+        if (_controller.Settings.DailySpeechEnabled && !_controller.IsQuiet)
+            ShowReaction("连续三次起飞认证：你很会扔，我很会晕。");
         PlaySecretAnimation();
     }
 
@@ -608,7 +638,8 @@ public partial class PetWindow : Window
         var inSecretCorner = Math.Abs(Left - maxX) < 9 && Math.Abs(Top - maxY) < 9;
         if (!inSecretCorner) return;
         _cornerSecretFound = true;
-        ShowReaction("嘘，这个角落有一格只属于我们的存档位。");
+        if (_controller.Settings.DailySpeechEnabled && !_controller.IsQuiet)
+            ShowReaction("嘘，这个角落有一格只属于我们的存档位。");
         PlaySecretAnimation();
     }
 

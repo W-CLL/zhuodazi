@@ -6,9 +6,7 @@ final class CompanionWindowController: NSWindowController {
     private let sendCurrentGIF: () async throws -> Void
     private let currentGIFURL: () -> URL?
     private let isActivated: () -> Bool
-    private let hallAvailable: () -> Bool
     private let stateChanged: () -> Void
-    private var hallViews: [NSView] = []
     private let status = NSTextField(wrappingLabelWithString: "正在连接搭子服务…")
     private let nameField = NSTextField(string: "")
     private let codeField = NSTextField(string: "")
@@ -16,28 +14,21 @@ final class CompanionWindowController: NSWindowController {
     private let pairButton = NSButton(title: "绑定搭子", target: nil, action: nil)
     private let sendButton = NSButton(title: "发送当前 GIF", target: nil, action: nil)
     private let unpairButton = NSButton(title: "解除绑定", target: nil, action: nil)
-    private let hallToggle = NSButton(checkboxWithTitle: "允许陌生人看到我在线", target: nil, action: nil)
-    private let hallStatus = NSTextField(wrappingLabelWithString: "")
-    private let hallPopup = NSPopUpButton()
-    private let hallMessage = NSTextField(string: "")
-    private let hallRefreshButton = NSButton(title: "刷新大厅", target: nil, action: nil)
-    private let hallSendButton = NSButton(title: "发一只表情", target: nil, action: nil)
     private var loading = false
 
-    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, currentGIFURL: @escaping () -> URL?, isActivated: @escaping () -> Bool, hallEnabled: @escaping () -> Bool, stateChanged: @escaping () -> Void) {
+    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, currentGIFURL: @escaping () -> URL?, isActivated: @escaping () -> Bool, stateChanged: @escaping () -> Void) {
         self.service = service
         self.sendCurrentGIF = sendCurrentGIF
         self.currentGIFURL = currentGIFURL
         self.isActivated = isActivated
-        self.hallAvailable = hallEnabled
         self.stateChanged = stateChanged
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 590),
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 450),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        window.title = "搭子联机"
+        window.title = "私人搭子"
         window.isReleasedWhenClosed = false
         window.center()
         super.init(window: window)
@@ -68,7 +59,7 @@ final class CompanionWindowController: NSWindowController {
             stack.topAnchor.constraint(equalTo: window.contentView!.topAnchor, constant: 26)
         ])
 
-        let title = NSTextField(labelWithString: "搭子联机")
+        let title = NSTextField(labelWithString: "私人搭子")
         title.font = .systemFont(ofSize: 22, weight: .bold)
         stack.addArrangedSubview(title)
         status.textColor = .secondaryLabelColor
@@ -76,7 +67,7 @@ final class CompanionWindowController: NSWindowController {
         status.widthAnchor.constraint(equalToConstant: 460).isActive = true
         stack.addArrangedSubview(status)
 
-        nameField.placeholderString = "我的昵称"
+        nameField.placeholderString = "我的昵称，最多 12 字"
         nameField.widthAnchor.constraint(equalToConstant: 300).isActive = true
         let saveName = NSButton(title: "保存昵称", target: self, action: #selector(saveNameAction))
         stack.addArrangedSubview(row(label: "昵称", controls: [nameField, saveName]))
@@ -102,40 +93,11 @@ final class CompanionWindowController: NSWindowController {
         actions.spacing = 9
         stack.addArrangedSubview(actions)
 
-        let hallHint = NSTextField(wrappingLabelWithString: "桌宠大厅：开启后可以看到在线陌生人，选一位发当前表情和一句话。")
-        hallHint.textColor = .secondaryLabelColor
-        hallHint.widthAnchor.constraint(equalToConstant: 460).isActive = true
-        stack.addArrangedSubview(hallHint)
-        hallToggle.target = self
-        hallToggle.action = #selector(hallToggleAction)
-        stack.addArrangedSubview(hallToggle)
-        hallStatus.textColor = .secondaryLabelColor
-        hallStatus.maximumNumberOfLines = 2
-        hallStatus.widthAnchor.constraint(equalToConstant: 460).isActive = true
-        stack.addArrangedSubview(hallStatus)
-        hallPopup.widthAnchor.constraint(equalToConstant: 300).isActive = true
-        hallMessage.placeholderString = "给对方留一句话（可选）"
-        hallMessage.widthAnchor.constraint(equalToConstant: 300).isActive = true
-        hallRefreshButton.target = self
-        hallRefreshButton.action = #selector(refreshHallAction)
-        hallSendButton.target = self
-        hallSendButton.action = #selector(sendHallAction)
-        let strangers = row(label: "在线陌生人", controls: [hallPopup, hallRefreshButton])
-        let message = row(label: "留言", controls: [hallMessage, hallSendButton])
-        stack.addArrangedSubview(strangers)
-        stack.addArrangedSubview(message)
-        hallViews = [hallHint, hallToggle, hallStatus, strangers, message]
-        applyHallVisibility()
-    }
-
-    func renderRemoteConfig(_ config: RemoteConfig) {
-        applyHallVisibility(config.companionHall)
-        render()
-    }
-
-    private func applyHallVisibility(_ enabled: Bool? = nil) {
-        let visible = enabled ?? hallAvailable()
-        for view in hallViews { view.isHidden = !visible }
+        let help = NSTextField(wrappingLabelWithString: "私人绑定需双方正式激活。同一账号的两台设备共享搭子码和绑定关系。想向在线用户打招呼，请从菜单进入“桌宠大厅”。")
+        help.textColor = .secondaryLabelColor
+        help.widthAnchor.constraint(equalToConstant: 510).isActive = true
+        help.maximumNumberOfLines = 0
+        stack.addArrangedSubview(help)
     }
 
     private func row(label: String, controls: [NSView]) -> NSStackView {
@@ -152,10 +114,6 @@ final class CompanionWindowController: NSWindowController {
     private func refreshProfile() {
         run {
             _ = try await self.service.refreshProfile()
-            if self.hallAvailable() {
-                _ = try? await self.service.refreshHall()
-            }
-            return ()
         }
     }
 
@@ -163,31 +121,6 @@ final class CompanionWindowController: NSWindowController {
         let profile = service.profile
         nameField.stringValue = profile?.displayName ?? nameField.stringValue
         codeField.stringValue = profile?.pairingCode ?? ""
-        if !loading {
-            hallToggle.state = profile?.hallEnabled == true ? .on : .off
-        }
-        hallToggle.isEnabled = isActivated() && hallAvailable() && !loading
-        let hallEnabled = hallAvailable() && profile?.hallEnabled == true
-        if !hallEnabled {
-            hallStatus.stringValue = "开启后你会出现在陌生人大厅，也能看到其他在线用户。"
-        } else if service.hallPeople.isEmpty {
-            hallStatus.stringValue = currentGIFURL() == nil
-                ? "大厅已开启，当前没有可发送的 GIF；在线用户出现后即可发送。"
-                : "大厅已开启，暂时没有在线陌生人；保持窗口打开即可收到新用户。"
-        } else if currentGIFURL() == nil {
-            hallStatus.stringValue = "已有在线陌生人，但当前没有可发送的 GIF。"
-        } else {
-            hallStatus.stringValue = "大厅已开启，选择一位在线用户即可发送当前表情。"
-        }
-        hallPopup.removeAllItems()
-        for person in service.hallPeople {
-            hallPopup.addItem(withTitle: person.displayName)
-            hallPopup.lastItem?.representedObject = person.id
-        }
-        hallPopup.isEnabled = hallEnabled && !loading && !service.hallPeople.isEmpty
-        hallMessage.isEnabled = hallPopup.isEnabled
-        hallRefreshButton.isEnabled = isActivated() && hallAvailable() && !loading
-        hallSendButton.isEnabled = hallPopup.isEnabled && currentGIFURL() != nil && !loading
         if let partner = profile?.partner {
             status.stringValue = "已和 \(partner.displayName) 绑定"
             pairField.isHidden = true
@@ -197,18 +130,19 @@ final class CompanionWindowController: NSWindowController {
         } else {
             status.stringValue = profile == nil
                 ? "正在连接搭子服务…"
-                : "电脑和手机是同一对搭子码，不用重新绑定。分享给对方，或输入对方的搭子码。"
+                : "同一账号的两台设备共享搭子码。分享给另一位已激活用户，或输入对方的搭子码。"
             pairField.isHidden = false
             pairButton.isHidden = false
             sendButton.isHidden = true
             unpairButton.isHidden = true
         }
         for control in [nameField, codeField, pairField, pairButton, sendButton, unpairButton] {
-            control.isEnabled = !loading
+            control.isEnabled = !loading && isActivated()
         }
+        sendButton.isEnabled = !loading && isActivated() && currentGIFURL() != nil
     }
 
-    private func run<T>(_ action: @escaping () async throws -> T) {
+    private func run<T>(_ action: @escaping @MainActor () async throws -> T) {
         guard !loading else { return }
         loading = true
         render()
@@ -225,13 +159,18 @@ final class CompanionWindowController: NSWindowController {
     }
 
     @objc private func saveNameAction() {
-        let name = nameField.stringValue
+        let name = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, name.unicodeScalars.count <= 12 else {
+            presentFriendlyError(CompanionError.server("请输入 1–12 字的昵称。"), title: "昵称未保存")
+            return
+        }
         run { try await self.service.updateName(name) }
     }
 
     @objc private func copyCodeAction() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(codeField.stringValue, forType: .string)
+        status.stringValue = "搭子码已复制，可发给另一位已激活用户。"
     }
 
     @objc private func pairAction() {
@@ -243,33 +182,10 @@ final class CompanionWindowController: NSWindowController {
         run { try await self.sendCurrentGIF() }
     }
 
-    @objc private func refreshHallAction() {
-        guard hallAvailable() else { return }
-        run { try await self.service.refreshHall() }
-    }
-
-    @objc private func hallToggleAction() {
-        guard hallAvailable() else { return }
-        let enabled = hallToggle.state == .on
-        run {
-            _ = try await self.service.setHallEnabled(enabled)
-            if enabled { _ = try await self.service.refreshHall() }
-            return ()
-        }
-    }
-
-    @objc private func sendHallAction() {
-        guard let item = hallPopup.selectedItem,
-              let recipientId = item.representedObject as? String,
-              let url = currentGIFURL() else { return }
-        let message = hallMessage.stringValue
-        run { try await self.service.sendToHall(fileURL: url, recipientId: recipientId, message: message) }
-    }
-
     @objc private func unpairAction() {
         let alert = NSAlert()
         alert.messageText = "解除搭子绑定？"
-        alert.informativeText = "双方之后都不能继续投递 GIF。"
+        alert.informativeText = "双方搭子码会更新，尚未收取的来访会失效。之后可以重新绑定。"
         alert.addButton(withTitle: "解除绑定")
         alert.addButton(withTitle: "取消")
         guard alert.runModal() == .alertFirstButtonReturn else { return }

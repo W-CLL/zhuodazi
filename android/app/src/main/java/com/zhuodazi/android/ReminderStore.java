@@ -83,6 +83,8 @@ final class ReminderStore {
         String cleanMessage = clean(message, MAX_MESSAGE);
         if (cleanMessage.isEmpty()) throw new IllegalArgumentException("请填写提醒内容。");
         if (at <= 0) throw new IllegalArgumentException("请选择提醒时间。");
+        if (enabled && !repeatDaily && at <= System.currentTimeMillis())
+            throw new IllegalArgumentException("一次性提醒需要设置未来的时间，请重新选择日期和时间。");
         String cleanEmotion = normalizeEmotion(emotion);
         String cleanExpression = expressionPetId == null ? "" : expressionPetId.trim();
         List<Reminder> current = reminders();
@@ -103,7 +105,48 @@ final class ReminderStore {
         if (id == null || id.trim().isEmpty()) return;
         List<Reminder> current = reminders();
         current.removeIf(item -> id.equals(item.id));
+        clearPending(id);
         persist(current);
+    }
+
+    List<Reminder> due(long now) {
+        List<Reminder> result = new ArrayList<>();
+        for (Reminder reminder : reminders()) if (reminder.enabled && reminder.at <= now) result.add(reminder);
+        return result;
+    }
+
+    void markPending(String id, long occurrenceAt) {
+        try {
+            JSONObject pending = new JSONObject(settings.pendingReminderOccurrences());
+            pending.put(id, occurrenceAt);
+            settings.putString("pending_reminder_occurrences", pending.toString());
+        } catch (Exception ignored) { }
+    }
+
+    private void clearPending(String id) {
+        try {
+            JSONObject pending = new JSONObject(settings.pendingReminderOccurrences());
+            pending.remove(id);
+            settings.putString("pending_reminder_occurrences", pending.toString());
+        } catch (Exception ignored) { }
+    }
+
+    private boolean isPending(Reminder reminder) {
+        try { return new JSONObject(settings.pendingReminderOccurrences()).optLong(reminder.id, -1L) == reminder.at; }
+        catch (Exception ignored) { return false; }
+    }
+
+    void markDelivered(String id, long occurrenceAt, long now) {
+        List<Reminder> current = reminders();
+        for (Reminder reminder : current) {
+            if (!reminder.id.equals(id) || !reminder.enabled || reminder.at != occurrenceAt) continue;
+            if (reminder.repeatDaily) {
+                while (reminder.at <= now) reminder.at += 86_400_000L;
+            } else reminder.enabled = false;
+            clearPending(id);
+            persist(current);
+            return;
+        }
     }
 
     List<Reminder> fireDue(long now) {
@@ -130,7 +173,7 @@ final class ReminderStore {
         List<Reminder> current = reminders();
         boolean changed = false;
         for (Reminder reminder : current) {
-            if (!reminder.enabled || reminder.at > now) continue;
+            if (!reminder.enabled || reminder.at > now || isPending(reminder)) continue;
             changed = true;
             if (reminder.repeatDaily) {
                 long next = reminder.at;

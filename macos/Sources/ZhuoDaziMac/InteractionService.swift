@@ -74,8 +74,9 @@ final class InteractionService {
 
     var statusSummary: String {
         switchAccountIfNeeded()
-        let catalog = state.catalogVersion == 0 ? "尚未同步" : "目录 v\(state.catalogVersion)"
-        return "\(catalog) · \(state.items.count) 条可用 · \(state.pendingEvents.count) 条待上传"
+        return state.items.isEmpty
+            ? "还没有准备好的趣味内容，点“找点新乐趣”试试。"
+            : "准备了 \(state.items.count) 条小乐趣，随时可以玩。"
     }
 
     func isMoodPromptDue(at now: Date = Date()) -> Bool {

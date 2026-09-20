@@ -33,3 +33,10 @@ android/.gradle/
 android/build/
 android/app/build/
 android/local.properties
+
+# Python caches and local review artifacts
+**/__pycache__/
+.local-review/
+
+# Local visual references explicitly kept off the remote repository
+参考图_不上传到github/

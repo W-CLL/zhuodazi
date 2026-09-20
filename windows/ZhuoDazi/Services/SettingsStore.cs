@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json;
 using ZhuoDazi.Models;
 
@@ -11,8 +12,13 @@ public sealed class SettingsStore
         WriteIndented = true
     };
 
-    public string DataDirectory { get; } = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "poko-desktop-pet");
+    public string DataDirectory { get; }
+
+    public SettingsStore(string? dataDirectory = null)
+    {
+        DataDirectory = dataDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "poko-desktop-pet");
+    }
 
     public string SettingsPath => Path.Combine(DataDirectory, "settings.json");
     public string PetsDirectory => Path.Combine(DataDirectory, "pets");
@@ -29,13 +35,17 @@ public sealed class SettingsStore
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? CreateDefault();
             settings.Normalize();
             using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("onboarding", out _))
+                settings.Onboarding = OnboardingProgress.ForExistingInstallation();
             if (!document.RootElement.TryGetProperty("remoteDefaultsApplied", out _))
                 settings.RemoteDefaultsApplied = true;
             return settings;
         }
         catch
         {
-            return CreateDefault();
+            var settings = CreateDefault();
+            if (File.Exists(SettingsPath)) settings.Onboarding = OnboardingProgress.ForExistingInstallation();
+            return settings;
         }
     }
 
@@ -49,8 +59,7 @@ public sealed class SettingsStore
 
     public string ImportPet(string sourcePath)
     {
-        if (!File.Exists(sourcePath) || !sourcePath.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("请选择有效的 GIF 文件。");
+        GifImportValidator.Validate(sourcePath);
         Directory.CreateDirectory(PetsDirectory);
         var destination = Path.Combine(PetsDirectory, $"pet-{DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}-{Guid.NewGuid():N}.gif");
         File.Copy(sourcePath, destination, false);

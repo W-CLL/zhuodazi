@@ -5,7 +5,14 @@ import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
-NOTES = "更新/修复了一些功能"
+
+
+def release_notes_path(platform, version):
+    family = "android" if platform == "android" else "desktop"
+    notes = ROOT / "docs" / "releases" / f"{family}-{version}.md"
+    if not notes.is_file() or not notes.read_text(encoding="utf-8").strip():
+        raise RuntimeError(f"请先编写面向用户的更新说明：{notes}")
+    return notes
 
 
 def read_release(tag):
@@ -83,7 +90,7 @@ def prepare_release(plan, target):
     command.extend([
         "--target", target,
         "--title", f"桌搭子 {name} {plan['version']}",
-        "--notes", NOTES,
+        "--notes-file", str(release_notes_path(plan["platform"], plan["version"])),
     ])
     subprocess.run(command, cwd=ROOT, check=True)
 

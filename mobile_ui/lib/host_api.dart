@@ -5,6 +5,8 @@ const settingOpacity = 'opacity';
 const settingMirrored = 'mirrored';
 const settingMovement = 'random_movement';
 const settingInteractions = 'random_interactions';
+const settingDailySpeech = 'dailySpeechEnabled';
+const settingQuietUntil = 'quietUntilUtc';
 const settingInteractionMode = 'interaction_mode';
 const settingPersonality = 'personality';
 const settingRandomPet = 'random_pet';
@@ -89,11 +91,8 @@ class UpdateState {
     this.notes = '',
   });
 
-  factory UpdateState.idle() => const UpdateState(
-    phase: 'idle',
-    message: '可以检查更新',
-    progress: 0,
-  );
+  factory UpdateState.idle() =>
+      const UpdateState(phase: 'idle', message: '可以检查更新', progress: 0);
 
   factory UpdateState.from(Map<String, dynamic> data) {
     final manifest = data['manifest'];
@@ -131,12 +130,29 @@ class HostSnapshot {
 
   bool get overlayAllowed => _bool('overlayAllowed');
   bool get notificationAllowed => _bool('notificationAllowed');
+  int get guideVersion => _int('guideVersion', 0);
+  int get guideStep => _int('guideStep', 0);
+  int get guideCompletedSteps => _int('guideCompletedSteps', 0);
+  int get guideSkippedSteps => _int('guideSkippedSteps', 0);
+  bool get guideDismissed => _bool('guideDismissed');
+  bool get guideUpgradeNotice => _bool('guideUpgradeNotice');
+  String get guideDemo => _string('guideDemo', '');
+  bool get interactionBusy => _bool('interactionBusy');
+  bool get theaterActive => _bool('theaterActive');
+  bool get petVisible => _data.containsKey('petVisible')
+      ? _bool('petVisible')
+      : running && !hidden && !clickThrough;
+  bool get guideActive => guideVersion > 0 && !guideDismissed && guideStep < 5;
   bool get running => _bool('running');
   bool get hidden => _bool('hidden');
   bool get clickThrough => _bool('clickThrough');
   bool get mirrored => _bool('mirrored');
   bool get movement => _bool('movement');
   bool get interactions => _bool('interactions');
+  bool get dailySpeechEnabled =>
+      !_data.containsKey('dailySpeechEnabled') || _bool('dailySpeechEnabled');
+  int get quietUntilUtc => _int('quietUntilUtc', 0);
+  bool get isQuiet => quietUntilUtc > DateTime.now().millisecondsSinceEpoch;
   bool get randomPet => _bool('randomPet');
   bool get startOnBoot => _bool('startOnBoot');
   bool get activated => _bool('activated');
@@ -167,13 +183,13 @@ class HostSnapshot {
   String get announcement => _string('announcement', '');
   bool get trialVisitsEnabled =>
       !_data.containsKey('trialVisitsEnabled') || _bool('trialVisitsEnabled');
-  bool get companionHallEnabled => !_data.containsKey('companionHallEnabled')
-      || _bool('companionHallEnabled');
+  bool get companionHallEnabled =>
+      !_data.containsKey('companionHallEnabled') ||
+      _bool('companionHallEnabled');
   bool get autoUpdatesEnabled =>
       !_data.containsKey('autoUpdatesEnabled') || _bool('autoUpdatesEnabled');
-  bool get autoCheckUpdates => _data.containsKey('autoCheckUpdates')
-      ? _bool('autoCheckUpdates')
-      : true;
+  bool get autoCheckUpdates =>
+      _data.containsKey('autoCheckUpdates') ? _bool('autoCheckUpdates') : true;
   String get ignoredUpdateVersion => _string('ignoredUpdateVersion', '');
   bool get canInstallPackages => _bool('canInstallPackages');
 
@@ -314,6 +330,9 @@ class HostApi {
   Future<HostSnapshot> serviceAction(String action) =>
       _snapshotCall('serviceAction', {'action': action});
 
+  Future<HostSnapshot> guideAction(String action) =>
+      _snapshotCall('guideAction', {'action': action});
+
   Future<HostSnapshot> react(String reaction) =>
       _snapshotCall('react', {'reaction': reaction});
 
@@ -416,11 +435,17 @@ class HostApi {
   Future<Map<String, dynamic>> companionHallSet(bool enabled) =>
       _mapCall('companionHallSet', {'enabled': enabled});
 
-  Future<String> companionHallSend(String recipientId, String message) async =>
+  Future<String> companionHallSend(
+    String recipientId,
+    String message, {
+    required String petId,
+  }) async =>
       await _channel.invokeMethod<String>('companionHallSend', {
         'recipientId': recipientId,
         'message': message,
-      }) ?? '桌搭子';
+        'petId': petId,
+      }) ??
+      '桌搭子';
 
   Future<HostSnapshot> _snapshotCall(
     String method, [

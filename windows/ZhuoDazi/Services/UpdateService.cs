@@ -74,7 +74,7 @@ public sealed class UpdateService : IDisposable
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, ManifestUrl);
-            _licenses.Authorize(request);
+            if (_licenses.HasPremiumAccess) _licenses.Authorize(request);
             request.Headers.Accept.ParseAdd("application/json");
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             EnsureAuthorizedResponse(response);
@@ -111,7 +111,7 @@ public sealed class UpdateService : IDisposable
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, manifest.Url);
-            _licenses.Authorize(request);
+            if (_licenses.HasPremiumAccess) _licenses.Authorize(request);
             using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             EnsureAuthorizedResponse(response);
             response.EnsureSuccessStatusCode();

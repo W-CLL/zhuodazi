@@ -121,6 +121,9 @@ internal sealed class InteractionShownContent
 
 internal sealed class InteractionErrorResponse
 {
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
     [JsonPropertyName("message")]
     public string? Message { get; set; }
 }

@@ -10,7 +10,7 @@ enum ContentImportError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidWordPack: return "词包格式无效，请使用 JSON 或带动作分组的 TXT 文件"
+        case .invalidWordPack: return "悄悄话格式无效，请使用 JSON 或带动作分组的 TXT 文件"
         case .invalidTheaterScript: return "剧本至少需要 3 轮、最多 5 轮完整对话"
         case .unsupportedGIF: return "请选择有效的 GIF 图片"
         case .limitReached(let message): return message
@@ -80,7 +80,7 @@ enum InteractionWordPackImporter {
             words = parseText(text)
         }
         guard !words.isEmpty else { throw ContentImportError.invalidWordPack }
-        return InteractionWordPackDefinition(name: name.isEmpty ? "互动词包" : name, words: words)
+        return InteractionWordPackDefinition(name: name.isEmpty ? "悄悄话" : name, words: words)
     }
 
     private static func parseJSON(_ data: Data) throws -> [String: [String]] {

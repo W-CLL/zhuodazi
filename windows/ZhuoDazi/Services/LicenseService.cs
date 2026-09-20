@@ -46,9 +46,9 @@ public sealed class LicenseService : IDisposable
             ? "这台也连上了，搭子码和另一台是同一对。"
             : "这组码也可以填到另一台电脑或手机。";
 
-    public LicenseService()
+    public LicenseService(string? dataDirectory = null)
     {
-        var dataDirectory = Path.Combine(
+        dataDirectory ??= Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "poko-desktop-pet");
         _licensePath = Path.Combine(dataDirectory, "license.dat");
         _record = Load() ?? CreatePendingRecord();
@@ -152,6 +152,8 @@ public sealed class LicenseService : IDisposable
                 throw new InvalidOperationException(TryReadError(responseBytes) ?? "试用时间校验失败，请稍后重试。");
             var result = JsonSerializer.Deserialize<TrialResponse>(responseBytes, JsonOptions);
             if (result is null) throw new InvalidOperationException("试用服务返回的数据无效。");
+            // An activation can finish while the background trial request is in flight.
+            if (IsActivated) return new TrialStatus(false, 0);
             ApplyTrialResponse(result);
             return new TrialStatus(IsTrialActive, RemainingTrialSeconds);
         }

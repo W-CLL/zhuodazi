@@ -26,9 +26,27 @@ def read_macos_version():
     return short
 
 
+def read_android_version():
+    configuration = (ROOT / "android/app/build.gradle.kts").read_text(encoding="utf-8")
+    version = re.search(r'^\s*versionName\s*=\s*"(\d+\.\d+\.\d+)"\s*$', configuration, re.MULTILINE)
+    code = re.search(r'^\s*versionCode\s*=\s*([1-9]\d*)\s*$', configuration, re.MULTILINE)
+    if not version or not code:
+        raise SystemExit("Android requires MAJOR.MINOR.PATCH and a positive versionCode")
+    flutter = (ROOT / "mobile_ui/pubspec.yaml").read_text(encoding="utf-8")
+    flutter_version = re.search(r'^version:\s*(\S+)\s*$', flutter, re.MULTILINE)
+    expected = f"{version.group(1)}+{code.group(1)}"
+    if not flutter_version or flutter_version.group(1) != expected:
+        raise SystemExit(f"Flutter version must match Android: {expected}")
+    notes = ROOT / "docs/releases" / f"android-{version.group(1)}.md"
+    if not notes.is_file() or not notes.read_text(encoding="utf-8").strip():
+        raise SystemExit(f"Missing Android user release notes: {notes.name}")
+    return version.group(1), int(code.group(1))
+
+
 def main():
     windows = read_windows_version()
     macos = read_macos_version()
+    android, android_code = read_android_version()
     if not re.fullmatch(r"\d+\.\d+\.\d+", windows + ""):
         raise SystemExit(f"Invalid Windows version: {windows!r}")
     if not re.fullmatch(r"\d+\.\d+\.\d+", macos + ""):
@@ -43,7 +61,7 @@ def main():
             marker = f'data-release-version="{target}"'
             if marker not in layout:
                 raise SystemExit(f"Website {name} layout is missing dynamic release marker {target}")
-    print(f"release consistency ok: Windows {windows}, macOS {macos}; website versions are dynamic")
+    print(f"release consistency ok: Windows {windows}, macOS {macos}, Android {android}+{android_code}; website versions are dynamic")
 
 
 if __name__ == "__main__":

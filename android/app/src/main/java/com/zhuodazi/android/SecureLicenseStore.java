@@ -15,6 +15,8 @@ import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.util.UUID;
+import java.util.HashMap;
+import java.util.Map;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -24,24 +26,38 @@ import javax.crypto.spec.GCMParameterSpec;
 final class SecureLicenseStore {
     private static final String KEY_ALIAS = "zhuodazi_android_license_v1";
     private static final byte FILE_VERSION = 1;
+    private static final Object LOCK = new Object();
+    private static final Map<String, LicenseRecord> RECORDS = new HashMap<>();
     private final File recordFile;
     private LicenseRecord record;
 
     SecureLicenseStore(Context context) {
         recordFile = new File(context.getFilesDir(), "license.secure");
-        record = load();
-        if (record == null || !record.isValid()) {
-            record = LicenseRecord.create();
-            save();
+        synchronized (LOCK) {
+            record = RECORDS.get(recordFile.getAbsolutePath());
+            if (record == null) {
+                record = load();
+                if (record == null || !record.isValid()) {
+                    record = LicenseRecord.create();
+                    save();
+                }
+                RECORDS.put(recordFile.getAbsolutePath(), record);
+            }
         }
     }
 
-    synchronized LicenseRecord record() { return record.copy(); }
+    LicenseRecord record() {
+        synchronized (LOCK) { return RECORDS.get(recordFile.getAbsolutePath()).copy(); }
+    }
 
-    synchronized void activate(String licenseId, String activatedAt) {
-        record.licenseId = licenseId;
-        record.activatedAt = activatedAt == null ? "" : activatedAt;
-        save();
+    void activate(String licenseId, String activatedAt) {
+        synchronized (LOCK) {
+            record = record();
+            record.licenseId = licenseId;
+            record.activatedAt = activatedAt == null ? "" : activatedAt;
+            save();
+            RECORDS.put(recordFile.getAbsolutePath(), record);
+        }
     }
 
     private LicenseRecord load() {

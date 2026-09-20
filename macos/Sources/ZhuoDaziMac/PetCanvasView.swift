@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import ZhuoDaziCore
 
 final class PetCanvasView: NSView {
     var dragBegan: ((NSPoint) -> Void)?
@@ -12,6 +13,8 @@ final class PetCanvasView: NSView {
     private var didDrag = false
     private var animationTimer: Timer?
     private var currentPetImage: NSImage?
+    private var bubbleTimer: Timer?
+    private var bubbleLifetime = PresentationLifetime()
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -46,6 +49,7 @@ final class PetCanvasView: NSView {
 
     deinit {
         animationTimer?.invalidate()
+        bubbleTimer?.invalidate()
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -76,11 +80,26 @@ final class PetCanvasView: NSView {
         layoutContent()
     }
 
-    func showBubble(_ text: String, duration: TimeInterval = 3.2) {
+    @discardableResult
+    func showBubble(_ text: String, duration: TimeInterval = 3.2) -> PresentationLifetime.Token {
+        let token = bubbleLifetime.begin()
+        bubbleTimer?.invalidate()
         bubble.stringValue = text
         bubble.isHidden = false
-        NSObject.cancelPreviousPerformRequests(withTarget: self, selector: #selector(hideBubble), object: nil)
-        perform(#selector(hideBubble), with: nil, afterDelay: duration)
+        let timer = Timer(timeInterval: duration, repeats: false) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.dismissBubble(ifCurrent: token) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        bubbleTimer = timer
+        return token
+    }
+
+    func dismissBubble(ifCurrent token: PresentationLifetime.Token? = nil) {
+        if let token, !bubbleLifetime.isCurrent(token) { return }
+        bubbleLifetime.invalidate()
+        bubbleTimer?.invalidate()
+        bubbleTimer = nil
+        bubble.isHidden = true
     }
 
     func showPet(at url: URL) {
@@ -142,7 +161,4 @@ final class PetCanvasView: NSView {
         return max(duration, 0.1)
     }
 
-    @objc private func hideBubble() {
-        bubble.isHidden = true
-    }
 }

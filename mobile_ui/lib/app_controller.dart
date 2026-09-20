@@ -19,11 +19,20 @@ class AppController extends ChangeNotifier {
   bool busy = false;
   bool companionLoading = false;
   String? companionError;
+  String? hallError;
+  bool hallLoading = false;
+  DateTime? hallNextSendAt;
   DateTime? _trialSyncedAt;
   int _trialSecondsAtSync = 0;
   Timer? _trialTimer;
+  Timer? _quietTimer;
   bool _autoChecked = false;
   bool _awaitingOverlayGrant = false;
+  String? _pendingPetAction;
+  String operationStatus = '';
+  Timer? _runtimeTimer;
+  bool _disposed = false;
+  bool _runtimePolling = false;
 
   int get liveTrialSeconds {
     if (snapshot.activated) return 0;
@@ -44,12 +53,13 @@ class AppController extends ChangeNotifier {
     loading = true;
     notifyListeners();
     try {
-      await _pullSnapshot(checkTrial: true);
+      await _pullSnapshot(checkTrial: false);
       try {
         snapshot = await _api.siteLinks();
         _rememberTrial(snapshot);
         _rememberUpdate(snapshot);
       } catch (_) {}
+      await _pullSnapshot(checkTrial: true);
       unawaited(_maybeAutoCheckUpdates());
     } finally {
       loading = false;
@@ -63,12 +73,81 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> service(String action) async {
+    if (action == 'stop') {
+      _pendingPetAction = null;
+      _awaitingOverlayGrant = false;
+    }
+    const needsVisible = {'next', 'interact', 'theater', 'show', 'start'};
+    if (needsVisible.contains(action) && !snapshot.overlayAllowed) {
+      _pendingPetAction = action;
+      await requestOverlayPermission();
+      if (snapshot.overlayAllowed) return;
+      throw const HostFailure('允许悬浮窗后回到这里，将继续刚才的操作');
+    }
+    operationStatus = switch (action) {
+      'interact' => '准备中…',
+      'theater' => '正在准备小剧场',
+      _ => '正在准备桌宠',
+    };
+    try {
+      await _guard(() async {
+        snapshot = await _api.serviceAction(action);
+        _rememberTrial(snapshot);
+        _rememberUpdate(snapshot);
+        await _loadActivePet();
+      });
+    } finally {
+      operationStatus = '';
+      if (!_disposed) notifyListeners();
+    }
+  }
+
+  Future<void> guide(String action) async {
+    if ({'dismiss', 'dismissNotice'}.contains(action) &&
+        (_pendingPetAction?.startsWith('guide:') ?? false)) {
+      _pendingPetAction = null;
+      _awaitingOverlayGrant = false;
+    }
+    if (!{'dismiss', 'dismissNotice'}.contains(action) &&
+        !snapshot.overlayAllowed) {
+      _pendingPetAction = 'guide:$action';
+      await requestOverlayPermission();
+      if (snapshot.overlayAllowed) return;
+      throw const HostFailure('允许悬浮窗后返回，即可继续新手体验');
+    }
     await _guard(() async {
-      snapshot = await _api.serviceAction(action);
-      await Future<void>.delayed(const Duration(milliseconds: 260));
-      snapshot = await _api.snapshot();
+      snapshot = await _api.guideAction(action);
       _rememberTrial(snapshot);
-      _rememberUpdate(snapshot);
+    });
+  }
+
+  void _syncRuntimeTimer() {
+    if (!snapshot.running) {
+      _runtimeTimer?.cancel();
+      _runtimeTimer = null;
+      return;
+    }
+    _runtimeTimer ??= Timer.periodic(const Duration(milliseconds: 800), (
+      _,
+    ) async {
+      if (_disposed || busy || _runtimePolling) return;
+      _runtimePolling = true;
+      final previous = snapshot;
+      try {
+        final next = await _api.snapshot();
+        if (_disposed || busy || !identical(snapshot, previous)) return;
+        snapshot = next;
+        _rememberTrial(next);
+        notifyListeners();
+        if (next.activePet != previous.activePet) {
+          await _loadActivePet();
+          if (!_disposed) notifyListeners();
+        }
+      } catch (_) {
+        // Keep durable progress and let the user retry; polling never advances a step.
+      } finally {
+        _runtimePolling = false;
+      }
     });
   }
 
@@ -103,16 +182,30 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> onAppResumed() async {
-    await refresh(checkTrial: true);
-    await startPetAfterOverlayGrant();
+    try {
+      await refresh();
+      await startPetAfterOverlayGrant();
+    } catch (error) {
+      operationStatus = readableHostError(error);
+      if (!_disposed) notifyListeners();
+    }
   }
 
   Future<void> startPetAfterOverlayGrant() async {
     if (!_awaitingOverlayGrant) return;
     if (!snapshot.overlayAllowed) return;
     _awaitingOverlayGrant = false;
-    if (snapshot.running) return;
-    await service('start');
+    final pending = _pendingPetAction;
+    _pendingPetAction = null;
+    if (pending != null) {
+      if (pending.startsWith('guide:')) {
+        await guide(pending.substring(6));
+      } else {
+        await service(pending);
+      }
+    } else if (!snapshot.running) {
+      await service('start');
+    }
   }
 
   Future<void> requestNotificationPermission() =>
@@ -163,6 +256,9 @@ class AppController extends ChangeNotifier {
   Future<void> activate(String code) async {
     await _guard(() async {
       snapshot = await _api.activate(code);
+      companion = null;
+      companionHall = null;
+      hallError = null;
       _rememberTrial(snapshot);
     });
   }
@@ -269,11 +365,6 @@ class AppController extends ChangeNotifier {
     try {
       await _guard(() async {
         companion = await _api.companionRefresh();
-        if (snapshot.companionHallEnabled) {
-          companionHall = await _api.companionHallRefresh();
-        } else {
-          companionHall = null;
-        }
       });
     } catch (error) {
       companionError = readableHostError(error);
@@ -314,21 +405,49 @@ class AppController extends ChangeNotifier {
     if (!snapshot.companionHallEnabled) return;
     await _guard(() async {
       companion = await _api.companionHallSet(enabled);
+      companionHall = {'enabled': enabled, 'people': <Object>[]};
       companionHall = await _api.companionHallRefresh();
     });
   }
 
   Future<void> refreshCompanionHall() async {
-    if (!snapshot.companionHallEnabled) return;
-    await _guard(() async {
+    if (!snapshot.companionHallEnabled || hallLoading) return;
+    hallLoading = true;
+    hallError = null;
+    notifyListeners();
+    try {
+      companion = await _api.companionRefresh();
       companionHall = await _api.companionHallRefresh();
-    });
+    } catch (error) {
+      hallError = readableHostError(error);
+    } finally {
+      hallLoading = false;
+      notifyListeners();
+    }
   }
 
-  Future<String> sendCompanionHall(String recipientId, String message) async {
+  int get hallCooldownSeconds {
+    final remaining =
+        hallNextSendAt?.difference(DateTime.now()).inMilliseconds ?? 0;
+    return remaining > 0 ? (remaining / 1000).ceil() : 0;
+  }
+
+  Future<String> sendCompanionHall(
+    String recipientId,
+    String message, {
+    required String petId,
+  }) async {
+    if (hallCooldownSeconds > 0) {
+      throw HostFailure('稍等 $hallCooldownSeconds 秒再发一只');
+    }
     var recipient = '';
     await _guard(() async {
-      recipient = await _api.companionHallSend(recipientId, message);
+      recipient = await _api.companionHallSend(
+        recipientId,
+        message,
+        petId: petId,
+      );
+      hallNextSendAt = DateTime.now().add(const Duration(seconds: 30));
     });
     return recipient;
   }
@@ -354,13 +473,21 @@ class AppController extends ChangeNotifier {
   }
 
   void _onHostEvent(String method, Object? arguments) {
+    if (method == 'snapshotChanged' && arguments is Map) {
+      snapshot = HostSnapshot(Map<String, dynamic>.from(arguments));
+      _rememberTrial(snapshot);
+      notifyListeners();
+      return;
+    }
     if (method != 'updateProgress' || arguments is! Map) return;
     update = UpdateState.from(Map<String, dynamic>.from(arguments));
     notifyListeners();
   }
 
   Future<void> _maybeAutoCheckUpdates() async {
-    if (_autoChecked || !snapshot.autoCheckUpdates || !snapshot.autoUpdatesEnabled) {
+    if (_autoChecked ||
+        !snapshot.autoCheckUpdates ||
+        !snapshot.autoUpdatesEnabled) {
       return;
     }
     _autoChecked = true;
@@ -376,13 +503,25 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _loadActivePet() async {
-    petGif = await _api.petGif(snapshot.activePet);
+    final petId = snapshot.activePet;
+    final image = await _api.petGif(petId);
+    if (!_disposed && snapshot.activePet == petId) petGif = image;
   }
 
   void _rememberTrial(HostSnapshot next) {
+    _syncRuntimeTimer();
     _trialSecondsAtSync = next.trialSeconds;
     _trialSyncedAt = DateTime.now();
     _syncTrialTimer();
+    _quietTimer?.cancel();
+    final quietDelay =
+        next.quietUntilUtc - DateTime.now().millisecondsSinceEpoch;
+    if (quietDelay > 0) {
+      _quietTimer = Timer(
+        Duration(milliseconds: quietDelay + 100),
+        notifyListeners,
+      );
+    }
   }
 
   void _syncTrialTimer() {
@@ -395,7 +534,7 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> _guard(Future<void> Function() action) async {
-    if (busy) return;
+    if (busy) throw const HostFailure('正在处理上一个操作，请稍等');
     busy = true;
     notifyListeners();
     try {
@@ -408,8 +547,11 @@ class AppController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _runtimeTimer?.cancel();
     _trialTimer?.cancel();
-    _api.listen((_, __) {});
+    _quietTimer?.cancel();
+    _api.listen((_, _) {});
     super.dispose();
   }
 }

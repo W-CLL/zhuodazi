@@ -1,4 +1,5 @@
 import Foundation
+import ZhuoDaziCore
 
 struct PetDefinition: Codable, Equatable, Identifiable {
     var id = UUID().uuidString
@@ -8,13 +9,13 @@ struct PetDefinition: Codable, Equatable, Identifiable {
 
 struct LibraryDefinition: Codable, Equatable, Identifiable {
     var id = "library-\(UUID().uuidString)"
-    var name = "GIF 资源库"
+    var name = "桌宠图鉴"
     var path = ""
 }
 
 struct InteractionWordPackDefinition: Codable, Equatable, Identifiable {
     var id = "words-\(UUID().uuidString)"
-    var name = "互动词包"
+    var name = "悄悄话"
     var words: [String: [String]] = [:]
 
     var wordCount: Int { words.values.reduce(0) { $0 + $1.count } }
@@ -54,6 +55,8 @@ struct AppSettings: Codable {
     var mouseInteractionEnabled = true
     var randomMovementEnabled = true
     var randomInteractionsEnabled = true
+    var dailySpeechEnabled = true
+    var quietUntilUtc: Date?
     var interactionMode = "standard"
     var theaterEnabled = false
     var theaterIntervalSeconds = 300
@@ -67,6 +70,7 @@ struct AppSettings: Codable {
     var autoCheckUpdates = true
     var ignoredUpdateVersion: String?
     var reminders: [ReminderDefinition] = []
+    var pendingReminders: [ReminderDefinition] = []
     var dockIconVisible = true
     var positionX: CGFloat?
     var positionY: CGFloat?
@@ -74,6 +78,10 @@ struct AppSettings: Codable {
     var demoVisitSeen = false
     var companionHallDefaultApplied = false
     var remoteDefaultsApplied = false
+    var guide = GuideProgress()
+    var guideUpgradeNoticePending = false
+    var hideRecoveryHintSeen = false
+    var clickThroughRecoveryHintSeen = false
 
     init() {}
 
@@ -91,6 +99,8 @@ struct AppSettings: Codable {
         mouseInteractionEnabled = try values.decodeIfPresent(Bool.self, forKey: .mouseInteractionEnabled) ?? true
         randomMovementEnabled = try values.decodeIfPresent(Bool.self, forKey: .randomMovementEnabled) ?? true
         randomInteractionsEnabled = try values.decodeIfPresent(Bool.self, forKey: .randomInteractionsEnabled) ?? true
+        dailySpeechEnabled = try values.decodeIfPresent(Bool.self, forKey: .dailySpeechEnabled) ?? true
+        quietUntilUtc = try values.decodeIfPresent(Date.self, forKey: .quietUntilUtc)
         interactionMode = try values.decodeIfPresent(String.self, forKey: .interactionMode) ?? "standard"
         theaterEnabled = try values.decodeIfPresent(Bool.self, forKey: .theaterEnabled) ?? false
         theaterIntervalSeconds = try values.decodeIfPresent(Int.self, forKey: .theaterIntervalSeconds) ?? 300
@@ -104,6 +114,7 @@ struct AppSettings: Codable {
         autoCheckUpdates = try values.decodeIfPresent(Bool.self, forKey: .autoCheckUpdates) ?? true
         ignoredUpdateVersion = try values.decodeIfPresent(String.self, forKey: .ignoredUpdateVersion)
         reminders = try values.decodeIfPresent([ReminderDefinition].self, forKey: .reminders) ?? []
+        pendingReminders = try values.decodeIfPresent([ReminderDefinition].self, forKey: .pendingReminders) ?? []
         dockIconVisible = try values.decodeIfPresent(Bool.self, forKey: .dockIconVisible) ?? true
         positionX = try values.decodeIfPresent(CGFloat.self, forKey: .positionX)
         positionY = try values.decodeIfPresent(CGFloat.self, forKey: .positionY)
@@ -111,10 +122,15 @@ struct AppSettings: Codable {
         demoVisitSeen = try values.decodeIfPresent(Bool.self, forKey: .demoVisitSeen) ?? false
         companionHallDefaultApplied = try values.decodeIfPresent(Bool.self, forKey: .companionHallDefaultApplied) ?? false
         remoteDefaultsApplied = try values.decodeIfPresent(Bool.self, forKey: .remoteDefaultsApplied) ?? false
+        guide = try values.decodeIfPresent(GuideProgress.self, forKey: .guide) ?? .legacyUpgrade
+        guideUpgradeNoticePending = try values.decodeIfPresent(Bool.self, forKey: .guideUpgradeNoticePending) ?? !values.contains(.guide)
+        hideRecoveryHintSeen = try values.decodeIfPresent(Bool.self, forKey: .hideRecoveryHintSeen) ?? false
+        clickThroughRecoveryHintSeen = try values.decodeIfPresent(Bool.self, forKey: .clickThroughRecoveryHintSeen) ?? false
         normalize(resetClickThrough: true)
     }
 
     mutating func normalize(resetClickThrough: Bool = false) {
+        guide.normalize()
         pets = Array(pets.filter { !$0.id.isEmpty && !$0.path.isEmpty && FileManager.default.fileExists(atPath: $0.path) }.prefix(3))
         libraries = Array(libraries.filter { !$0.id.isEmpty && !$0.path.isEmpty }.uniqued(on: { $0.path.standardizedPath }).prefix(3))
         interactionWordPacks = Array(interactionWordPacks.filter { !$0.words.isEmpty }.prefix(5))
@@ -150,9 +166,12 @@ final class SettingsStore {
     }
 
     func load() -> AppSettings {
-        guard let data = defaults.data(forKey: key),
-              var settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
-            return AppSettings()
+        guard let data = defaults.data(forKey: key) else { return AppSettings() }
+        guard var settings = try? JSONDecoder().decode(AppSettings.self, from: data) else {
+            var recovered = AppSettings()
+            recovered.guide = .legacyUpgrade
+            recovered.guideUpgradeNoticePending = true
+            return recovered
         }
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            object["remoteDefaultsApplied"] == nil {

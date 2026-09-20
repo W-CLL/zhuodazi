@@ -2,9 +2,13 @@ package com.zhuodazi.android;
 
 import android.content.Context;
 import android.graphics.Color;
+import android.graphics.Rect;
+import java.util.ArrayList;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
+import android.text.StaticLayout;
+import android.text.Layout;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.FrameLayout;
@@ -45,8 +49,6 @@ final class PetOverlayView extends FrameLayout {
     private final ImageView petImage;
     private final TextView bubble;
     private final LinearLayout quickMenu;
-    private final LinearLayout visitRow;
-    private final View companionVisitButton;
     private final LinearLayout interactionCard;
     private final TextView interactionTitle;
     private final TextView interactionMessage;
@@ -54,7 +56,8 @@ final class PetOverlayView extends FrameLayout {
     private final int bubbleHeight;
     private MenuListener menuListener;
     private InteractionListener interactionListener;
-    private boolean trialVisitVisible;
+    private int bubbleAnimationGeneration;
+    private int interactionGeneration;
 
     PetOverlayView(Context context, int petSize, int windowWidth, int windowHeight) {
         super(context);
@@ -100,22 +103,13 @@ final class PetOverlayView extends FrameLayout {
         secondRow.addView(menuAction("换一只", MENU_NEXT));
         secondRow.addView(menuAction("发给搭子", MENU_SEND));
         quickMenu.addView(secondRow, menuRowParams());
-        visitRow = menuRow();
-        visitRow.addView(menuAction("女友来访", MENU_GIRLFRIEND_VISIT));
-        visitRow.addView(menuAction("好友来访", MENU_FRIEND_VISIT));
-        quickMenu.addView(visitRow, menuRowParams());
-        LinearLayout companionVisitRow = menuRow();
-        companionVisitButton = menuAction("搭子来访", MENU_COMPANION_VISIT);
-        companionVisitRow.addView(companionVisitButton);
-        companionVisitRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
-        quickMenu.addView(companionVisitRow, menuRowParams());
-        setTrialVisitVisible(false);
         LinearLayout thirdRow = menuRow();
+        thirdRow.addView(menuAction("触摸穿透", MENU_CLICK_THROUGH));
         thirdRow.addView(menuAction("隐藏桌宠", MENU_HIDE));
         quickMenu.addView(thirdRow, menuRowParams());
         quickMenu.setVisibility(View.GONE);
         LayoutParams menuParams = new LayoutParams(
-            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+            LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT, Gravity.TOP);
         menuParams.leftMargin = dp(8);
         menuParams.rightMargin = dp(8);
         addView(quickMenu, menuParams);
@@ -182,8 +176,20 @@ final class PetOverlayView extends FrameLayout {
 
     void setPet(Drawable drawable, float opacity, boolean mirrored, int direction) {
         petImage.setImageDrawable(drawable);
+        setAppearance(opacity, mirrored, direction);
+    }
+
+    void setAppearance(float opacity, boolean mirrored, int direction) {
         petImage.setAlpha(opacity);
         face(direction, mirrored);
+    }
+
+    void setPetSize(int size) {
+        LayoutParams params = (LayoutParams) petImage.getLayoutParams();
+        if (params.width == size && params.height == size) return;
+        params.width = size;
+        params.height = size;
+        petImage.setLayoutParams(params);
     }
 
     void face(int direction, boolean mirrored) {
@@ -192,26 +198,44 @@ final class PetOverlayView extends FrameLayout {
     }
 
     void say(String message) {
+        cancelBubbleAnimation();
         quickMenu.setVisibility(View.GONE);
         bubble.bringToFront();
         bubble.setText(message);
         bubble.setVisibility(View.VISIBLE);
-        bubble.animate().cancel();
         bubble.setAlpha(0f);
         bubble.setTranslationY(dp(5));
         bubble.animate().alpha(1f).translationY(0f).setDuration(160).start();
     }
 
     void hideBubble() {
-        bubble.animate().alpha(0f).setDuration(150).withEndAction(() -> bubble.setVisibility(View.INVISIBLE)).start();
+        cancelBubbleAnimation();
+        int generation = bubbleAnimationGeneration;
+        bubble.animate().alpha(0f).setDuration(150).withEndAction(() -> {
+            if (generation == bubbleAnimationGeneration) bubble.setVisibility(View.INVISIBLE);
+        }).start();
+    }
+
+    void hideBubbleImmediately() {
+        cancelBubbleAnimation();
+        bubble.setAlpha(0f);
+        bubble.setVisibility(View.INVISIBLE);
+    }
+
+    private void cancelBubbleAnimation() {
+        bubbleAnimationGeneration++;
+        bubble.animate().withEndAction(null);
+        bubble.animate().cancel();
     }
 
     void setMenuListener(MenuListener listener) { menuListener = listener; }
 
     void showInteraction(String title, String message, List<InteractionChoice> choices,
                          InteractionListener listener) {
+        cancelBubbleAnimation();
         quickMenu.setVisibility(View.GONE);
         bubble.setVisibility(View.INVISIBLE);
+        int generation = ++interactionGeneration;
         interactionListener = listener;
         interactionTitle.setText(title);
         interactionMessage.setText(message);
@@ -234,7 +258,9 @@ final class PetOverlayView extends FrameLayout {
                 LayoutParams.MATCH_PARENT, dp(44));
             params.bottomMargin = dp(6);
             button.setLayoutParams(params);
-            button.setOnClickListener(view -> completeInteraction(choice.value));
+            button.setOnClickListener(view -> {
+                if (generation == interactionGeneration) completeInteraction(choice.value);
+            });
             interactionChoices.addView(button);
         }
         interactionCard.bringToFront();
@@ -242,6 +268,7 @@ final class PetOverlayView extends FrameLayout {
     }
 
     void hideInteraction() {
+        interactionGeneration++;
         interactionListener = null;
         interactionChoices.removeAllViews();
         interactionCard.setVisibility(View.GONE);
@@ -262,6 +289,7 @@ final class PetOverlayView extends FrameLayout {
 
     void showQuickMenu() {
         if (isInteractionVisible()) return;
+        cancelBubbleAnimation();
         bubble.setVisibility(View.INVISIBLE);
         quickMenu.bringToFront();
         quickMenu.setVisibility(View.VISIBLE);
@@ -277,15 +305,76 @@ final class PetOverlayView extends FrameLayout {
 
     void dismissInteraction() { completeInteraction(null); }
 
-    void setTrialVisitVisible(boolean visible) {
-        trialVisitVisible = visible;
-        visitRow.setVisibility(visible ? View.VISIBLE : View.GONE);
-        companionVisitButton.setVisibility(visible ? View.VISIBLE : View.GONE);
+    // Demo visits are available on the app's companion page, keeping this menu compact.
+    void setTrialVisitVisible(boolean visible) { }
+
+    int preferredMenuWidth() { return dp(196); }
+    int preferredMenuHeight() { return dp(162); }
+
+    android.view.ViewGroup.LayoutParams petImageLayout() { return petImage.getLayoutParams(); }
+
+    Rect petRect() {
+        LayoutParams params = (LayoutParams) petImage.getLayoutParams();
+        int left = (getWidth() - params.width) / 2;
+        int top = (params.gravity & Gravity.VERTICAL_GRAVITY_MASK) == Gravity.TOP
+            ? params.topMargin : getHeight() - params.height - params.bottomMargin;
+        return new Rect(left, top, left + params.width, top + params.height);
     }
 
-    int preferredMenuWidth() { return dp(188); }
+    void arrangeMenu(boolean above) {
+        LayoutParams pet = (LayoutParams) petImage.getLayoutParams();
+        pet.gravity = (above ? Gravity.BOTTOM : Gravity.TOP) | Gravity.CENTER_HORIZONTAL;
+        pet.topMargin = pet.bottomMargin = 0;
+        petImage.setLayoutParams(pet);
+        LayoutParams menu = (LayoutParams) quickMenu.getLayoutParams();
+        menu.gravity = (above ? Gravity.TOP : Gravity.BOTTOM) | Gravity.CENTER_HORIZONTAL;
+        quickMenu.setLayoutParams(menu);
+    }
 
-    int preferredMenuHeight() { return trialVisitVisible ? dp(320) : dp(220); }
+    void configureTheater(int petSize, int width, int height) {
+        setPetSize(petSize);
+        LayoutParams pet = (LayoutParams) petImage.getLayoutParams();
+        pet.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+        pet.topMargin = 0;
+        petImage.setLayoutParams(pet);
+        LayoutParams text = (LayoutParams) bubble.getLayoutParams();
+        text.width = Math.max(dp(40), width - dp(12));
+        text.topMargin = petSize + dp(8);
+        bubble.setLayoutParams(text);
+        bubble.setTextSize(13);
+        int available = Math.max(dp(32), height - text.topMargin - dp(8));
+        int lines = Math.max(1, (available - bubble.getPaddingTop() - bubble.getPaddingBottom()) / Math.max(bubble.getLineHeight(), (int) Math.ceil(bubble.getTextSize() * 1.3f)));
+        bubble.setMaxLines(lines);
+        bubble.setEllipsize(null);
+        bubble.setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
+        bubble.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
+    }
+
+    List<String> theaterPages(String message) {
+        LayoutParams params = (LayoutParams) bubble.getLayoutParams();
+        int width = Math.max(1, params.width - bubble.getPaddingLeft() - bubble.getPaddingRight());
+        StaticLayout layout = StaticLayout.Builder.obtain(message, 0, message.length(), bubble.getPaint(), width)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL).setIncludePad(bubble.getIncludeFontPadding())
+            .setLineSpacing(bubble.getLineSpacingExtra(), bubble.getLineSpacingMultiplier())
+            .setBreakStrategy(bubble.getBreakStrategy()).setHyphenationFrequency(bubble.getHyphenationFrequency()).build();
+        List<String> pages = new ArrayList<>();
+        int linesPerPage = Math.max(1, bubble.getMaxLines());
+        for (int line = 0; line < layout.getLineCount(); line += linesPerPage) {
+            int endLine = Math.min(layout.getLineCount(), line + linesPerPage) - 1;
+            pages.add(message.substring(layout.getLineStart(line), layout.getLineEnd(endLine)));
+        }
+        return pages.isEmpty() ? List.of("") : pages;
+    }
+
+    void restorePetLayout(int width) {
+        arrangeMenu(true);
+        bubble.setMaxLines(4);
+        bubble.setEllipsize(TextUtils.TruncateAt.END);
+        LayoutParams text = (LayoutParams) bubble.getLayoutParams();
+        text.width = Math.min(Math.max(width - dp(12), dp(96)), dp(168));
+        text.topMargin = dp(4);
+        bubble.setLayoutParams(text);
+    }
 
     private void completeInteraction(String value) {
         InteractionListener listener = interactionListener;

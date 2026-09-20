@@ -5,6 +5,8 @@ namespace ZhuoDazi.Services;
 
 internal static class DeskPetHttp
 {
+    // The offline UI harness injects an in-memory transport before constructing any service.
+    internal static Func<HttpMessageHandler>? HandlerFactory { get; set; }
     internal static SocketsHttpHandler CreateHandler()
     {
         return new SocketsHttpHandler
@@ -17,7 +19,7 @@ internal static class DeskPetHttp
 
     internal static HttpClient CreateClient(TimeSpan timeout)
     {
-        return new HttpClient(CreateHandler())
+        return new HttpClient(HandlerFactory?.Invoke() ?? CreateHandler())
         {
             Timeout = timeout,
             DefaultRequestVersion = HttpVersion.Version20,

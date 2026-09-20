@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="小剧场剧本格式与 AI 生成" Width="760" Height="650" MinWidth="640" MinHeight="540"
         WindowStartupLocation="CenterOwner" Background="#F8FAF9" ShowInTaskbar="False"
-        Icon="pack://application:,,,/assets/app-icon.png" UseLayoutRounding="True"
+        Icon="pack://application:,,,/ZhuoDazi;component/assets/app-icon.png" UseLayoutRounding="True"
         FontFamily="Microsoft YaHei UI" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
         <Style TargetType="Button">

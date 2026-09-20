@@ -1,4 +1,5 @@
 import AppKit
+import ZhuoDaziCore
 
 struct PetInteractionChoice {
     let label: String
@@ -14,6 +15,7 @@ struct PetInteractionChoice {
 
 private final class InteractionChoiceButton: NSButton {
     var choice: PetInteractionChoice?
+    var presentationToken: PresentationLifetime.Token?
 }
 
 private final class FlippedDocumentView: NSView {
@@ -22,6 +24,7 @@ private final class FlippedDocumentView: NSView {
 
 final class PetInteractionPanelController: NSWindowController {
     private var completion: ((PetInteractionChoice?) -> Void)?
+    private var presentation = PresentationLifetime()
 
     init() {
         let panel = NSPanel(
@@ -49,7 +52,9 @@ final class PetInteractionPanelController: NSWindowController {
         relativeTo parent: NSWindow,
         completion: @escaping (PetInteractionChoice?) -> Void
     ) {
-        dismiss()
+        // Replacing content is not a user response or a user closing the panel.
+        dismiss(notifying: false)
+        let token = presentation.begin()
         self.completion = completion
         guard let panel = window as? NSPanel else { return }
 
@@ -65,7 +70,8 @@ final class PetInteractionPanelController: NSWindowController {
         titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
         titleLabel.textColor = .systemGreen
         let closeImage = NSImage(systemSymbolName: "xmark", accessibilityDescription: "稍后再说") ?? NSImage()
-        let close = NSButton(image: closeImage, target: self, action: #selector(closePanel))
+        let close = InteractionChoiceButton(image: closeImage, target: self, action: #selector(closePanel(_:)))
+        close.presentationToken = token
         close.isBordered = false
         close.toolTip = "稍后再说"
         close.widthAnchor.constraint(equalToConstant: 24).isActive = true
@@ -123,7 +129,7 @@ final class PetInteractionPanelController: NSWindowController {
 
         for start in stride(from: 0, to: choices.count, by: 2) {
             let rowChoices = Array(choices[start..<min(start + 2, choices.count)])
-            let buttons = rowChoices.map(makeButton)
+            let buttons = rowChoices.map { makeButton($0, token: token) }
             if buttons.count == 1 { buttons[0].widthAnchor.constraint(equalToConstant: 348).isActive = true }
             let row = NSStackView(views: buttons)
             row.orientation = .horizontal
@@ -156,6 +162,7 @@ final class PetInteractionPanelController: NSWindowController {
     }
 
     func dismiss(notifying: Bool = true) {
+        presentation.invalidate()
         guard completion != nil || window?.isVisible == true else { return }
         let callback = completion
         completion = nil
@@ -163,9 +170,10 @@ final class PetInteractionPanelController: NSWindowController {
         if notifying { callback?(nil) }
     }
 
-    private func makeButton(_ choice: PetInteractionChoice) -> NSButton {
+    private func makeButton(_ choice: PetInteractionChoice, token: PresentationLifetime.Token) -> NSButton {
         let button = InteractionChoiceButton(title: choice.label, target: self, action: #selector(selectChoice(_:)))
         button.choice = choice
+        button.presentationToken = token
         button.font = .systemFont(ofSize: 12, weight: choice.isPrimary ? .semibold : .regular)
         button.bezelStyle = .rounded
         button.toolTip = choice.label
@@ -195,11 +203,15 @@ final class PetInteractionPanelController: NSWindowController {
     }
 
     @objc private func selectChoice(_ sender: InteractionChoiceButton) {
+        guard let token = sender.presentationToken, presentation.finish(token) else { return }
         let callback = completion
         completion = nil
         window?.orderOut(nil)
         callback?(sender.choice)
     }
 
-    @objc private func closePanel() { dismiss() }
+    @objc private func closePanel(_ sender: InteractionChoiceButton) {
+        guard let token = sender.presentationToken, presentation.isCurrent(token) else { return }
+        dismiss()
+    }
 }

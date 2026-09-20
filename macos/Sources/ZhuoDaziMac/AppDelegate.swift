@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
     private var fakeAdWindow: FakeAdWindowController?
     private var companionWindow: CompanionWindowController?
+    private var hallWindow: HallWindowController?
+    private var guideWindow: GuideWindowController?
+    private var guideMenuItem: NSMenuItem!
     private var statusItem: NSStatusItem!
     private var visibilityItem: NSMenuItem!
     private var mouseItem: NSMenuItem!
@@ -40,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var randomizeNowItem: NSMenuItem!
     private var theaterItem: NSMenuItem!
     private var sendCompanionItem: NSMenuItem!
+    private var hallItem: NSMenuItem!
+    private var quietItem: NSMenuItem!
+    private var speechItem: NSMenuItem!
     private var girlfriendVisitItem: NSMenuItem!
     private var friendVisitItem: NSMenuItem!
     private var companionVisitItem: NSMenuItem!
@@ -68,6 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.settings = settings
                     self?.settingsStore.save(settings)
                     self?.refreshMenuState()
+                    self?.settingsWindow?.refreshCurrentPetPreview()
+                    self?.hallWindow?.refreshAccessState()
                 }
             applyDockVisibility(settings.dockIconVisible)
             configureStatusMenu()
@@ -124,22 +132,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPet() {
         petController.show()
-        petController.startInteractionServices()
-        startCompanionPolling()
+        presentGuideIfNeeded()
         startReminderChecks()
-        startOnboardingIfNeeded()
-        scheduleDemoVisitIfNeeded()
         analytics.trackStartup()
         Task { @MainActor [weak self] in
-            await self?.refreshRemoteConfig()
-        }
-        Task { @MainActor [weak self] in
             guard let self else { return }
+            await refreshRemoteConfig()
+            petController.startInteractionServices()
+            startCompanionPolling()
             guard settings.autoCheckUpdates, remoteConfig.current.autoUpdates else { return }
             try? await Task.sleep(for: .seconds(3))
             _ = try? await updates.check()
             if let manifest = updates.availableManifest, manifest.version != settings.ignoredUpdateVersion {
-                petController.showBubble("发现新版本 v\(manifest.version)，可在设置中安装。")
+                if !petController.isQuiet { petController.showBubble("发现新版本 v\(manifest.version)，可在设置中安装。") }
             }
         }
     }
@@ -150,76 +155,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         refreshMenuState()
         settingsWindow?.refreshAccessState()
-        companionWindow?.renderRemoteConfig(remoteConfig.current)
+        hallWindow?.refreshAccessState()
     }
 
     private func applyRemoteDefaultsIfNeeded() {
         guard !settings.remoteDefaultsApplied else { return }
         let config = remoteConfig.current
-        settings.personality = config.personality
-        settings.interactionMode = config.interactionMode
-        settings.theaterIntervalSeconds = config.theaterIntervalSeconds
-        settings.remoteDefaultsApplied = true
-        settingsStore.save(settings)
-        petController?.update { next in
-            next.personality = config.personality
-            next.interactionMode = config.interactionMode
-            next.theaterIntervalSeconds = config.theaterIntervalSeconds
-            next.remoteDefaultsApplied = true
+        var next = petController.currentSettings
+        next.personality = config.personality
+        next.interactionMode = config.interactionMode
+        next.theaterIntervalSeconds = config.theaterIntervalSeconds
+        next.remoteDefaultsApplied = true
+        petController.apply(next, userInitiated: false)
+    }
+
+    private func presentGuideIfNeeded() {
+        if settings.guideUpgradeNoticePending {
+            petController.update { $0.guideUpgradeNoticePending = false }
+            let alert = NSAlert()
+            alert.messageText = "3.3.0：一起玩一分钟"
+            alert.informativeText = "新增可继续、可跳过的四步体验，带你试一次互动和一段本地短剧。原来的设置会保留，不会自动重播完整教学。以后可从菜单或设置打开。"
+            alert.addButton(withTitle: "开始体验")
+            alert.addButton(withTitle: "以后再说")
+            if alert.runModal() == .alertFirstButtonReturn { openExperienceGuide() }
+        } else if settings.guide.shouldAutoPresent {
+            openExperienceGuide()
         }
     }
 
-    private func startOnboardingIfNeeded() {
-        guard !settings.onboardingHintSeen else { return }
-        if licenses.isTrialActive, remoteConfig.current.trialVisits, !settings.demoVisitSeen {
-            petController.showBubble("先待一会儿，马上有人来串门。")
-            return
+    @objc private func openExperienceGuide() {
+        if settings.guide.isDone { petController.update { $0.guide.replay() } }
+        if guideWindow == nil {
+            guideWindow = GuideWindowController(
+                pet: petController,
+                openSettings: { [weak self] in self?.showSettings() },
+                openHall: { [weak self] in self?.openHall() },
+                playInteraction: { [weak self] in
+                    self?.requestPremiumAccess("互动内容") { [weak self] in self?.petController.startRandomInteraction() }
+                },
+                playTheater: { [weak self] in
+                    self?.requestPremiumAccess("小剧场") { [weak self] in _ = self?.petController.startTheater() }
+                }
+            )
         }
-        settings.onboardingHintSeen = true
-        settingsStore.save(settings)
-        let steps = [
-            "拖我、点我，右键还有更多。",
-            "来点互动，或上演一小段小剧场。",
-            "有搭子的话，打开设置里的「搭子」交换一对码。"
-        ]
-        for (index, step) in steps.enumerated() {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 4.2) { [weak self] in
-                self?.petController.showBubble(step)
-            }
-        }
-    }
-
-    private func markOnboardingSeen() {
-        guard !settings.onboardingHintSeen else { return }
-        settings.onboardingHintSeen = true
-        settingsStore.save(settings)
-    }
-
-    private func scheduleDemoVisitIfNeeded() {
-        guard !settings.demoVisitSeen, licenses.isTrialActive, remoteConfig.current.trialVisits else { return }
-        Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(12))
-            await self?.showDemoVisitIfNeeded()
-        }
-    }
-
-    private func showDemoVisitIfNeeded() async {
-        guard !settings.demoVisitSeen, licenses.isTrialActive, remoteConfig.current.trialVisits else { return }
-        guard petController.isVisible, !petController.isBusyWithScene else {
-            scheduleDemoVisitIfNeeded()
-            return
-        }
-        guard let url = petController.demoVisitGIFURL() else {
-            settings.demoVisitSeen = true
-            markOnboardingSeen()
-            settingsStore.save(settings)
-            return
-        }
-        settings.demoVisitSeen = true
-        markOnboardingSeen()
-        settingsStore.save(settings)
-        await petController.showVisitor(at: url, senderName: "桌搭子")
-        petController.showBubble("刚才那只是演示。想让对象也派一只过来，激活后换一对码。")
+        guideWindow?.showWindow(nil)
     }
 
     private func scheduleTrialCheck(_ remainingSeconds: Int) {
@@ -266,27 +245,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.toolTip = "桌搭子"
 
         let menu = NSMenu()
-        menu.addItem(withTitle: "功能设置…", action: #selector(openSettings), keyEquivalent: ",")
+        menu.addItem(withTitle: "陪伴设置…", action: #selector(openSettings), keyEquivalent: ",")
         menu.addItem(withTitle: "检查更新", action: #selector(checkUpdates), keyEquivalent: "")
-        menu.addItem(withTitle: "搭子联机…", action: #selector(openCompanion), keyEquivalent: "")
+        hallItem = menu.addItem(withTitle: "桌宠大厅…", action: #selector(openHall), keyEquivalent: "")
+        menu.addItem(withTitle: "私人搭子…", action: #selector(openCompanion), keyEquivalent: "")
         fishModeItem = menu.addItem(withTitle: "摸鱼广告", action: #selector(openFishMode), keyEquivalent: "")
         sendCompanionItem = menu.addItem(withTitle: "发送当前 GIF 给搭子", action: #selector(sendCompanionGIF), keyEquivalent: "")
-        girlfriendVisitItem = menu.addItem(withTitle: "模仿女友来访", action: #selector(playGirlfriendVisit), keyEquivalent: "")
-        friendVisitItem = menu.addItem(withTitle: "模仿好友来访", action: #selector(playFriendVisit), keyEquivalent: "")
-        companionVisitItem = menu.addItem(withTitle: "模仿搭子来访", action: #selector(playCompanionVisit), keyEquivalent: "")
+        girlfriendVisitItem = menu.addItem(withTitle: "演示来访：女友", action: #selector(playGirlfriendVisit), keyEquivalent: "")
+        friendVisitItem = menu.addItem(withTitle: "演示来访：好友", action: #selector(playFriendVisit), keyEquivalent: "")
+        companionVisitItem = menu.addItem(withTitle: "演示来访：搭子", action: #selector(playCompanionVisit), keyEquivalent: "")
+        menu.addItem(.separator())
+        quietItem = menu.addItem(withTitle: "暂停打扰 1 小时", action: #selector(toggleQuiet), keyEquivalent: "")
+        speechItem = menu.addItem(withTitle: "日常气泡", action: #selector(toggleDailySpeech), keyEquivalent: "")
+        menu.addItem(withTitle: "停止当前剧场或来访", action: #selector(stopCurrentScene), keyEquivalent: "")
+        guideMenuItem = menu.addItem(withTitle: "开始体验…", action: #selector(openExperienceGuide), keyEquivalent: "")
+        menu.addItem(withTitle: "文字使用指南…", action: #selector(replayUsageGuide), keyEquivalent: "")
         menu.addItem(.separator())
         visibilityItem = menu.addItem(withTitle: "隐藏桌搭子", action: #selector(toggleVisibility(_:)), keyEquivalent: "")
         mouseItem = menu.addItem(withTitle: "跟随鼠标", action: #selector(toggleMouseInteraction(_:)), keyEquivalent: "")
         movementItem = menu.addItem(withTitle: "随机移动", action: #selector(toggleRandomMovement(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        interactionItem = menu.addItem(withTitle: "随机互动", action: #selector(toggleRandomInteractions(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "立即互动", action: #selector(startRandomInteraction(_:)), keyEquivalent: "")
+        interactionItem = menu.addItem(withTitle: "主动找你玩", action: #selector(toggleRandomInteractions(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "陪我玩一会", action: #selector(startRandomInteraction(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         randomPetItem = menu.addItem(withTitle: "自动随机换宠", action: #selector(toggleRandomPet(_:)), keyEquivalent: "")
         randomizeNowItem = menu.addItem(withTitle: "立即换一只", action: #selector(randomizePet(_:)), keyEquivalent: "")
         menu.addItem(.separator())
-        theaterItem = menu.addItem(withTitle: "随机小剧场", action: #selector(toggleTheater(_:)), keyEquivalent: "")
-        menu.addItem(withTitle: "立即上演", action: #selector(startTheater(_:)), keyEquivalent: "")
+        theaterItem = menu.addItem(withTitle: "自动上演小剧场", action: #selector(toggleTheater(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "看一场小剧场", action: #selector(startTheater(_:)), keyEquivalent: "")
         menu.addItem(.separator())
         topmostItem = menu.addItem(withTitle: "始终置顶", action: #selector(toggleTopmost(_:)), keyEquivalent: "")
         clickThroughItem = menu.addItem(withTitle: "鼠标穿透", action: #selector(toggleClickThrough(_:)), keyEquivalent: "")
@@ -303,16 +289,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func refreshMenuState() {
         guard petController != nil, visibilityItem != nil else { return }
+        hallItem.isHidden = !remoteConfig.current.companionHall
+        quietItem.title = petController.isQuiet ? "恢复主动陪伴" : "暂停打扰 1 小时"
+        quietItem.state = petController.isQuiet ? .on : .off
+        speechItem.state = petController.currentSettings.dailySpeechEnabled ? .on : .off
+        let guide = petController.currentSettings.guide
+        guideMenuItem.title = guide.isDone ? "重新体验…" : guide.step == 0 ? "开始体验…" : "继续体验…"
         visibilityItem.title = petController.isVisible ? "隐藏桌搭子" : "显示桌搭子"
         mouseItem.state = petController.mouseInteractionEnabled ? .on : .off
         movementItem.state = petController.randomMovementEnabled ? .on : .off
         interactionItem.state = petController.currentSettings.randomInteractionsEnabled ? .on : .off
-        interactionItem.title = licenses.hasPremiumAccess ? "随机互动" : "随机互动"
+        interactionItem.title = "主动找你玩"
         randomPetItem.state = petController.randomPetEnabled ? .on : .off
         randomPetItem.isEnabled = petController.canRandomizePet
         randomizeNowItem.isEnabled = petController.canRandomizePet
         theaterItem.state = petController.currentSettings.theaterEnabled ? .on : .off
-        theaterItem.title = licenses.hasPremiumAccess ? "随机小剧场" : "随机小剧场"
+        theaterItem.title = "自动上演小剧场"
         fishModeItem.isHidden = !remoteConfig.current.fishMode
         fishModeItem.title = licenses.isActivated
             ? "摸鱼广告"
@@ -348,6 +340,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 remoteConfig: { [weak self] in self?.remoteConfig.current ?? RemoteConfig() },
                 dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) },
                 openCompanion: { [weak self] in self?.openCompanion() },
+                openHall: { [weak self] in self?.openHall() },
+                showUsageGuide: { [weak self] in self?.replayUsageGuide() },
+                openExperienceGuide: { [weak self] in self?.openExperienceGuide() },
                 openFakeAd: { [weak self] in self?.openFishMode() }
             )
         }
@@ -420,12 +415,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
                 isActivated: { [weak self] in self?.licenses.isActivated == true },
-                hallEnabled: { [weak self] in self?.remoteConfig.current.companionHall ?? true },
                 stateChanged: { [weak self] in self?.refreshMenuState() }
             )
-            companionWindow?.renderRemoteConfig(remoteConfig.current)
         }
         companionWindow?.showWindow(nil)
+    }
+
+    @objc private func openHall() {
+        guard remoteConfig.current.companionHall else { petController.showBubble("大厅暂时关闭，请稍后再来。"); return }
+        requestPremiumAccess("桌宠大厅") { [weak self] in
+            guard let self else { return }
+            if hallWindow == nil {
+                hallWindow = HallWindowController(
+                    service: companions,
+                    hasAccess: { [weak self] in self?.licenses.hasPremiumAccess == true },
+                    isTrial: { [weak self] in self?.licenses.isTrialActive == true },
+                    hallAvailable: { [weak self] in self?.remoteConfig.current.companionHall == true },
+                    currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
+                    stateChanged: { [weak self] in self?.refreshMenuState() }
+                )
+            }
+            hallWindow?.showWindow(nil)
+        }
+    }
+
+    @objc private func toggleQuiet() {
+        if petController.isQuiet { petController.resumeProactive() }
+        else { petController.pauseProactiveForOneHour() }
+        settingsWindow?.refreshAccessState()
+        refreshMenuState()
+    }
+
+    @objc private func toggleDailySpeech() {
+        petController.update { $0.dailySpeechEnabled.toggle() }
+        settingsWindow?.refreshAccessState()
+    }
+
+    @objc private func stopCurrentScene() { petController.stopCurrentScene() }
+
+    @objc private func replayUsageGuide() {
+        let alert = NSAlert()
+        alert.messageText = "桌搭子使用指南"
+        alert.informativeText = "① 拖动移动桌宠，轻点获得回应；右键或菜单栏打开设置。\n\n② 更改通常自动保存。手动换一只、演一次不会打开自动播放。暂停打扰会暂停主动气泡、随机互动、自动剧场和来访；提醒与手动操作仍可用。\n\n③ 体验期间可以主动加入大厅，公开昵称并向在线用户发送 GIF。私人搭子需双方正式激活；激活码授权设备，搭子码用来找好友。\n\n④ 鼠标穿透后可用 Control+Shift+P 恢复。关闭设置不会退出，菜单“退出桌搭子”才会完全结束。"
+        alert.addButton(withTitle: "知道了")
+        alert.runModal()
     }
 
     @objc private func playGirlfriendVisit() { playTrialVisit(category: "girlfriend") }
@@ -435,12 +468,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func playTrialVisit(category: String) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard !petController.isTeaching else {
+                presentFriendlyError(CompanionError.server("请先完成或关闭体验卡，再开始演示来访。"), title: "正在体验教学")
+                return
+            }
             guard remoteConfig.current.trialVisits else {
                 petController.showBubble("体验来访暂时关掉了。")
                 return
             }
             guard licenses.isTrialActive else {
-                petController.showBubble("体验结束后，点一下发给对象才需要激活。")
+                petController.showBubble("演示来访仅在有效体验期间提供。大厅与私人搭子请从对应入口进入。")
                 return
             }
             guard !trialVisitBusy else {
@@ -451,7 +488,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             defer { trialVisitBusy = false }
             do {
                 let visit = try await companions.playTrialVisit(category: category)
-                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName, message: visit.message)
+                let completed = await petController.showVisitor(at: visit.fileURL, senderName: "演示来访 · \(visit.senderName)", message: visit.message, manual: true)
+                if completed, !petController.isTeaching {
+                    let alert = NSAlert()
+                    alert.messageText = "刚才是软件模拟的来访"
+                    alert.informativeText = "这不是真实用户消息。体验期可以去桌宠大厅；正式激活后可绑定私人搭子。打开大厅不会自动加入或发送。"
+                    alert.addButton(withTitle: "知道了")
+                    alert.runModal()
+                }
                 try? FileManager.default.removeItem(at: visit.fileURL)
             } catch {
                 presentFriendlyError(error, title: "暂时叫不来")
@@ -569,18 +613,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard licenses.isActivated || licenses.isTrialActive else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if licenses.isActivated {
-                if let profile = try? await companions.refreshProfile() {
-                    if !settings.companionHallDefaultApplied {
-                        if remoteConfig.current.companionHall, profile.hallEnabled == false {
-                            _ = try? await companions.setHallEnabled(true)
-                        }
-                        settings.companionHallDefaultApplied = true
-                        settingsStore.save(settings)
-                    }
-                }
-                refreshMenuState()
-            }
+            _ = try? await companions.refreshProfile()
+            refreshMenuState()
             await pollCompanion()
         }
         let timer = Timer(timeInterval: 4, repeats: true) { [weak self] _ in
@@ -591,13 +625,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func pollCompanion() async {
-        guard !companionPolling, licenses.isActivated || licenses.isTrialActive, petController.isVisible else { return }
+        guard !companionPolling, licenses.hasPremiumAccess, petController.isVisible,
+              !petController.isQuiet, !petController.clickThrough, !petController.isTeaching else { return }
         companionPolling = true
         defer { companionPolling = false }
         do {
-            for visit in try await companions.receive() {
-                await petController.showVisitor(at: visit.fileURL, senderName: visit.senderName, message: visit.message)
-                try? FileManager.default.removeItem(at: visit.fileURL)
+            let visits = try await companions.receive()
+            for visit in visits {
+                guard await petController.showVisitor(
+                    at: visit.fileURL, senderName: visit.senderName, message: visit.message,
+                    canPresent: { [weak self] in
+                        guard let self else { return false }
+                        return licenses.hasPremiumAccess && companions.isCurrentAccountVisit(visit)
+                    }
+                ) else { break }
+                companions.completeVisit(visit)
             }
         } catch {
             // Periodic polling retries without interrupting the desktop pet.
@@ -605,6 +647,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkReminders() {
+        refreshMenuState()
         for reminder in petController.fireDueReminders() {
             petController.showReminder(reminder)
             let content = UNMutableNotificationContent()

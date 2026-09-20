@@ -4,7 +4,7 @@
         xmlns:controls="clr-namespace:ZhuoDazi.Controls"
         Title="桌搭子设置" Width="1000" Height="720" MinWidth="900" MinHeight="650"
         WindowStartupLocation="CenterScreen" Background="#F7F9F8" ShowInTaskbar="True"
-        Icon="pack://application:,,,/assets/app-icon.png" UseLayoutRounding="True"
+        Icon="pack://application:,,,/ZhuoDazi;component/assets/app-icon.png" UseLayoutRounding="True"
         FontFamily="Microsoft YaHei UI" TextOptions.TextFormattingMode="Display">
     <Window.Resources>
         <SolidColorBrush x:Key="NavBrush" Color="#F1F5F3" />
@@ -299,7 +299,7 @@
                             <TabPanel IsItemsHost="True" Margin="0,16,0,0" />
                         </Border>
                         <Border Grid.Column="1" Background="{TemplateBinding Background}">
-                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" />
+                            <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" TextElement.FontWeight="Normal" />
                         </Border>
                     </Grid>
                 </ControlTemplate>
@@ -328,10 +328,12 @@
                                                                RenderOptions.BitmapScalingMode="HighQuality" />
                                 </Border>
                                 <StackPanel Grid.Column="1" Margin="18,4,0,0" VerticalAlignment="Center">
-                                    <TextBlock x:Name="CurrentPetNameText" Text="当前桌宠" Style="{StaticResource SettingName}" FontSize="16" />
+                                    <TextBlock x:Name="CurrentPetNameText" Text="当前桌宠" Style="{StaticResource SettingName}" FontSize="16" TextWrapping="Wrap" />
+                                    <TextBlock x:Name="CurrentPetSourceText" Style="{StaticResource Hint}" Margin="0,5,0,0" />
                                     <TextBlock x:Name="LicenseBannerText" Style="{StaticResource Hint}" Margin="0,6,0,14" />
                                     <WrapPanel>
                                         <Button Content="立即换一只" Style="{StaticResource PrimaryButton}" Click="RandomizeNow_Click" Margin="0,0,8,8" />
+                                        <Button x:Name="RetryTrialButton" Content="重试体验验证" Click="RetryTrial_Click" Margin="0,0,8,8"/>
                                         <Button x:Name="TodayActivateButton" Content="继续完整体验" Click="Reactivate_Click" Margin="0,0,0,8" Visibility="Collapsed" />
                                     </WrapPanel>
                                 </StackPanel>
@@ -428,20 +430,33 @@
 
             <TabItem>
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal"><TextBlock Text="性格与互动"/></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="陪伴日常"/></StackPanel>
                 </TabItem.Header>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
                     <StackPanel Margin="34,28,34,32" MaxWidth="780" HorizontalAlignment="Stretch">
-                        <TextBlock Text="性格与互动" Style="{StaticResource PageTitle}" />
+                        <TextBlock Text="陪伴日常" Style="{StaticResource PageTitle}" />
                         <TextBlock Text="决定它怎么走动、多久来找你，以及要不要演一小段。" Style="{StaticResource Hint}" Margin="0,0,0,20" />
+                        <Border Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="陪伴也有安静的时候" Style="{StaticResource SectionTitle}" />
+                                <CheckBox x:Name="DailySpeechCheck" Content="日常气泡台词（待机、走动、拖动与换宠）" Click="DailySpeechCheck_Click"/>
+                                <TextBlock x:Name="QuietStatusText" Style="{StaticResource Hint}" Margin="0,6,0,8"/>
+                                <TextBlock Text="暂停后不主动说话、不自动互动或演剧场，来访排队稍后展示。手动互动、小剧场和你设置的提醒仍可使用。" Style="{StaticResource Hint}"/>
+                                <WrapPanel Margin="0,12,0,0">
+                                    <Button x:Name="PauseCompanionshipButton" Content="暂停 1 小时" Click="PauseCompanionship_Click" Margin="0,0,8,8"/>
+                                    <Button Content="停止当前剧场 / 来访" Click="StopPerformance_Click" Margin="0,0,8,8"/>
+                                    <Button x:Name="GuideButton" Content="开始一分钟体验" Click="ReplayGuide_Click" Margin="0,0,0,8"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
 
                         <Border Style="{StaticResource SurfacePanel}" Padding="20,16">
                             <StackPanel>
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <StackPanel Margin="0,5,0,0">
-                                        <TextBlock Text="随机互动" Style="{StaticResource SettingName}" />
-                                        <TextBlock Text="心情问候与线上趣味内容" Style="{StaticResource SettingDescription}" />
+                                        <TextBlock Text="趣味互动" Style="{StaticResource SettingName}" />
+                                        <TextBlock Text="问候、笑话和小问题；不支持自由输入聊天" Style="{StaticResource SettingDescription}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
                                         <CheckBox x:Name="RandomInteractionCheck" Content="允许桌搭子随机发起互动"
@@ -453,7 +468,7 @@
                                                 <ComboBoxItem Content="标准（30–60 分钟）" Tag="standard" />
                                                 <ComboBoxItem Content="热闹（10–30 分钟）" Tag="lively" />
                                             </ComboBox>
-                                            <Button Grid.Column="1" Content="立即互动" Margin="10,0,0,0" Click="TryInteraction_Click" />
+                                            <Button Grid.Column="1" Content="陪我玩一会" Margin="10,0,0,0" Click="TryInteraction_Click" />
                                         </Grid>
                                     </StackPanel>
                                 </Grid>
@@ -486,10 +501,12 @@
                                 <Grid>
                                     <Grid.ColumnDefinitions><ColumnDefinition Width="190"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                     <StackPanel Margin="0,5,0,0">
-                                        <TextBlock Text="随机小剧场" Style="{StaticResource SettingName}" />
-                                        <TextBlock Text="让两只桌宠偶尔同台演出" Style="{StaticResource SettingDescription}" />
+                                        <TextBlock Text="小剧场" Style="{StaticResource SettingName}" />
+                                        <TextBlock Text="两只桌宠演一段对白，无需真实好友或导入剧本" Style="{StaticResource SettingDescription}" />
                                     </StackPanel>
                                     <StackPanel Grid.Column="1">
+                                        <TextBlock Text="内置对白随时可看，试看不会开启自动演出。" Style="{StaticResource Hint}" Margin="0,0,0,8"/>
+                                        <Button Content="看一场" Click="StartTheater_Click" HorizontalAlignment="Left" Margin="0,0,0,12"/>
                                         <CheckBox x:Name="TheaterEnabledCheck" Content="自动随机上演"
                                                   Checked="TheaterEnabledCheck_Changed" Unchecked="TheaterEnabledCheck_Changed" />
                                         <Grid Margin="0,7,0,0">
@@ -501,7 +518,6 @@
                                                 <ComboBoxItem Content="每 10 分钟" Tag="600" />
                                                 <ComboBoxItem Content="每 30 分钟" Tag="1800" />
                                             </ComboBox>
-                                            <Button Grid.Column="1" Content="立即上演" Margin="10,0,0,0" Click="StartTheater_Click" />
                                         </Grid>
                                     </StackPanel>
                                 </Grid>
@@ -513,17 +529,17 @@
 
             <TabItem>
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal"><TextBlock Text="素材"/></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="桌宠小窝"/></StackPanel>
                 </TabItem.Header>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" HorizontalContentAlignment="Stretch">
                     <StackPanel Margin="34,28,34,32" MaxWidth="780" HorizontalAlignment="Stretch">
                         <Grid Margin="0,0,0,18">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="素材" Style="{StaticResource PageTitle}" />
+                                <TextBlock Text="桌宠小窝" Style="{StaticResource PageTitle}" />
                                 <TextBlock x:Name="PetCountText" Style="{StaticResource Hint}" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="添加 GIF" Style="{StaticResource PrimaryButton}" Click="AddPet_Click" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="添加 GIF" ToolTip="最多 3 张，每张不超过 8 MB、2048×2048 像素" Style="{StaticResource PrimaryButton}" Click="AddPet_Click" VerticalAlignment="Center" />
                         </Grid>
                         <ListBox x:Name="PetList" MinHeight="260" Background="Transparent" BorderThickness="0" Padding="0"
                                   ScrollViewer.CanContentScroll="False" ScrollViewer.VerticalScrollBarVisibility="Disabled">
@@ -561,20 +577,20 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                         <WrapPanel Margin="0,4,0,0">
-                            <Button Content="使用所选" Style="{StaticResource PrimaryButton}" Click="UseSelectedPet_Click" Margin="0,0,8,0" />
-                            <Button Content="使用默认" Click="UseDefaultPet_Click" Margin="0,0,8,0" />
+                            <Button Content="让它来陪我" Style="{StaticResource PrimaryButton}" Click="UseSelectedPet_Click" Margin="0,0,8,0" />
+                            <Button Content="使用初始小搭子" ToolTip="切换为初始桌宠，并关闭自动换宠" Click="UseDefaultPet_Click" Margin="0,0,8,0" />
                             <Button Content="删除所选" Style="{StaticResource DangerButton}" Click="DeletePet_Click" />
                         </WrapPanel>
                         <Separator Style="{StaticResource SectionDivider}" />
                         <Grid Margin="0,0,0,14">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="图鉴目录" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="桌宠图鉴" Style="{StaticResource SectionTitle}" />
                                 <TextBlock x:Name="LibrarySummary" Style="{StaticResource Hint}" />
                             </StackPanel>
-                            <Button Grid.Column="1" Content="绑定目录" Style="{StaticResource PrimaryButton}" Click="ChooseLibrary_Click" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="添加 GIF 文件夹" Style="{StaticResource PrimaryButton}" Click="ChooseLibrary_Click" VerticalAlignment="Center" />
                         </Grid>
-                        <TextBlock Text="可用资源库" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="我的图鉴" Style="{StaticResource SectionTitle}" />
                         <ListBox x:Name="LibraryList" Height="208" Margin="0,0,0,14"
                                  SelectionChanged="LibraryList_SelectionChanged">
                             <ListBox.ItemTemplate>
@@ -604,23 +620,23 @@
 
             <TabItem>
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal"><TextBlock Text="互动内容"/></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="灵感口袋"/></StackPanel>
                 </TabItem.Header>
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                               HorizontalContentAlignment="Stretch">
                     <StackPanel Margin="34,28,34,32" MaxWidth="780" HorizontalAlignment="Stretch">
-                        <TextBlock Text="互动内容" Style="{StaticResource PageTitle}" />
-                        <TextBlock Text="管理线上趣味内容、互动台词和小剧场剧本" Style="{StaticResource Hint}" Margin="0,0,0,20" />
+                        <TextBlock Text="灵感口袋" Style="{StaticResource PageTitle}" />
+                        <TextBlock Text="装一点笑话、悄悄话和小故事，留给每天的陪伴。" Style="{StaticResource Hint}" Margin="0,0,0,20" />
 
                         <Border Style="{StaticResource SurfacePanel}" Margin="0,0,0,20">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center" Margin="0,0,20,0">
-                                    <TextBlock Text="在线趣味内容" Style="{StaticResource SettingName}" />
+                                    <TextBlock Text="新鲜小趣事" Style="{StaticResource SettingName}" />
                                     <TextBlock x:Name="InteractionContentStatusText" Style="{StaticResource Hint}" Margin="0,4,0,0" />
                                 </StackPanel>
                                 <WrapPanel Grid.Column="1" VerticalAlignment="Center">
-                                    <Button x:Name="SyncInteractionContentButton" Content="在线补充" Margin="0,0,8,0"
+                                    <Button x:Name="SyncInteractionContentButton" Content="找点新趣事" Margin="0,0,8,0"
                                             Click="SyncInteractionContent_Click" />
                                     <Button x:Name="DownloadInteractionPackButton" Content="下载离线包"
                                             Style="{StaticResource PrimaryButton}" Click="DownloadInteractionPack_Click" />
@@ -636,7 +652,7 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Margin="0,0,22,0">
-                                <TextBlock Text="互动词包" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="悄悄话" Style="{StaticResource SectionTitle}" />
                                 <TextBlock x:Name="WordPackSummary" Style="{StaticResource Hint}" Margin="0,0,0,12" />
                                 <ListBox x:Name="WordPackList" Height="344" Margin="0,0,0,14"
                                          SelectionChanged="WordPackList_SelectionChanged">
@@ -664,7 +680,7 @@
                             <Border Grid.Column="1" Background="{StaticResource LineBrush}" />
 
                             <StackPanel Grid.Column="2" Margin="22,0,0,0">
-                                <TextBlock Text="小剧场剧本" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="小剧场 · 自编故事" Style="{StaticResource SectionTitle}" />
                                 <TextBlock x:Name="TheaterScriptSummary" Style="{StaticResource Hint}" Margin="0,0,0,12" />
                                 <ListBox x:Name="TheaterScriptList" Height="344" Margin="0,0,0,14"
                                          SelectionChanged="TheaterScriptList_SelectionChanged">
@@ -695,7 +711,7 @@
 
             <TabItem>
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal"><TextBlock Text="提醒"/></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="贴心提醒"/></StackPanel>
                 </TabItem.Header>
                 <Grid Margin="34,28,34,32" MaxWidth="800" HorizontalAlignment="Stretch">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="280"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -703,8 +719,9 @@
                     <Grid Grid.ColumnSpan="3" Margin="0,0,0,20">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="提醒" Style="{StaticResource PageTitle}" />
+                            <TextBlock Text="贴心提醒" Style="{StaticResource PageTitle}" />
                             <TextBlock x:Name="ReminderCountText" Style="{StaticResource Hint}" />
+                            <TextBlock Text="需保持桌搭子运行；退出期间不会触发系统闹钟。" Style="{StaticResource Hint}"/>
                         </StackPanel>
                         <Button Grid.Column="1" Content="新建提醒" Style="{StaticResource PrimaryButton}" VerticalAlignment="Center" Click="NewReminder_Click" />
                     </Grid>
@@ -735,18 +752,6 @@
                                 </StackPanel>
                                 <TextBlock Text="提醒内容" Style="{StaticResource FieldLabel}" />
                                 <TextBox x:Name="ReminderMessageText" Text="休息一下吧" MaxLength="40" Margin="0,0,0,12" />
-                                <TextBlock Text="情绪" Style="{StaticResource FieldLabel}" />
-                                <ComboBox x:Name="ReminderEmotionCombo" Margin="0,0,0,12">
-                                    <ComboBoxItem Content="开心" Tag="happy" IsSelected="True" />
-                                    <ComboBoxItem Content="加油" Tag="cheer" />
-                                    <ComboBoxItem Content="害羞" Tag="shy" />
-                                    <ComboBoxItem Content="惊讶" Tag="surprised" />
-                                    <ComboBoxItem Content="生气" Tag="angry" />
-                                    <ComboBoxItem Content="疑惑" Tag="confused" />
-                                    <ComboBoxItem Content="难过" Tag="sad" />
-                                    <ComboBoxItem Content="困倦" Tag="sleepy" />
-                                    <ComboBoxItem Content="安静" Tag="calm" />
-                                </ComboBox>
                                 <TextBlock Text="指定表情 GIF（可选）" Style="{StaticResource FieldLabel}" />
                                 <Grid Margin="0,0,0,12">
                                     <Grid.ColumnDefinitions>
@@ -826,54 +831,83 @@
                                                                RenderOptions.BitmapScalingMode="HighQuality" />
                                 </Border>
                                 <Button x:Name="CompanionActivateButton" Content="继续完整体验后使用" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Visibility="Collapsed" Click="CompanionActivate_Click" />
+                                <TextBlock x:Name="CompanionResultText" Foreground="#246B54" TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed" />
                                 <TextBlock x:Name="CompanionErrorText" Foreground="{StaticResource DangerBrush}" FontSize="12"
                                            TextWrapping="Wrap" Margin="0,12,0,0" Visibility="Collapsed" />
                             </StackPanel>
                         </Border>
 
-                        <Border x:Name="CompanionHallPanel" Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,16,0,0">
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <TabItem x:Name="HallTab" Header="桌宠大厅">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                    <StackPanel Margin="28,26,28,32" MaxWidth="800">
+                        <Border CornerRadius="16" Padding="24" Margin="0,0,0,16">
+                            <Border.Background><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#DDEFE6" Offset="0"/><GradientStop Color="#F1F5DE" Offset="1"/></LinearGradientBrush></Border.Background>
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="桌宠大厅" Style="{StaticResource PageTitle}" />
+                                    <TextBlock Text="在桌角，遇见新朋友" FontSize="16" Foreground="#276A57" Margin="0,5,0,10"/>
+                                    <TextBlock Text="选择一位在线用户，把当前 GIF 和一句问候送到对方桌角。试用期也能发送。" Style="{StaticResource Hint}"/>
+                                </StackPanel>
+                                <Border Grid.Column="1" Background="#ECF7F0" CornerRadius="12" Padding="14,12" Margin="16,0,0,0" VerticalAlignment="Top">
+                                    <TextBlock x:Name="HallCountText" Text="0 人在线" Foreground="#246B54" FontWeight="SemiBold"/>
+                                </Border>
+                            </Grid>
+                        </Border>
+                        <Border x:Name="CompanionHallPanel" Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,0,0,16">
                             <StackPanel>
-                                <Grid Margin="0,0,0,8">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <StackPanel>
-                                        <TextBlock Text="桌宠大厅" Style="{StaticResource SectionTitle}" />
-                                        <TextBlock x:Name="CompanionHallStatusText" Text="关闭大厅后，你不会出现在陌生人列表里。" Style="{StaticResource Hint}" />
-                                    </StackPanel>
-                                    <Button x:Name="RefreshHallButton" Grid.Column="1" Content="刷新大厅" VerticalAlignment="Center" Click="RefreshHall_Click" />
+                                <TextBlock Text="我的大厅名片" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock Text="加入后会向大厅用户显示昵称和在线状态，并允许他们给你发送 GIF 与留言。可随时退出；关闭后不再出现在陌生人列表里。" Style="{StaticResource Hint}" Margin="0,0,0,12"/>
+                                <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <TextBox x:Name="HallNicknameText" MaxLength="12" ToolTip="昵称 1–12 个字符，填写后点保存"/>
+                                    <Button x:Name="SaveHallNicknameButton" Grid.Column="1" Content="保存昵称" Margin="8,0,0,0" Click="SaveHallNickname_Click"/>
                                 </Grid>
-                                <CheckBox x:Name="CompanionHallEnabledCheck" Content="允许陌生人看到我在线" Click="CompanionHallEnabled_Click" />
-                                <TextBlock Text="在线用户" Style="{StaticResource FieldLabel}" Margin="0,14,0,7" />
-                                <ListBox x:Name="CompanionHallList" Height="164" SelectionChanged="CompanionHallList_SelectionChanged">
-                                    <ListBox.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Background="{StaticResource SoftBrush}" CornerRadius="5" Padding="10" Margin="0,0,0,6">
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                                    <StackPanel>
-                                                        <TextBlock Text="{Binding DisplayName}" FontSize="14" Foreground="{StaticResource InkBrush}" />
-                                                        <TextBlock Text="{Binding StatusText}" Style="{StaticResource Hint}" />
-                                                    </StackPanel>
-                                                    <Ellipse Grid.Column="1" Width="9" Height="9" Fill="#55A982" VerticalAlignment="Center" Margin="12,0,2,0" />
-                                                </Grid>
-                                            </Border>
-                                        </DataTemplate>
-                                    </ListBox.ItemTemplate>
-                                </ListBox>
-                                <TextBlock x:Name="CompanionHallEmptyText" Text="暂时没有在线陌生人" Style="{StaticResource Hint}" Margin="0,8,0,0" />
-                                <Grid Margin="0,12,0,0">
-                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                                    <TextBox x:Name="CompanionHallMessageText" MaxLength="120" ToolTip="给对方留一句话" />
-                                    <Button x:Name="SendHallButton" Grid.Column="1" Content="发一只表情" Style="{StaticResource PrimaryButton}" Margin="8,0,0,0" Click="SendHall_Click" />
-                                </Grid>
+                                <CheckBox x:Name="CompanionHallEnabledCheck" Content="我愿意加入大厅，接收陌生人的来访" Click="CompanionHallEnabled_Click" Margin="0,14,0,8"/>
+                                <TextBlock x:Name="CompanionHallStatusText" Style="{StaticResource Hint}"/>
                             </StackPanel>
                         </Border>
+                        <Border Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,0,0,16">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                                    <StackPanel><TextBlock Text="此刻在场" Style="{StaticResource SectionTitle}"/><TextBlock Text="选中一张名片，右下方确认发送对象。" Style="{StaticResource Hint}"/></StackPanel>
+                                    <Button x:Name="RefreshHallButton" Grid.Column="1" Content="刷新大厅" Click="RefreshHall_Click"/>
+                                </Grid>
+                                <ListBox x:Name="CompanionHallList" MinHeight="90" MaxHeight="240" BorderThickness="0" Background="#F5F8F6" SelectionChanged="CompanionHallList_SelectionChanged">
+                                    <ListBox.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2"/></ItemsPanelTemplate></ListBox.ItemsPanel>
+                                    <ListBox.ItemTemplate><DataTemplate>
+                                        <Grid Margin="0,3"><Grid.ColumnDefinitions><ColumnDefinition Width="42"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                            <Border Width="34" Height="34" CornerRadius="17" Background="#DCEFE6" VerticalAlignment="Center"><TextBlock Text="{Binding Initial}" FontSize="16" Foreground="#246B54" HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                                            <StackPanel Grid.Column="1"><TextBlock Text="{Binding DisplayName}" FontSize="14" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding StatusText}" Style="{StaticResource Hint}" FontSize="11"/></StackPanel>
+                                        </Grid>
+                                    </DataTemplate></ListBox.ItemTemplate>
+                                </ListBox>
+                                <TextBlock x:Name="CompanionHallEmptyText" Text="暂时没有其他人在场。保持加入状态，稍后刷新看看。" Style="{StaticResource Hint}" Margin="4,12,4,0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource SurfacePanel}" Padding="20">
+                            <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="130"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                <Border Background="#EDF4EE" CornerRadius="12" Padding="10" Margin="0,0,16,0" Height="130" VerticalAlignment="Top"><controls:AnimatedGifImage x:Name="HallPreviewImage" Stretch="Uniform"/></Border>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock x:Name="HallSendTargetText" Text="先选择一位在线用户" Style="{StaticResource SectionTitle}"/>
+                                    <TextBlock x:Name="HallPetNameText" Style="{StaticResource Hint}" Margin="0,0,0,10"/>
+                                    <TextBox x:Name="CompanionHallMessageText" MaxLength="120" AcceptsReturn="True" TextWrapping="Wrap" Height="68" VerticalScrollBarVisibility="Auto" ToolTip="可选留言，最多 120 个字符"/>
+                                    <TextBlock Text="可选留言，最多 120 字。发送后冷却 30 秒；对方最多积压 3 条，未收取的投递保留 24 小时。" Style="{StaticResource Hint}" Margin="0,8,0,12"/>
+                                    <Button x:Name="SendHallButton" Content="发送这只 GIF" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Click="SendHall_Click"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <TextBlock x:Name="HallResultText" Foreground="#246B54" TextWrapping="Wrap" Margin="6,12,6,0" Visibility="Collapsed"/>
+                        <TextBlock x:Name="HallErrorText" Foreground="{StaticResource DangerBrush}" TextWrapping="Wrap" Margin="6,10,6,0" Visibility="Collapsed"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
 
             <TabItem x:Name="FeedbackTab">
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal"><TextBlock Text="反馈"/></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="心愿信箱"/></StackPanel>
                 </TabItem.Header>
                 <Grid Margin="34,28,34,32" MaxWidth="800" HorizontalAlignment="Stretch">
                     <Grid.ColumnDefinitions><ColumnDefinition Width="300"/><ColumnDefinition Width="1"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
@@ -881,14 +915,15 @@
                     <Grid Grid.ColumnSpan="3" Margin="0,0,0,20">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="问题反馈与建议" Style="{StaticResource PageTitle}" />
+                            <TextBlock Text="心愿信箱" Style="{StaticResource PageTitle}" />
+                            <TextBlock Text="双击记录查看原文与完整回复，也可选中后按回车。" Style="{StaticResource Hint}"/>
                             <TextBlock x:Name="FeedbackQuotaText" Text="正在获取当前设备的反馈记录…" Style="{StaticResource Hint}" />
                         </StackPanel>
                         <Button x:Name="FeedbackReloadButton" Grid.Column="1" Content="刷新" VerticalAlignment="Center" Click="FeedbackReload_Click" />
                     </Grid>
 
                     <Grid Grid.Row="1">
-                        <ListBox x:Name="FeedbackList">
+                        <ListBox x:Name="FeedbackList" MouseDoubleClick="FeedbackDetails_Click" KeyDown="FeedbackList_KeyDown" ToolTip="双击查看原文与完整回复">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
                                     <StackPanel>
@@ -937,10 +972,11 @@
 
             <TabItem x:Name="UpdatesTab">
                 <TabItem.Header>
-                    <StackPanel Orientation="Horizontal"><TextBlock Text="我的"/></StackPanel>
+                    <StackPanel Orientation="Horizontal"><TextBlock Text="成长日记"/></StackPanel>
                 </TabItem.Header>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="34,28,34,32" MaxWidth="780" HorizontalAlignment="Stretch">
-                    <TextBlock Text="我的" Style="{StaticResource PageTitle}" />
+                    <TextBlock Text="成长日记" Style="{StaticResource PageTitle}" />
                     <TextBlock x:Name="CurrentVersionText" Style="{StaticResource Hint}" />
                     <TextBlock x:Name="LicenseStatusText" Margin="0,4,0,20" Style="{StaticResource Hint}" Foreground="{StaticResource AccentBrush}" />
                     <Border Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,0,0,16">
@@ -966,7 +1002,13 @@
                         <Button x:Name="InstallUpdateButton" Content="更新并重启" Style="{StaticResource PrimaryButton}" Click="InstallUpdate_Click" Margin="0,0,8,0" Visibility="Collapsed" />
                         <Button x:Name="IgnoreUpdateButton" Content="忽略该版本" Click="IgnoreUpdate_Click" Visibility="Collapsed" />
                     </WrapPanel>
+                    <Border x:Name="UpdateNotesPanel" Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,20,0,0" Visibility="Collapsed">
+                        <StackPanel><TextBlock Text="本次更新" Style="{StaticResource SectionTitle}"/>
+                            <TextBox x:Name="UpdateNotesText" IsReadOnly="True" AcceptsReturn="True" TextWrapping="Wrap" BorderThickness="0" Background="Transparent" VerticalScrollBarVisibility="Auto" MaxHeight="260"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
         </TabControl>
     </Grid>

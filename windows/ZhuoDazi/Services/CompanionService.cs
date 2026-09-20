@@ -18,8 +18,6 @@ public sealed record CompanionProfile(
     [property: JsonPropertyName("hallEnabled")] bool HallEnabled = false,
     [property: JsonPropertyName("online")] bool Online = false);
 
-public sealed record CompanionVisit(string Id, string SenderName, string FilePath, string Message = "");
-
 public sealed record CompanionHallPerson(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("displayName")] string DisplayName,
@@ -39,6 +37,25 @@ public sealed class CompanionService : IDisposable
     private readonly LicenseService _licenses;
     private readonly HttpClient _httpClient;
     private readonly string _inboxDirectory;
+    private CompanionInboxStore? _inbox;
+
+    internal string InboxIdentity => _licenses.IsActivated ? $"license:{_licenses.LicenseId}" : $"trial:{_licenses.InstallationId}";
+    internal CompanionInboxStore Inbox
+    {
+        get
+        {
+            var identity = InboxIdentity;
+            if (_inbox?.Identity == identity) return _inbox;
+            Profile = null;
+            HallPeople = [];
+            return _inbox = new CompanionInboxStore(_inboxDirectory, identity);
+        }
+    }
+
+    private void EnsureInboxIdentity(string identity)
+    {
+        if (InboxIdentity != identity) throw new OperationCanceledException("账号已切换，已保留原账号的来访。");
+    }
 
     public CompanionProfile? Profile { get; private set; }
     public IReadOnlyList<CompanionHallPerson> HallPeople { get; private set; } = [];
@@ -48,11 +65,6 @@ public sealed class CompanionService : IDisposable
         _licenses = licenses;
         _inboxDirectory = store.CompanionDirectory;
         _httpClient = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(35));
-        try
-        {
-            if (Directory.Exists(_inboxDirectory)) Directory.Delete(_inboxDirectory, true);
-        }
-        catch { }
     }
 
     public async Task<CompanionProfile> RefreshProfileAsync(CancellationToken cancellationToken = default)
@@ -163,42 +175,56 @@ public sealed class CompanionService : IDisposable
 
     public async Task<IReadOnlyList<CompanionVisit>> ReceiveAsync(CancellationToken cancellationToken = default)
     {
+        var inbox = Inbox;
+        var identity = inbox.Identity;
         using var listRequest = CreateRequest(HttpMethod.Get, DeliveriesUrl);
         var pending = await SendJsonAsync<DeliveryListResponse>(listRequest, cancellationToken);
-        if (pending.Deliveries.Count == 0) return [];
-
-        Directory.CreateDirectory(_inboxDirectory);
-        var visits = new List<CompanionVisit>();
+        EnsureInboxIdentity(identity);
+        Directory.CreateDirectory(inbox.DirectoryPath);
         foreach (var item in pending.Deliveries)
         {
-            var filePath = Path.Combine(_inboxDirectory, $"{item.Id}.gif");
-            if (!DeskPetHttp.TryCreateCompanionFileUrl(item.DownloadPath, out var downloadUri)
-                || downloadUri is null)
-                throw new InvalidOperationException("来访下载地址无效。");
-            using var downloadRequest = CreateRequest(HttpMethod.Get, downloadUri.AbsoluteUri);
-            using var response = await _httpClient.SendAsync(
-                downloadRequest,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken);
-            if (!response.IsSuccessStatusCode)
-                throw new InvalidOperationException(await ReadErrorAsync(response, cancellationToken));
-            var length = response.Content.Headers.ContentLength;
-            if (length is null or < 10 or > MaximumGifBytes)
-                throw new InvalidOperationException("收到的 GIF 大小无效。");
-            await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
-            await using (var destination = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None))
-                await source.CopyToAsync(destination, cancellationToken);
-            ValidateDownloadedGif(filePath, item.Sha256);
+            EnsureInboxIdentity(identity);
+            if (!inbox.Contains(item.Id))
+            {
+                var filePath = inbox.GifPath(item.Id);
+                if (!DeskPetHttp.TryCreateCompanionFileUrl(item.DownloadPath, out var downloadUri) || downloadUri is null)
+                    throw new InvalidOperationException("来访下载地址无效。");
+                using var downloadRequest = CreateRequest(HttpMethod.Get, downloadUri.AbsoluteUri);
+                using var response = await _httpClient.SendAsync(downloadRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                EnsureInboxIdentity(identity);
+                if (!response.IsSuccessStatusCode) throw new InvalidOperationException(await ReadErrorAsync(response, cancellationToken));
+                var length = response.Content.Headers.ContentLength;
+                if (length is null or < 10 or > MaximumGifBytes) throw new InvalidOperationException("收到的 GIF 大小无效。");
+                var temporary = filePath + ".part";
+                try
+                {
+                    await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
+                    await using (var destination = new FileStream(temporary, FileMode.Create, FileAccess.Write, FileShare.None))
+                        await source.CopyToAsync(destination, cancellationToken);
+                    EnsureInboxIdentity(identity);
+                    if (new FileInfo(temporary).Length > MaximumGifBytes) throw new InvalidOperationException("收到的 GIF 超过 8 MB。");
+                    ValidateDownloadedGif(temporary, item.Sha256);
+                    File.Move(temporary, filePath, true);
+                    inbox.SaveDownloaded(new CompanionVisit(item.Id, item.SenderName, filePath, item.Message));
+                }
+                finally { try { File.Delete(temporary); } catch { } }
+            }
 
-            using var acknowledgeRequest = CreateRequest(
-                HttpMethod.Post,
+            // Retry acknowledgements even for completed local receipts. Never overwrite an existing
+            // receipt or GIF merely because the server still lists a previously downloaded delivery.
+            EnsureInboxIdentity(identity);
+            using var acknowledgeRequest = CreateRequest(HttpMethod.Post,
                 $"{DeliveriesUrl}/{Uri.EscapeDataString(item.Id)}/acknowledge");
-            using var acknowledgeResponse = await _httpClient.SendAsync(acknowledgeRequest, cancellationToken);
-            if (!acknowledgeResponse.IsSuccessStatusCode)
-                throw new InvalidOperationException(await ReadErrorAsync(acknowledgeResponse, cancellationToken));
-            visits.Add(new CompanionVisit(item.Id, item.SenderName, filePath, item.Message));
+            try
+            {
+                using var acknowledgeResponse = await _httpClient.SendAsync(acknowledgeRequest, cancellationToken);
+                EnsureInboxIdentity(identity);
+            }
+            catch (HttpRequestException) { }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested) { }
         }
-        return visits;
+        EnsureInboxIdentity(identity);
+        return inbox.Pending();
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, string url)
@@ -233,8 +259,8 @@ public sealed class CompanionService : IDisposable
         {
             var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
             if (bytes.Length > 32 * 1024) return "搭子服务暂时不可用。";
-            return JsonSerializer.Deserialize<ErrorResponse>(bytes, JsonOptions)?.Error
-                ?? "搭子服务暂时不可用。";
+            var error = JsonSerializer.Deserialize<ErrorResponse>(bytes, JsonOptions);
+            return error?.Error ?? error?.Message ?? "搭子服务暂时不可用。";
         }
         catch { return "搭子服务暂时不可用。"; }
     }
@@ -285,5 +311,7 @@ public sealed class CompanionService : IDisposable
         [property: JsonPropertyName("enabled")] bool Enabled,
         [property: JsonPropertyName("people")] List<CompanionHallPerson> People);
 
-    private sealed record ErrorResponse([property: JsonPropertyName("error")] string Error);
+    private sealed record ErrorResponse(
+        [property: JsonPropertyName("error")] string? Error,
+        [property: JsonPropertyName("message")] string? Message);
 }

@@ -84,7 +84,8 @@ public sealed class FeedbackService : IDisposable
     {
         try
         {
-            return JsonSerializer.Deserialize<FeedbackErrorResponse>(bytes, JsonOptions)?.Error;
+            var error = JsonSerializer.Deserialize<FeedbackErrorResponse>(bytes, JsonOptions);
+            return error?.Error ?? error?.Message;
         }
         catch
         {
@@ -154,6 +155,9 @@ public sealed class FeedbackSubmitResponse
 
 internal sealed class FeedbackErrorResponse
 {
+    [JsonPropertyName("message")]
+    public string? Message { get; set; }
+
     [JsonPropertyName("error")]
     public string? Error { get; set; }
 }

@@ -11,9 +11,15 @@ import android.content.pm.ServiceInfo;
 import android.graphics.ImageDecoder;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
+import android.graphics.Rect;
+import android.graphics.Insets;
+import android.view.WindowInsets;
 import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.ResultReceiver;
+import android.os.SystemClock;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -29,12 +35,18 @@ import java.io.File;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 public final class PetOverlayService extends Service {
+    static final String ACTION_CANCEL_REQUEST = "com.zhuodazi.android.CANCEL_REQUEST";
+    static final String ACTION_END_SCENE = "com.zhuodazi.android.END_SCENE";
+    static final String ACTION_GUIDE = "com.zhuodazi.android.GUIDE";
+    static final String EXTRA_RESULT = "action_result";
     static final String ACTION_START = "com.zhuodazi.android.START";
     static final String ACTION_STOP = "com.zhuodazi.android.STOP";
     static final String ACTION_REFRESH = "com.zhuodazi.android.REFRESH";
@@ -82,6 +94,12 @@ public final class PetOverlayService extends Service {
     private TheaterScriptStore theaterScripts;
     private ReminderStore reminderStore;
     private ValueAnimator movementAnimator;
+    private Rect theaterRestoreWindow;
+    private TheaterScriptStore.Script currentTheaterScript;
+    private int currentTheaterScene;
+    private boolean currentTheaterPartner;
+    private int currentTheaterTextOffset;
+    private boolean menuAbove = true;
     private VelocityTracker velocityTracker;
     private float touchDownX;
     private float touchDownY;
@@ -105,13 +123,53 @@ public final class PetOverlayService extends Service {
     private int touchSlop;
     private long bubbleVersion;
     private int motionVersion;
-    private CompanionService.Visit pendingVisit;
+    private long visitorGeneration;
+    private long visitorBubbleVersion;
     private File visitorFile;
-    private boolean demoVisitScheduled;
+    private String visitOwner = "";
+    private static PetOverlayService liveService;
+    private ResultReceiver pendingInteractionResult;
+    private String pendingRequestId = "";
+    private long pendingRequestDeadline = Long.MAX_VALUE;
+    private int interactionGeneration;
+    private int guideGeneration;
+    private String guideDemo = "";
+    private boolean lastPetLoadSucceeded;
+    private boolean pendingPetRefresh;
+    private boolean lastQuiet;
+    private boolean trialCheckInFlight;
+    private long nextTrialCheckAt;
+    private boolean destroyed;
+
+    static Map<String, Object> runtimeSnapshot() {
+        Map<String, Object> state = new LinkedHashMap<>();
+        PetOverlayService live = liveService;
+        state.put("guideDemo", live == null ? "" : live.guideDemo);
+        state.put("interactionBusy", live != null && live.interactionBusy);
+        state.put("theaterActive", live != null && live.theaterActive);
+        state.put("petVisible", live != null && live.overlay != null && live.overlay.isAttachedToWindow() && live.settings.running() && live.lastPetLoadSucceeded && !live.settings.petHidden() && !live.settings.clickThrough());
+        return state;
+    }
+
+    private static void answer(ResultReceiver receiver, String error) {
+        if (receiver == null) return;
+        Bundle data = new Bundle();
+        if (error != null) data.putString("message", error);
+        receiver.send(error == null ? 0 : 1, data);
+    }
+
+    private void answerInteraction(String error) {
+        ResultReceiver receiver = pendingInteractionResult;
+        pendingInteractionResult = null;
+        pendingRequestId = "";
+        pendingRequestDeadline = Long.MAX_VALUE;
+        answer(receiver, error);
+    }
+
 
     private final Runnable wanderTask = new Runnable() {
         @Override public void run() {
-            if (overlay != null && settings.movement() && !dragging && !settings.clickThrough() && !theaterActive) wander();
+            if (!settings.guide().holdsAttention() && overlay != null && settings.movement() && !dragging && !settings.clickThrough() && !theaterActive) wander();
             scheduleWander();
         }
     };
@@ -142,14 +200,6 @@ public final class PetOverlayService extends Service {
             companionBusy = true;
             networkExecutor.execute(() -> {
                 try {
-                    if (licenses.isActivated() && settings.companionHallEnabled()
-                        && !settings.companionHallDefaultApplied()) {
-                        try {
-                            CompanionService.Profile profile = companions.refreshProfile();
-                            if (!profile.hallEnabled()) companions.setHallEnabled(true);
-                        } catch (Exception ignored) { }
-                        settings.putBoolean(SettingsStore.COMPANION_HALL_DEFAULT_APPLIED, true);
-                    }
                     List<CompanionService.Visit> visits = companions.receive();
                     handler.post(() -> {
                         for (CompanionService.Visit visit : visits) receiveVisit(visit);
@@ -158,6 +208,7 @@ public final class PetOverlayService extends Service {
                     // Polling failures are silent; direct user actions still report errors.
                 } finally {
                     companionBusy = false;
+                    handler.post(PetOverlayService.this::showNextVisit);
                     handler.post(PetOverlayService.this::scheduleCompanionPoll);
                 }
             });
@@ -176,84 +227,148 @@ public final class PetOverlayService extends Service {
 
     @Override public void onCreate() {
         super.onCreate();
+        liveService = this;
         settings = new SettingsStore(this);
         pets = new PetRepository(this, settings);
         words = new WordRepository(this, settings);
         licenses = new LicenseService(this);
         interactionContent = new InteractionContentService(this, licenses);
         companions = new CompanionService(this, licenses, pets);
+        visitOwner = licenses.visitOwner();
         theaterScripts = new TheaterScriptStore(settings);
         reminderStore = new ReminderStore(settings);
         reminderStore.normalizePast(System.currentTimeMillis());
+        lastQuiet = settings.isQuiet();
         windowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
         touchSlop = ViewConfiguration.get(this).getScaledTouchSlop();
         createNotificationChannels();
         startAsForeground();
+        if (settings.guide().hasBorrowedVisibility()) {
+            settings.guide().dismiss();
+            restoreGuideVisibility();
+        }
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        refreshVisitOwner();
         String action = intent == null || intent.getAction() == null ? ACTION_START : intent.getAction();
+        ResultReceiver receiver = intent == null ? null : intent.getParcelableExtra(EXTRA_RESULT);
+        if (ACTION_CANCEL_REQUEST.equals(action)) {
+            String canceledId = intent.getStringExtra("request_id");
+            if (canceledId != null && canceledId.equals(pendingRequestId)) {
+                interactionGeneration++;
+                answerInteraction("操作已取消，可以重新尝试");
+                finishInteraction();
+            }
+            return START_STICKY;
+        }
+        long deadline = intent == null ? Long.MAX_VALUE : intent.getLongExtra("request_deadline", Long.MAX_VALUE);
+        if (SystemClock.elapsedRealtime() >= deadline) {
+            answer(receiver, "这次操作已超时，请重新尝试");
+            if (!settings.running()) stopSelf();
+            return START_NOT_STICKY;
+        }
         if (ACTION_STOP.equals(action)) {
+            pauseGuide();
+            interactionGeneration++;
+            answerInteraction("桌宠已完全退出");
+            removeVisitor(false);
+            removeMainOverlay(true);
+            settings.setRunning(false);
+            handler.removeCallbacksAndMessages(null);
+            answer(receiver, null);
             stopSelf();
             return START_NOT_STICKY;
         }
         if (!Settings.canDrawOverlays(this)) {
+            answer(receiver, "请先允许悬浮窗，返回后继续体验");
             settings.setRunning(false);
             stopSelf();
             return START_NOT_STICKY;
         }
-
-        if (ACTION_START.equals(action) || ACTION_SHOW.equals(action)) {
-            settings.setPetHidden(false);
-            settings.setClickThrough(false);
-            if (overlay == null) createOverlay(true);
-            else applyTouchMode();
-            if (pendingVisit != null) {
-                CompanionService.Visit visit = pendingVisit;
-                pendingVisit = null;
-                showVisitor(visit);
+        try {
+            if (ACTION_GUIDE.equals(action)) {
+                handleGuideAction(intent.getStringExtra("guide_action"));
+                settings.setRunning(true);
+                answer(receiver, null);
+            } else {
+                boolean needsVisible = ACTION_START.equals(action) || ACTION_SHOW.equals(action)
+                    || ACTION_INTERACT.equals(action) || ACTION_THEATER.equals(action)
+                    || ACTION_NEXT.equals(action) || ACTION_REACT.equals(action);
+                if (needsVisible) {
+                    settings.setPetHidden(false);
+                    settings.setClickThrough(false);
+                    if (overlay == null) createOverlay(ACTION_START.equals(action));
+                    else applyTouchMode();
+                    if (!lastPetLoadSucceeded) throw new IllegalStateException("这个形象暂时无法显示，请到桌宠页选择内置形象后重试");
+                }
+                if (ACTION_INTERACT.equals(action) || ACTION_THEATER.equals(action) || ACTION_NEXT.equals(action)) {
+                    if (settings.guide().holdsAttention() && settings.guide().step() > 0)
+                        throw new IllegalStateException("新手体验进行中，请先完成或点“稍后继续”，再使用普通玩法");
+                    if (settings.guide().step() == 0) pauseGuide();
+                    if (theaterActive || interactionBusy || dragging)
+                        throw new IllegalStateException("请先结束互动或演出");
+                }
+                if ((ACTION_INTERACT.equals(action) || ACTION_THEATER.equals(action)) && !licenses.hasPremiumAccess())
+                    throw new IllegalStateException("体验或正式激活后可使用这个玩法；首页新手演示可以离线观看");
+                if (ACTION_INTERACT.equals(action)) {
+                    pendingInteractionResult = receiver;
+                    pendingRequestId = intent.getStringExtra("request_id");
+                    pendingRequestDeadline = deadline;
+                    ResultReceiver waiting = receiver;
+                    receiver = null;
+                    startRandomInteraction(true);
+                    handler.postDelayed(() -> {
+                        if (waiting == null || pendingInteractionResult != waiting) return;
+                        interactionGeneration++;
+                        answerInteraction("互动内容还没准备好，请稍后重试");
+                        finishInteraction();
+                    }, Math.max(0L, deadline - SystemClock.elapsedRealtime()));
+                } else if (ACTION_THEATER.equals(action)) {
+                    startTheater(true);
+                    if (!theaterActive) throw new IllegalStateException("请先结束互动，并准备两个可用形象");
+                } else if (ACTION_NEXT.equals(action)) {
+                    nextPet();
+                    if (!lastPetLoadSucceeded) throw new IllegalStateException("这个形象暂时打不开，请换一个重试");
+                } else if (ACTION_END_SCENE.equals(action)) {
+                    if (!guideDemo.isEmpty()) stopGuideDemo(false);
+                    else {
+                        interactionGeneration++;
+                        answerInteraction("互动已由你结束");
+                        if (theaterActive) finishTheater(false);
+                        if (interactionBusy) finishInteraction();
+                    }
+                } else if (ACTION_REACT.equals(action)) react(intent.getStringExtra(EXTRA_REACTION));
+                else if (ACTION_HIDE.equals(action)) hidePet();
+                else if (ACTION_CLICK_THROUGH.equals(action)) enableClickThrough();
+                else if (ACTION_SEND_COMPANION.equals(action)) sendToCompanion();
+                else if (ACTION_TRIAL_VISIT.equals(action)) playTrialVisit(intent.getStringExtra(EXTRA_VISIT_CATEGORY));
+                else if (ACTION_REFRESH.equals(action)) refreshOverlay();
+                else if (!needsVisible && overlay == null && !settings.petHidden()) createOverlay(false);
+                settings.setRunning(true);
+                answer(receiver, null);
             }
-        } else if (ACTION_REACT.equals(action)) {
-            settings.setPetHidden(false);
-            settings.setClickThrough(false);
-            if (overlay == null) createOverlay(false);
-            else applyTouchMode();
-            react(intent.getStringExtra(EXTRA_REACTION));
-        } else if (ACTION_INTERACT.equals(action)) {
-            settings.setPetHidden(false);
-            settings.setClickThrough(false);
-            if (overlay == null) createOverlay(false);
-            else applyTouchMode();
-            startRandomInteraction(true);
-        } else if (ACTION_THEATER.equals(action)) {
-            settings.setPetHidden(false);
-            settings.setClickThrough(false);
-            if (overlay == null) createOverlay(false);
-            else applyTouchMode();
-            startTheater(true);
-        } else if (ACTION_HIDE.equals(action)) {
-            hidePet();
-        } else if (ACTION_CLICK_THROUGH.equals(action)) {
-            enableClickThrough();
-        } else {
-            if (overlay == null && !settings.petHidden()) createOverlay(false);
-            if (ACTION_NEXT.equals(action)) nextPet();
-            else if (ACTION_SEND_COMPANION.equals(action)) sendToCompanion();
-            else if (ACTION_TRIAL_VISIT.equals(action)) playTrialVisit(intent.getStringExtra(EXTRA_VISIT_CATEGORY));
-            else if (ACTION_THEATER.equals(action)) startTheater(true);
-            else if (ACTION_REFRESH.equals(action)) refreshOverlay();
+        } catch (Exception error) {
+            answer(receiver, safeMessage(error));
+            if (ACTION_INTERACT.equals(action) && receiver == null) answerInteraction(safeMessage(error));
         }
-        settings.setRunning(true);
         updateNotification();
         scheduleCompanionPoll();
         scheduleTrialCheck();
         warmInteractionContent();
+        scheduleQuietResume();
         return START_STICKY;
     }
 
     @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override public void onDestroy() {
+        destroyed = true;
+        if (liveService == this) liveService = null;
+        stopGuideDemo(false);
+        restoreGuideVisibility();
+        interactionGeneration++;
+        answerInteraction("桌宠已退出，可以重新启动后继续");
         handler.removeCallbacksAndMessages(null);
         cancelMovement();
         removeVisitor(false);
@@ -265,6 +380,7 @@ public final class PetOverlayService extends Service {
 
     private void createOverlay(boolean announce) {
         if (settings.petHidden() || overlay != null) return;
+        lastQuiet = settings.isQuiet();
         pets.refreshLibraryCache();
         Point bounds = screenBounds();
         int petSize = fittedPetSize(bounds, settings.sizeDp());
@@ -297,29 +413,84 @@ public final class PetOverlayService extends Service {
         windowManager.addView(overlay, windowParams);
         currentPet = pets.selectedPet();
         loadCurrentPet();
-        if (announce) {
-            if (licenses.isTrialActive() && settings.trialVisitsEnabled() && !settings.demoVisitSeen()) {
-                say("idle", "先待一会儿，马上有人来串门。", 4800);
-            } else {
-                say("idle", "我来啦。点一下，菜单会自己冒出来。", 4800);
-            }
+        if (announce && !settings.guide().holdsAttention()) {
+            say("idle", "我来啦。点一下可以互动，也可以在首页开始新手体验。", 4800);
         }
         restartSchedules();
-        scheduleDemoVisit();
     }
 
     private void refreshOverlay() {
+        refreshVisitOwner();
         pets.refreshLibraryCache();
+        boolean quiet = settings.isQuiet();
+        boolean enteredQuiet = quiet && !lastQuiet;
+        lastQuiet = quiet;
+        if (enteredQuiet) {
+            pauseGuide();
+            if (theaterActive) finishTheater(false);
+            if (interactionBusy) {
+                interactionGeneration++;
+                answerInteraction("已进入安静模式，可以稍后重新互动");
+                finishInteraction();
+            }
+            removeVisitor(false);
+        }
+        scheduleQuietResume();
         if (overlay == null) return;
-        int previousX = windowParams.x;
-        int previousY = windowParams.y;
-        removeMainOverlay(false);
-        settings.savePosition(previousX, previousY);
-        createOverlay(false);
+        // A metadata/settings refresh must retain the current interaction listener,
+        // guide generation and theater actors. Only explicit exit/hide removes views.
+        overlay.setTrialVisitVisible(licenses.isTrialActive() && settings.trialVisitsEnabled());
+        overlay.setAppearance(settings.opacity() / 100f, settings.mirrored(), facing);
+        applyTouchMode();
+        refreshOverlayGeometry();
+        pendingPetRefresh = true;
+        applyPendingPetRefresh();
+        restartSchedules();
+        showNextVisit();
+    }
+
+    private void applyPendingPetRefresh() {
+        if (!pendingPetRefresh || overlay == null || interactionBusy || theaterActive
+            || !guideDemo.isEmpty() || dragging) return;
+        pendingPetRefresh = false;
+        currentPet = pets.selectedPet();
+        loadCurrentPet();
+    }
+
+    private void updateBaseGeometry() {
+        Point bounds = screenBounds();
+        int petSize = fittedPetSize(bounds, settings.sizeDp());
+        baseWindowWidth = fitWindowWidth(bounds, Math.max(petSize + dp(12), dp(128)));
+        baseWindowHeight = fitWindowHeight(bounds, petSize + dp(64));
+    }
+
+    private void refreshOverlayGeometry() {
+        if (overlay == null || windowParams == null) return;
+        if (menuExpanded) { collapseMenuWindow(); updateBaseGeometry(); expandMenuWindow(); return; }
+        updateBaseGeometry();
+        if (theaterActive && visitorOverlay != null) { placeTheaterPair(screenBounds(), 0); return; }
+        Point bounds = screenBounds();
+        int petSize = baseWindowHeight - dp(64);
+        overlay.setPetSize(petSize);
+        int width = baseWindowWidth;
+        int height = baseWindowHeight;
+        if (interactionExpanded) {
+            width = fitWindowWidth(bounds, Math.max(width, dp(196)));
+            height = fitWindowHeight(bounds, Math.max(height, windowParams.height));
+        } else if (menuExpanded) {
+            width = fitWindowWidth(bounds, Math.max(width, overlay.preferredMenuWidth()));
+            height = fitWindowHeight(bounds, Math.max(height, overlay.preferredMenuHeight()));
+        }
+        resizeWindowAnchored(width, height);
+        if (interactionExpanded) overlay.post(this::fitInteractionWindowToContent);
     }
 
     private void removeMainOverlay(boolean savePosition) {
+        stopGuideDemo(false);
+        interactionGeneration++;
+        answerInteraction("桌宠显示状态已改变，请重试");
         if (overlay == null) return;
+        restoreTheaterPosition();
         if (savePosition && windowParams != null) settings.savePosition(windowParams.x, windowParams.y);
         if (theaterActive) {
             theaterVersion++;
@@ -343,10 +514,13 @@ public final class PetOverlayService extends Service {
     }
 
     private void loadCurrentPet() {
+        reminderExpressionVersion++;
+        lastPetLoadSucceeded = false;
         if (overlay == null || currentPet.isEmpty()) return;
         try {
             Drawable drawable = pets.load(currentPet);
             overlay.setPet(drawable, settings.opacity() / 100f, settings.mirrored(), facing);
+            lastPetLoadSucceeded = true;
         } catch (Exception error) {
             sayText("这个 GIF 暂时打不开，换一个试试。", 5000);
         }
@@ -363,6 +537,11 @@ public final class PetOverlayService extends Service {
     private void nextPet() { selectPet(pets.nextPet(currentPet), true); }
 
     private void handleMenuAction(String action) {
+        if (settings.guide().holdsAttention() && (PetOverlayView.MENU_NEXT.equals(action)
+            || PetOverlayView.MENU_SEND.equals(action))) {
+            sayText("先在首页完成新手体验，或选择稍后继续。", 4200);
+            return;
+        }
         switch (action) {
             case PetOverlayView.MENU_INTERACT -> startRandomInteraction(true);
             case PetOverlayView.MENU_THEATER -> startTheater(true);
@@ -371,8 +550,8 @@ public final class PetOverlayService extends Service {
             case PetOverlayView.MENU_FRIEND_VISIT -> playTrialVisit("friend");
             case PetOverlayView.MENU_COMPANION_VISIT -> playTrialVisit("companion");
             case PetOverlayView.MENU_NEXT -> nextPet();
-            case PetOverlayView.MENU_CLICK_THROUGH -> enableClickThrough();
-            case PetOverlayView.MENU_HIDE -> hidePet();
+            case PetOverlayView.MENU_CLICK_THROUGH -> explainRecovery(true);
+            case PetOverlayView.MENU_HIDE -> explainRecovery(false);
             default -> { }
         }
     }
@@ -390,11 +569,13 @@ public final class PetOverlayService extends Service {
             case "sad" -> "先别装没事，我又不会打分。";
             default -> "碰到我啦。笑一个，别那么正经。";
         };
-        say(action, fallback, 5200);
+        sayText(words.reaction(action, fallback), 5200);
     }
 
     private void startRandomInteraction(boolean manual) {
+        if (settings.guide().holdsAttention()) { if (manual) sayText("请在首页继续新手体验，或选择稍后继续。", 4200); return; }
         handler.removeCallbacks(interactionTask);
+        if (!manual && settings.isQuiet()) { scheduleInteraction(); return; }
         if (!licenses.hasPremiumAccess()) {
             if (manual) sayText("体验或正式激活后可以使用随机趣味互动。", 5200);
             scheduleInteraction();
@@ -413,6 +594,7 @@ public final class PetOverlayService extends Service {
             return;
         }
         interactionBusy = true;
+        int requestedGeneration = ++interactionGeneration;
         cancelMovement();
         boolean moodDue = interactionContent.isMoodPromptDue();
         if (moodDue && (interactionContent.cachedCount() == 0 || random.nextInt(4) == 0)) {
@@ -433,15 +615,18 @@ public final class PetOverlayService extends Service {
             InteractionContentService.Item loaded = interactionContent.takeNextContent();
             Exception finalFailure = failure;
             handler.post(() -> {
+                if (requestedGeneration != interactionGeneration) return;
                 if (overlay == null) {
+                    answerInteraction("桌宠暂时不可见，请显示后重试");
                     finishInteraction();
                 } else if (loaded != null) {
                     showContentInteraction(loaded);
                 } else if (moodDue) {
                     showMoodInteraction();
                 } else {
+                    answerInteraction("趣味内容暂时不可用，请重试；首页新手演示可以离线观看");
                     if (manual) sayText(finalFailure == null
-                        ? "趣味内容正在补货，稍后再来找我吧。"
+                        ? "暂时没有新内容，稍后再试。"
                         : "线上内容暂时不可用，稍后再试。", 5200);
                     finishInteraction();
                 }
@@ -539,12 +724,20 @@ public final class PetOverlayService extends Service {
     private void showOverlayInteraction(String title, String message,
                                         List<PetOverlayView.InteractionChoice> choices,
                                         Consumer<String> callback) {
+        if (pendingInteractionResult != null && SystemClock.elapsedRealtime() >= pendingRequestDeadline) {
+            interactionGeneration++;
+            answerInteraction("这次互动已经超时，请重新尝试");
+            finishInteraction();
+            return;
+        }
         if (overlay == null) {
+            answerInteraction("桌宠暂时不可见，请重新显示后尝试");
             finishInteraction();
             return;
         }
         expandInteractionWindow();
         overlay.showInteraction(title, message, choices, callback::accept);
+        answerInteraction(null);
         overlay.post(this::fitInteractionWindowToContent);
     }
 
@@ -552,7 +745,9 @@ public final class PetOverlayService extends Service {
         if (overlay != null) overlay.hideInteraction();
         collapseInteractionWindow();
         interactionBusy = false;
+        applyPendingPetRefresh();
         scheduleInteraction();
+        showNextVisit();
         warmInteractionContent();
         if (interactionContent.shouldFlush() && !interactionSyncBusy) {
             interactionSyncBusy = true;
@@ -563,8 +758,155 @@ public final class PetOverlayService extends Service {
         }
     }
 
+    private void handleGuideAction(String action) throws Exception {
+        GuideStore guide = settings.guide();
+        if ("dismiss".equals(action)) { pauseGuide(); return; }
+        if ("endDemo".equals(action)) { stopGuideDemo("interaction".equals(guideDemo)); return; }
+        if ("skip".equals(action)) {
+            int step = guide.step();
+            stopGuideDemo(false);
+            guide.advance(step, true);
+            resumeAfterGuide();
+            return;
+        }
+        if ("confirm".equals(action)) {
+            if (guide.step() != 1 && guide.step() != 4) throw new IllegalStateException("请体验当前步骤，或选择跳过");
+            guide.advance(guide.step(), false);
+            resumeAfterGuide();
+            return;
+        }
+        if (theaterActive || interactionBusy || visitorOverlay != null) {
+            if (guideDemo.isEmpty()) throw new IllegalStateException("请先结束当前互动或等待来访结束，再开始新手体验");
+            throw new IllegalStateException("演示正在进行，可以回应、关闭或点结束演示");
+        }
+        guide.borrowVisibility(settings.petHidden(), settings.clickThrough());
+        settings.setPetHidden(false);
+        settings.setClickThrough(false);
+        if (overlay == null) createOverlay(false);
+        else applyTouchMode();
+        if (!lastPetLoadSucceeded) {
+            restoreGuideVisibility();
+            throw new IllegalStateException("桌宠暂时没有显示，请先选择一个可用形象");
+        }
+        if ("begin".equals(action) || "replay".equals(action)) guide.begin("replay".equals(action));
+        else if (!guide.holdsAttention()) throw new IllegalStateException("请先点继续体验");
+        cancelMovement();
+        reminderExpressionVersion++;
+        loadCurrentPet();
+        restartSchedules();
+        overlay.hideQuickMenu();
+        overlay.hideBubble();
+        collapseMenuWindow();
+        if ("interaction".equals(action)) {
+            if (guide.step() != 2) throw new IllegalStateException("请先完成当前体验步骤");
+            startGuideInteraction();
+        } else if ("theater".equals(action)) {
+            if (guide.step() != 3) throw new IllegalStateException("请先完成当前体验步骤");
+            startGuideTheater();
+        }
+    }
+
+    private void startGuideInteraction() {
+        guideDemo = "interaction";
+        interactionBusy = true;
+        final int version = ++guideGeneration;
+        showOverlayInteraction("新手演示 · 打个招呼", "今天想怎样一起玩？这是一条本地示例，不会记录心情或答题统计。", Arrays.asList(
+            new PetOverlayView.InteractionChoice("陪我摸会鱼", "relax", true),
+            new PetOverlayView.InteractionChoice("一起认真一点", "focus")
+        ), choice -> {
+            if (version != guideGeneration) return;
+            stopGuideDemo(false);
+            settings.guide().advance(2, false);
+            if (choice != null) sayText("收到，我会一直在这里。以后从互动页还能继续玩。", 4500);
+        });
+    }
+
+    private void startGuideTheater() throws Exception {
+        // Dedicated bundled actors guarantee a stable preview even with a one-GIF external library.
+        String actorB = "001-76dec374.gif".equals(currentPet) ? "005-5473df2b.gif" : "001-76dec374.gif";
+        Drawable drawable = pets.load(actorB);
+        Point bounds = screenBounds();
+        int petSize = fittedPetSize(bounds, Math.max(96, Math.min(180, settings.sizeDp())));
+        int width = fitWindowWidth(bounds, Math.max(petSize + dp(20), dp(168)));
+        int height = fitWindowHeight(bounds, petSize + dp(92));
+        visitorOverlay = new PetOverlayView(this, petSize, width, height);
+        visitorOverlay.setPet(drawable, settings.opacity() / 100f, settings.mirrored(), -facing);
+        visitorParams = new WindowManager.LayoutParams(width, height,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE,
+            PixelFormat.TRANSLUCENT);
+        visitorParams.gravity = Gravity.TOP | Gravity.START;
+        try {
+            placeTheaterPair(bounds, width);
+            windowManager.addView(visitorOverlay, visitorParams);
+        } catch (Exception failure) {
+            removeVisitor(false);
+            restoreTheaterPosition();
+            throw failure;
+        }
+        guideDemo = "theater";
+        theaterActive = true;
+        theaterVisitor = true;
+        ++guideGeneration;
+        int version = ++theaterVersion;
+        playTheaterScene(new TheaterScriptStore.Script("guide", "初次见面", List.of(
+            new TheaterScriptStore.Scene("我宣布：今天也要按时休息。", "收到！我负责盯住时钟。"),
+            new TheaterScriptStore.Scene("我们需要邀请真人好友吗？", "不用，我们是本地小搭档。"),
+            new TheaterScriptStore.Scene("演完啦，下次在互动页见！", "好呀，记得来找我们玩。")
+        )), 0, version);
+    }
+
+    private void stopGuideDemo(boolean completed) {
+        String previous = guideDemo;
+        if (previous.isEmpty()) return;
+        guideGeneration++;
+        guideDemo = "";
+        if (overlay != null) { overlay.hideInteraction(); overlay.hideBubble(); }
+        collapseInteractionWindow();
+        interactionBusy = false;
+        if (completed && "interaction".equals(previous)) settings.guide().advance(2, false);
+        if ("theater".equals(previous)) {
+            theaterActive = false;
+            theaterVersion++;
+            removeVisitor(false);
+            theaterVisitor = false;
+            restoreTheaterPosition();
+            if (completed) settings.guide().advance(3, false);
+        }
+        applyPendingPetRefresh();
+        restartSchedules();
+    }
+
+    private void pauseGuide() {
+        stopGuideDemo(false);
+        if (settings.guide().holdsAttention()) settings.guide().dismiss();
+        resumeAfterGuide();
+    }
+
+    private void restoreGuideVisibility() {
+        GuideStore guide = settings.guide();
+        if (!guide.hasBorrowedVisibility()) return;
+        boolean hidden = guide.originalHidden();
+        boolean through = guide.originalClickThrough();
+        guide.finishBorrowing();
+        settings.setPetHidden(hidden);
+        settings.setClickThrough(through);
+        if (hidden) removeMainOverlay(false);
+        else applyTouchMode();
+        updateNotification();
+    }
+
+    private void resumeAfterGuide() {
+        if (!settings.guide().holdsAttention()) {
+            restoreGuideVisibility();
+            settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, true);
+            restartSchedules();
+            showNextVisit();
+        }
+    }
+
     private void warmInteractionContent() {
-        if (!interactionContent.needsRefill() || interactionSyncBusy) return;
+        if (settings.guide().holdsAttention() || !interactionContent.needsRefill() || interactionSyncBusy) return;
         interactionSyncBusy = true;
         networkExecutor.execute(() -> {
             try { interactionContent.refillOnline(); } catch (Exception ignored) { }
@@ -612,18 +954,43 @@ public final class PetOverlayService extends Service {
     }
 
     private void expandMenuWindow() {
-        if (menuExpanded || overlay == null || windowParams == null) return;
-        Point bounds = screenBounds();
-        int width = fitWindowWidth(bounds, Math.max(baseWindowWidth, overlay.preferredMenuWidth()));
-        int height = fitWindowHeight(bounds, Math.max(baseWindowHeight, overlay.preferredMenuHeight()));
+        if (menuExpanded || overlay == null || windowParams == null || theaterActive) return;
+        Rect safe = safeScreenBounds();
+        int petSize = Math.min(baseWindowHeight - dp(64), Math.max(dp(48), safe.height() - overlay.preferredMenuHeight() - dp(8)));
+        int width = Math.min(safe.width(), Math.max(baseWindowWidth, overlay.preferredMenuWidth()));
+        int height = Math.min(safe.height(), overlay.preferredMenuHeight() + dp(8) + petSize);
+        int petTop = windowParams.y + windowParams.height - (baseWindowHeight - dp(64));
+        int center = windowParams.x + windowParams.width / 2;
+        int menuSpace = height - petSize;
+        menuAbove = petTop - safe.top >= menuSpace || safe.bottom - petTop - petSize < menuSpace;
         menuExpanded = true;
-        resizeWindowAnchored(width, height);
+        overlay.setPetSize(petSize);
+        overlay.arrangeMenu(menuAbove);
+        windowParams.width = width;
+        windowParams.height = height;
+        windowParams.x = SettingsStore.clamp(center - width / 2, safe.left, Math.max(safe.left, safe.right - width));
+        int desiredTop = menuAbove ? petTop - menuSpace : petTop;
+        windowParams.y = SettingsStore.clamp(desiredTop, safe.top, Math.max(safe.top, safe.bottom - height));
+        windowManager.updateViewLayout(overlay, windowParams);
     }
 
     private void collapseMenuWindow() {
         if (!menuExpanded || overlay == null || windowParams == null) return;
+        int petSize = ((android.widget.FrameLayout.LayoutParams) overlay.petImageLayout()).height;
+        int petTop = windowParams.y + (menuAbove ? windowParams.height - petSize : 0);
+        int center = windowParams.x + windowParams.width / 2;
         menuExpanded = false;
-        if (!interactionExpanded) resizeWindowAnchored(baseWindowWidth, baseWindowHeight);
+        updateBaseGeometry();
+        overlay.restorePetLayout(baseWindowWidth);
+        overlay.setPetSize(baseWindowHeight - dp(64));
+        if (!interactionExpanded) {
+            windowParams.width = baseWindowWidth;
+            windowParams.height = baseWindowHeight;
+            Point bounds = screenBounds();
+            windowParams.x = SettingsStore.clamp(center - baseWindowWidth / 2, 0, Math.max(0, bounds.x - baseWindowWidth));
+            windowParams.y = SettingsStore.clamp(petTop - dp(64), 0, maxWindowY(bounds, baseWindowHeight));
+            windowManager.updateViewLayout(overlay, windowParams);
+        }
     }
 
     private void resizeWindowAnchored(int width, int height) {
@@ -641,18 +1008,44 @@ public final class PetOverlayService extends Service {
         } catch (Exception ignored) { }
     }
 
+    private void explainRecovery(boolean through) {
+        if (settings.recoveryHintSeen()) {
+            if (through) enableClickThrough(); else hidePet();
+            return;
+        }
+        pauseGuide();
+        interactionBusy = true;
+        showOverlayInteraction("随时能找回来", "打开桌搭子首页，点“恢复桌宠”就能找回。也可在“我的 → 系统权限”允许通知，把恢复入口放在通知里。", Arrays.asList(
+            new PetOverlayView.InteractionChoice(through ? "知道了，开启穿透" : "知道了，隐藏", "continue", true),
+            new PetOverlayView.InteractionChoice("暂不改变", "cancel")
+        ), choice -> {
+            finishInteraction();
+            if (!"continue".equals(choice)) return;
+            settings.putBoolean("recovery_hint_seen", true);
+            if (through) enableClickThrough(); else hidePet();
+        });
+    }
+
     private void hidePet() {
+        pauseGuide();
         settings.setPetHidden(true);
         settings.setClickThrough(false);
+        removeVisitor(false);
         removeMainOverlay(true);
         updateNotification();
     }
 
     private void enableClickThrough() {
+        pauseGuide();
         if (overlay == null || windowParams == null) return;
+        settings.setClickThrough(true);
+        interactionGeneration++;
+        answerInteraction("已开启穿透，可以恢复桌宠后重新互动");
+        if (interactionBusy) finishInteraction();
+        if (theaterActive) finishTheater(false);
         overlay.hideQuickMenu();
         collapseMenuWindow();
-        settings.setClickThrough(true);
+        removeVisitor(false);
         applyTouchMode();
         updateNotification();
     }
@@ -666,6 +1059,7 @@ public final class PetOverlayService extends Service {
 
     private boolean handleTouch(MotionEvent event) {
         if (overlay == null) return false;
+        if (theaterActive) return true;
         if (overlay.hitInteractive(event.getX(), event.getY())) return false;
         if (overlay.isInteractionVisible()) {
             if (event.getActionMasked() == MotionEvent.ACTION_UP) overlay.dismissInteraction();
@@ -720,7 +1114,9 @@ public final class PetOverlayService extends Service {
                         overlay.post(overlay::showQuickMenu);
                     }
                 }
+                if (event.getActionMasked() == MotionEvent.ACTION_UP && settings.guide().holdsAttention()) settings.guide().advance(1, false);
                 dragging = false;
+                applyPendingPetRefresh();
                 if (velocityTracker != null) velocityTracker.recycle();
                 velocityTracker = null;
                 scheduleWander();
@@ -810,8 +1206,8 @@ public final class PetOverlayService extends Service {
     }
 
     private void say(String action, String fallback, long duration) {
-        String pack = licenses.hasPremiumAccess() ? settings.wordPack() : "元气夸夸.json";
-        sayText(words.reaction(pack, action, fallback), duration);
+        if (settings.guide().holdsAttention() || settings.isQuiet() || !settings.dailySpeechEnabled()) return;
+        sayText(licenses.hasPremiumAccess() ? words.reaction(action, fallback) : fallback, duration);
     }
 
     private void sayText(String message, long duration) {
@@ -824,7 +1220,9 @@ public final class PetOverlayService extends Service {
     }
 
     private void startTheater(boolean manual) {
+        if (settings.guide().holdsAttention()) { if (manual) sayText("请在首页继续新手体验，或选择稍后继续。", 4200); return; }
         handler.removeCallbacks(theaterTask);
+        if (!manual && settings.isQuiet()) { scheduleTheater(); return; }
         if (!licenses.hasPremiumAccess()) {
             if (manual) sayText("体验或正式激活后可以上演小剧场。", 5200);
             scheduleTheater();
@@ -859,6 +1257,7 @@ public final class PetOverlayService extends Service {
         if (overlay.isInteractionVisible()) overlay.dismissInteraction();
         if (visitorOverlay != null) removeVisitor(true);
         cancelMovement();
+        loadCurrentPet();
         theaterActive = true;
         theaterVisitor = true;
         int version = ++theaterVersion;
@@ -883,6 +1282,7 @@ public final class PetOverlayService extends Service {
             theaterActive = false;
             theaterVisitor = false;
             removeVisitor(false);
+            restoreTheaterPosition();
             if (manual) sayText("搭档暂时登不了台，稍后再试。", 4800);
             scheduleTheater();
             return;
@@ -890,106 +1290,117 @@ public final class PetOverlayService extends Service {
         playTheaterScene(script, 0, version);
     }
 
-    private void placeTheaterPair(Point bounds, int visitorWidth) {
-        if (windowParams == null || visitorParams == null) return;
-        int gap = dp(12);
-        boolean visitorOnRight = windowParams.x + windowParams.width / 2 < bounds.x / 2;
-        if (visitorOnRight) {
-            visitorParams.x = Math.min(bounds.x - visitorWidth - dp(8), windowParams.x + windowParams.width + gap);
-        } else {
-            visitorParams.x = Math.max(dp(8), windowParams.x - visitorWidth - gap);
-        }
-        visitorParams.y = SettingsStore.clamp(windowParams.y, 0, maxWindowY(bounds, visitorParams.height));
+    private void placeTheaterPair(Point ignoredBounds, int ignoredWidth) {
+        if (windowParams == null || visitorParams == null || overlay == null || visitorOverlay == null) return;
+        if (theaterRestoreWindow == null)
+            theaterRestoreWindow = new Rect(windowParams.x, windowParams.y,
+                windowParams.x + windowParams.width, windowParams.y + windowParams.height);
+        Rect safe = safeScreenBounds();
+        int margin = dp(8), gap = dp(12);
+        int width = Math.max(dp(60), Math.min(dp(260), (safe.width() - 2 * margin - gap) / 2));
+        int height = Math.min(safe.height() - 2 * margin, dp(300));
+        int petSize = Math.max(dp(36), Math.min(Math.min(dp(Math.min(112, settings.sizeDp())), width - dp(12)), height / 3));
+        overlay.configureTheater(petSize, width, height);
+        visitorOverlay.configureTheater(petSize, width, height);
+        windowParams.width = visitorParams.width = width;
+        windowParams.height = visitorParams.height = height;
+        windowParams.x = safe.left + margin;
+        visitorParams.x = safe.right - margin - width;
+        windowParams.y = visitorParams.y = safe.top + margin;
+        windowManager.updateViewLayout(overlay, windowParams);
+        if (visitorOverlay.isAttachedToWindow()) windowManager.updateViewLayout(visitorOverlay, visitorParams);
+    }
+
+    private void restoreTheaterPosition() {
+        if (theaterRestoreWindow == null) return;
+        currentTheaterScript = null;
+        currentTheaterPartner = false;
+        currentTheaterTextOffset = 0;
+        Rect original = theaterRestoreWindow;
+        theaterRestoreWindow = null;
+        if (overlay == null || windowParams == null) return;
+        updateBaseGeometry();
+        overlay.hideBubble();
+        overlay.restorePetLayout(baseWindowWidth);
+        overlay.setPetSize(baseWindowHeight - dp(64));
+        Point bounds = screenBounds();
+        windowParams.width = baseWindowWidth;
+        windowParams.height = baseWindowHeight;
+        windowParams.x = SettingsStore.clamp(original.left, 0, Math.max(0, bounds.x - baseWindowWidth));
+        windowParams.y = SettingsStore.clamp(original.top, 0, maxWindowY(bounds, baseWindowHeight));
+        windowManager.updateViewLayout(overlay, windowParams);
+    }
+
+    static long theaterReadingMillis(String text) {
+        int characters = text.codePointCount(0, text.length());
+        return Math.max(6000L, 1200L + characters * 300L);
     }
 
     private void playTheaterScene(TheaterScriptStore.Script script, int index, int version) {
-        if (version != theaterVersion || overlay == null || visitorOverlay == null) {
-            finishTheater(false);
-            return;
-        }
+        if (version != theaterVersion) return;
+        if (overlay == null || visitorOverlay == null) { finishTheater(false); return; }
         if (index >= script.scenes.size()) {
-            handler.postDelayed(() -> {
-                if (version == theaterVersion) finishTheater(true);
-            }, 1800);
+            if ("theater".equals(guideDemo)) stopGuideDemo(true); else finishTheater(true);
             return;
         }
+        currentTheaterScript = script;
+        currentTheaterScene = index;
+        playTheaterTurn(script, index, version, false, 0);
+    }
+
+    private void playTheaterTurn(TheaterScriptStore.Script script, int index, int version,
+                                 boolean partner, int textOffset) {
+        if (!theaterActive || version != theaterVersion || overlay == null || visitorOverlay == null) return;
         TheaterScriptStore.Scene scene = script.scenes.get(index);
-        sayText(scene.main, 4400);
+        String line = partner ? scene.companion : scene.main;
+        int offset = Math.max(0, Math.min(textOffset, line.length()));
+        PetOverlayView mainActor = overlay, partnerActor = visitorOverlay;
+        PetOverlayView speaker = partner ? partnerActor : mainActor;
+        PetOverlayView listener = partner ? mainActor : partnerActor;
+        String page = speaker.theaterPages(line.substring(offset)).get(0);
+        int nextOffset = offset + page.length();
+        currentTheaterPartner = partner;
+        currentTheaterTextOffset = offset;
+        ++bubbleVersion;
+        ++visitorBubbleVersion;
+        listener.hideBubbleImmediately();
+        speaker.say(page);
         handler.postDelayed(() -> {
-            if (version != theaterVersion || visitorOverlay == null) return;
-            visitorOverlay.say(scene.companion);
-            handler.postDelayed(() -> {
-                if (version != theaterVersion || visitorOverlay == null) return;
-                visitorOverlay.hideBubble();
-            }, 4400);
-        }, 2100);
-        handler.postDelayed(() -> {
-            if (version != theaterVersion) return;
-            performTheaterMotion(index, () -> playTheaterScene(script, index + 1, version));
-        }, 3200);
+            if (!theaterActive || version != theaterVersion || overlay != mainActor || visitorOverlay != partnerActor) return;
+            if (nextOffset < line.length())
+                playTheaterTurn(script, index, version, partner, nextOffset);
+            else if (!partner)
+                playTheaterTurn(script, index, version, true, 0);
+            else
+                playTheaterScene(script, index + 1, version);
+        }, theaterReadingMillis(page));
     }
 
-    private void performTheaterMotion(int step, Runnable next) {
-        if (windowParams == null || visitorParams == null || overlay == null || visitorOverlay == null) {
-            next.run();
-            return;
-        }
+    private Rect safeScreenBounds() {
         Point bounds = screenBounds();
-        int mainX = windowParams.x;
-        int mainY = windowParams.y;
-        int visitorX = visitorParams.x;
-        int visitorY = visitorParams.y;
-        int hop = dp(22);
-        switch (step % 4) {
-            case 0 -> animatePair(
-                mainX, Math.max(0, mainY - hop), visitorX, Math.max(0, visitorY - hop), 220,
-                () -> animatePair(mainX, mainY, visitorX, visitorY, 240, next));
-            case 1 -> animatePair(visitorX, visitorY, mainX, mainY, 650, next);
-            case 2 -> {
-                int direction = mainX <= visitorX ? 1 : -1;
-                animatePair(
-                    mainX + dp(18) * direction, Math.max(0, mainY - dp(12)),
-                    visitorX - dp(18) * direction, SettingsStore.clamp(visitorY + dp(8), 0, maxWindowY(bounds, visitorParams.height)),
-                    250,
-                    () -> animatePair(mainX, mainY, visitorX, visitorY, 250, next));
+        int left = 0, top = 0, right = 0, bottom = dp(24);
+        if (Build.VERSION.SDK_INT >= 30) {
+            Insets insets = windowManager.getCurrentWindowMetrics().getWindowInsets()
+                .getInsetsIgnoringVisibility(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            left = insets.left; top = insets.top; right = insets.right; bottom = insets.bottom;
+        } else {
+            int status = getResources().getIdentifier("status_bar_height", "dimen", "android");
+            int navigation = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+            if (status != 0) top = getResources().getDimensionPixelSize(status);
+            if (navigation != 0) bottom = getResources().getDimensionPixelSize(navigation);
+            WindowInsets insets = overlay == null ? null : overlay.getRootWindowInsets();
+            if (insets != null) {
+                left = insets.getStableInsetLeft(); right = insets.getStableInsetRight();
+                top = Math.max(top, insets.getStableInsetTop()); bottom = Math.max(bottom, insets.getStableInsetBottom());
+                if (insets.getDisplayCutout() != null) {
+                    left = Math.max(left, insets.getDisplayCutout().getSafeInsetLeft());
+                    top = Math.max(top, insets.getDisplayCutout().getSafeInsetTop());
+                    right = Math.max(right, insets.getDisplayCutout().getSafeInsetRight());
+                    bottom = Math.max(bottom, insets.getDisplayCutout().getSafeInsetBottom());
+                }
             }
-            default -> animatePair(visitorX, visitorY, mainX, mainY, 650, next);
         }
-    }
-
-    private void animatePair(int mainX, int mainY, int visitorX, int visitorY, long duration, Runnable done) {
-        if (windowParams == null || visitorParams == null) {
-            if (done != null) done.run();
-            return;
-        }
-        Point bounds = screenBounds();
-        int startMainX = windowParams.x;
-        int startMainY = windowParams.y;
-        int startVisitorX = visitorParams.x;
-        int startVisitorY = visitorParams.y;
-        int endMainX = SettingsStore.clamp(mainX, 0, Math.max(0, bounds.x - windowParams.width));
-        int endMainY = SettingsStore.clamp(mainY, 0, maxWindowY(bounds, windowParams.height));
-        int endVisitorX = SettingsStore.clamp(visitorX, 0, Math.max(0, bounds.x - visitorParams.width));
-        int endVisitorY = SettingsStore.clamp(visitorY, 0, maxWindowY(bounds, visitorParams.height));
-        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
-        animator.setDuration(duration);
-        animator.setInterpolator(new DecelerateInterpolator());
-        animator.addUpdateListener(animation -> {
-            float value = (float) animation.getAnimatedValue();
-            moveWindow(Math.round(startMainX + (endMainX - startMainX) * value),
-                Math.round(startMainY + (endMainY - startMainY) * value));
-            if (visitorParams != null && visitorOverlay != null) {
-                visitorParams.x = Math.round(startVisitorX + (endVisitorX - startVisitorX) * value);
-                visitorParams.y = Math.round(startVisitorY + (endVisitorY - startVisitorY) * value);
-                try { windowManager.updateViewLayout(visitorOverlay, visitorParams); } catch (Exception ignored) { }
-            }
-        });
-        animator.addListener(new android.animation.AnimatorListenerAdapter() {
-            @Override public void onAnimationEnd(android.animation.Animator animation) {
-                if (done != null) done.run();
-            }
-        });
-        animator.start();
+        return new Rect(left, top, Math.max(left + 1, bounds.x - right), Math.max(top + 1, bounds.y - bottom));
     }
 
     private void finishTheater(boolean announce) {
@@ -999,52 +1410,67 @@ public final class PetOverlayService extends Service {
             removeVisitor(false);
             theaterVisitor = false;
         }
+        restoreTheaterPosition();
+        applyPendingPetRefresh();
         if (announce && overlay != null) say("theater_finish", "谢幕。把掌声留给下一次摸鱼。", 4200);
         scheduleTheater();
         scheduleWander();
+        showNextVisit();
     }
 
     private void checkReminders() {
         handler.removeCallbacks(reminderTask);
         if (licenses.hasPremiumAccess()) {
-            List<ReminderStore.Reminder> due = reminderStore.fireDue(System.currentTimeMillis());
-            for (ReminderStore.Reminder reminder : due) showReminder(reminder);
+            long now = System.currentTimeMillis();
+            List<ReminderStore.Reminder> due = reminderStore.due(now);
+            for (ReminderStore.Reminder reminder : due) reminderStore.markPending(reminder.id, reminder.at);
+            if (!due.isEmpty() && settings.guide().holdsAttention()) pauseGuide();
+            if (!theaterActive && !interactionBusy) {
+                for (ReminderStore.Reminder reminder : due) {
+                    if (showReminder(reminder)) reminderStore.markDelivered(reminder.id, reminder.at, now);
+                }
+            }
         }
         scheduleReminders();
     }
 
-    private void showReminder(ReminderStore.Reminder reminder) {
-        settings.setClickThrough(false);
+    private boolean showReminder(ReminderStore.Reminder reminder) {
+        boolean shown = false;
         if (overlay == null && !settings.petHidden() && Settings.canDrawOverlays(this)) {
-            createOverlay(false);
-        } else {
-            applyTouchMode();
+            try { createOverlay(false); } catch (RuntimeException ignored) { }
         }
         String fallback = reminder.message.isEmpty() ? "休息一下吧" : reminder.message;
-        if (overlay != null) {
+        if (overlay != null && overlay.isAttachedToWindow() && !settings.petHidden()) {
             sayText(fallback, 6200);
-            if (!reminder.expressionPetId.isEmpty() && !reminder.expressionPetId.equals(currentPet)) {
+            shown = true;
+            if (!reminder.expressionPetId.isEmpty() && !reminder.expressionPetId.equals(currentPet))
                 showReminderExpression(reminder.expressionPetId);
-            }
         }
-        showReminderNotification(fallback);
+        NotificationManager notifications = getSystemService(NotificationManager.class);
+        NotificationChannel channel = notifications.getNotificationChannel(REMINDER_CHANNEL_ID);
+        if (notifications.areNotificationsEnabled() && channel != null && channel.getImportance() != NotificationManager.IMPORTANCE_NONE) {
+            try { showReminderNotification(fallback); shown = true; } catch (SecurityException ignored) { }
+        }
+        // Without a visible pet or an allowed notification, keep it due for a later attempt.
+        return shown;
     }
 
     private void showReminderExpression(String petId) {
         if (overlay == null) return;
         String original = currentPet;
+        PetOverlayView originalOverlay = overlay;
         try {
             overlay.setPet(pets.load(petId), settings.opacity() / 100f, settings.mirrored(), facing);
             int version = ++reminderExpressionVersion;
             handler.postDelayed(() -> {
-                if (overlay == null || version != reminderExpressionVersion) return;
-                currentPet = original;
+                if (overlay != originalOverlay || version != reminderExpressionVersion || !currentPet.equals(original)) return;
                 loadCurrentPet();
             }, 6000);
         } catch (Exception ignored) { }
     }
 
     private void playTrialVisit(String category) {
+        if (settings.guide().holdsAttention()) { sayText("请先完成新手体验，或从首页点稍后继续。", 4000); return; }
         if (!settings.trialVisitsEnabled()) {
             sayText("体验来访暂时关掉了。", 4200);
             return;
@@ -1095,27 +1521,55 @@ public final class PetOverlayService extends Service {
     }
 
     private void receiveVisit(CompanionService.Visit visit) {
-        // 来访下载时已经向服务端 acknowledge 过，服务端不会再投递第二次，
-        // 所以任何"现在不方便展示"的情况都必须留存待看，不能直接删文件。
-        if (theaterActive || overlay == null || settings.petHidden() || settings.clickThrough()) {
-            deferVisit(visit);
-        } else {
-            showVisitor(visit);
+        refreshVisitOwner();
+        try { if (!companions.retainVisit(visit)) return; }
+        catch (Exception error) { sayText("来访暂存失败：" + safeMessage(error), 5000); return; }
+        if (!settings.guide().holdsAttention() && !settings.isQuiet() && (overlay == null || settings.petHidden() || settings.clickThrough()))
+            showVisitorNotification(visit.senderName(), visit.message());
+        showNextVisit();
+    }
+
+    private void showNextVisit() {
+        refreshVisitOwner();
+        if (settings.guide().holdsAttention() || settings.isQuiet() || theaterActive || interactionBusy || visitorOverlay != null
+            || overlay == null || settings.petHidden() || settings.clickThrough()) return;
+        try {
+            List<CompanionService.Visit> pending = companions.pendingVisits();
+            if (!pending.isEmpty()) showVisitor(pending.get(0));
+        } catch (Exception ignored) {
+            // Keep the inbox file intact; a subsequent refresh can retry.
         }
     }
 
-    /** 暂存来访待用户查看，并发出通知。 */
-    private void deferVisit(CompanionService.Visit visit) {
-        if (pendingVisit != null && pendingVisit.file() != visit.file()) {
-            pendingVisit.file().delete();
-        }
-        pendingVisit = visit;
-        showVisitorNotification(visit.senderName(), visit.message());
+    private void refreshVisitOwner() {
+        String currentOwner = licenses.visitOwner();
+        if (currentOwner.equals(visitOwner)) return;
+        visitOwner = currentOwner;
+        if (!theaterVisitor) removeVisitor(false);
+        getSystemService(NotificationManager.class).cancel(VISITOR_NOTIFICATION_ID);
+    }
+
+    private final Runnable quietResumeTask = () -> {
+        lastQuiet = settings.isQuiet();
+        restartSchedules();
+        showNextVisit();
+        updateNotification();
+    };
+
+    private void scheduleQuietResume() {
+        handler.removeCallbacks(quietResumeTask);
+        long delay = settings.quietUntilUtc() - System.currentTimeMillis();
+        if (delay > 0) handler.postDelayed(quietResumeTask, delay + 100);
     }
 
     @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        if (overlay != null) handler.post(this::refreshOverlay);
+        if (overlay != null) handler.post(() -> {
+            refreshOverlayGeometry();
+            if (theaterActive && currentTheaterScript != null)
+                playTheaterTurn(currentTheaterScript, currentTheaterScene, ++theaterVersion,
+                    currentTheaterPartner, currentTheaterTextOffset);
+        });
         if (visitorOverlay != null && visitorParams != null) {
             Point bounds = screenBounds();
             visitorParams.x = SettingsStore.clamp(visitorParams.x, 0, Math.max(0, bounds.x - visitorParams.width));
@@ -1124,41 +1578,9 @@ public final class PetOverlayService extends Service {
         }
     }
 
-    private void scheduleDemoVisit() {
-        if (demoVisitScheduled || settings.demoVisitSeen() || !licenses.isTrialActive()
-            || !settings.trialVisitsEnabled()) {
-            return;
-        }
-        demoVisitScheduled = true;
-        handler.postDelayed(this::showDemoVisitIfNeeded, 12_000L);
-    }
-
-    private void showDemoVisitIfNeeded() {
-        demoVisitScheduled = false;
-        if (settings.demoVisitSeen() || !licenses.isTrialActive()) return;
-        if (overlay == null || settings.petHidden() || theaterActive || visitorOverlay != null) {
-            scheduleDemoVisit();
-            return;
-        }
-        try {
-            File file = pets.copyDemoVisitGif();
-            settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, true);
-            showVisitor(new CompanionService.Visit("demo-visit", "桌搭子", file));
-            handler.postDelayed(() -> {
-                if (overlay != null) say("idle", "刚才那只是演示。想让对象也派一只过来，激活后换一对码。", 5200);
-            }, 10_400);
-        } catch (Exception ignored) {
-            settings.putBoolean(SettingsStore.DEMO_VISIT_SEEN, false);
-            handler.postDelayed(this::scheduleDemoVisit, 20_000L);
-        }
-    }
-
     private void showVisitor(CompanionService.Visit visit) {
-        if (theaterActive) {
-            deferVisit(visit);
-            return;
-        }
-        removeVisitor(true);
+        if (!companions.isCurrentVisit(visit) || settings.isQuiet() || theaterActive || visitorOverlay != null) return;
+        final long generation = ++visitorGeneration;
         try {
             Drawable drawable = ImageDecoder.decodeDrawable(ImageDecoder.createSource(visit.file()));
             if (drawable instanceof AnimatedImageDrawable animated) {
@@ -1188,33 +1610,29 @@ public final class PetOverlayService extends Service {
             visitorParams.y = windowParams == null ? bounds.y / 2 : windowParams.y;
             windowManager.addView(visitorOverlay, visitorParams);
             getSystemService(NotificationManager.class).cancel(VISITOR_NOTIFICATION_ID);
-            handler.postDelayed(() -> removeVisitor(true), 10_000);
+            handler.postDelayed(() -> {
+                if (generation != visitorGeneration) return;
+                try { companions.completeVisit(visit); }
+                catch (Exception error) { removeVisitor(false); return; }
+                removeVisitor(false);
+                showNextVisit();
+            }, 10_000);
         } catch (Exception error) {
-            visit.file().delete();
+            removeVisitor(false);
             showVisitorNotification(visit.senderName(), visit.message());
         }
     }
 
     private void removeVisitor(boolean deleteFile) {
+        visitorGeneration++;
+        visitorBubbleVersion++;
         if (visitorOverlay != null) {
             try { windowManager.removeView(visitorOverlay); } catch (Exception ignored) { }
             visitorOverlay = null;
             visitorParams = null;
         }
-        // 删文件前看 theaterVisitor：如果是小剧场虚拟角色就删，
-        // 如果是真实来访就转回 pending 保留数据（已向服务端确认过，丢了永远收不到第二次）。
-        if (deleteFile && visitorFile != null) {
-            if (theaterVisitor) {
-                visitorFile.delete();
-            } else {
-                if (pendingVisit != null && pendingVisit.file() != visitorFile) {
-                    pendingVisit.file().delete();
-                }
-                if (pendingVisit == null || pendingVisit.file() != visitorFile) {
-                    pendingVisit = new CompanionService.Visit("deferred", "待查看的来访", visitorFile);
-                }
-            }
-        }
+        // Real visits remain in the durable inbox when hidden, interrupted or stopped.
+        if (deleteFile && theaterVisitor && visitorFile != null) visitorFile.delete();
         visitorFile = null;
     }
 
@@ -1233,7 +1651,7 @@ public final class PetOverlayService extends Service {
 
     private void scheduleWander() {
         handler.removeCallbacks(wanderTask);
-        if (!settings.movement() || overlay == null || settings.clickThrough() || theaterActive) return;
+        if (settings.guide().holdsAttention() || !settings.movement() || overlay == null || settings.clickThrough() || theaterActive) return;
         int minimum = switch (settings.personality()) {
             case "shy" -> 9000;
             case "clingy" -> 3500;
@@ -1245,6 +1663,7 @@ public final class PetOverlayService extends Service {
 
     private void scheduleInteraction() {
         handler.removeCallbacks(interactionTask);
+        if (settings.guide().holdsAttention() || settings.isQuiet()) return;
         if (!settings.interactions() || overlay == null || !licenses.hasPremiumAccess() || theaterActive) return;
         int minimumMinutes;
         int additionalMinutes;
@@ -1259,12 +1678,13 @@ public final class PetOverlayService extends Service {
 
     private void schedulePetSwitch() {
         handler.removeCallbacks(petSwitchTask);
-        if (!settings.randomPet() || overlay == null || theaterActive) return;
+        if (settings.guide().holdsAttention() || !settings.randomPet() || overlay == null || theaterActive) return;
         handler.postDelayed(petSwitchTask, settings.randomPetInterval() * 1000L);
     }
 
     private void scheduleTheater() {
         handler.removeCallbacks(theaterTask);
+        if (settings.guide().holdsAttention() || settings.isQuiet()) return;
         if (!licenses.hasPremiumAccess() || !settings.theaterEnabled() || overlay == null || theaterActive) return;
         handler.postDelayed(theaterTask, settings.theaterInterval() * 1000L);
     }
@@ -1284,26 +1704,32 @@ public final class PetOverlayService extends Service {
 
     private void scheduleTrialCheck() {
         handler.removeCallbacks(trialCheckTask);
-        if (licenses.isActivated() || !settings.running()) return;
-        handler.post(trialCheckTask);
+        if (destroyed || trialCheckInFlight || licenses.isActivated() || !settings.running()) return;
+        handler.postDelayed(trialCheckTask, Math.max(0, nextTrialCheckAt - SystemClock.elapsedRealtime()));
     }
 
     private void refreshTrialInBackground() {
-        if (licenses.isActivated()) return;
+        if (destroyed || trialCheckInFlight || licenses.isActivated() || !settings.running()) return;
+        trialCheckInFlight = true;
         networkExecutor.execute(() -> {
             try {
                 licenses.checkTrial();
             } catch (Exception ignored) { }
             handler.post(() -> {
+                trialCheckInFlight = false;
+                if (destroyed || !settings.running()) return;
                 long remaining = licenses.trialRemainingSeconds();
                 long delayMs = remaining > 0
                     ? Math.min(remaining, 24L * 60L * 60L) * 1000L
                     : 3_600_000L;
-                if (!licenses.isActivated() && settings.running()) {
-                    handler.removeCallbacks(trialCheckTask);
-                    handler.postDelayed(trialCheckTask, delayMs);
+                nextTrialCheckAt = SystemClock.elapsedRealtime() + delayMs;
+                scheduleTrialCheck();
+                refreshVisitOwner();
+                if (overlay != null) {
+                    overlay.setTrialVisitVisible(licenses.isTrialActive() && settings.trialVisitsEnabled());
+                    if (menuExpanded) refreshOverlayGeometry();
                 }
-                if (overlay != null) refreshOverlay();
+                restartSchedules();
             });
         });
     }

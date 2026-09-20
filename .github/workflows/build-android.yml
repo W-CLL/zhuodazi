@@ -10,6 +10,8 @@ on:
       - "macos/Resources/Pets/**"
       - "content-packs/互动词包/**"
       - "content-packs/小剧场/**"
+      - "scripts/check-release-consistency.py"
+      - "docs/releases/android-*.md"
       - ".github/workflows/build-android.yml"
   pull_request:
     paths:
@@ -18,6 +20,8 @@ on:
       - "macos/Resources/Pets/**"
       - "content-packs/互动词包/**"
       - "content-packs/小剧场/**"
+      - "scripts/check-release-consistency.py"
+      - "docs/releases/android-*.md"
       - ".github/workflows/build-android.yml"
 
 permissions:
@@ -34,6 +38,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+
+      - name: Check platform version metadata
+        run: python3 scripts/check-release-consistency.py
 
       - name: Read Android version
         run: |
@@ -80,6 +87,12 @@ jobs:
         working-directory: mobile_ui
         run: flutter pub get
 
+      - name: Check Flutter UI
+        working-directory: mobile_ui
+        run: |
+          flutter analyze
+          flutter test
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v6
         with:
@@ -104,6 +117,9 @@ jobs:
           test -n "$ANDROID_KEYSTORE_BASE64"
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/zhuodazi-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/zhuodazi-release.jks" >> "$GITHUB_ENV"
+
+      - name: Test native interaction lifecycle
+        run: gradle --project-dir android :app:testDebugUnitTest --no-configuration-cache --stacktrace
 
       - name: Lint and build APK
         env:
@@ -144,7 +160,7 @@ jobs:
         run: |
           tag="android-v${APP_VERSION}"
           title="桌搭子 Android v${APP_VERSION}"
-          notes="更新/修复了一些功能"
+          notes_file="docs/releases/android-${APP_VERSION}.md"
           asset_arm64="ZhuoDazi-Android-${APP_VERSION}-arm64.apk"
           asset_armv7="ZhuoDazi-Android-${APP_VERSION}-armv7.apk"
           state="$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || true)"
@@ -153,15 +169,19 @@ jobs:
             exit 1
           fi
           if [[ -z "$state" ]]; then
+            test -s "$notes_file" || { echo "请先编写面向用户的更新说明：$notes_file" >&2; exit 1; }
             gh release create "$tag" \
               --draft \
+              --latest=false \
               --target "$GITHUB_SHA" \
               --title "$title" \
-              --notes "$notes"
+              --notes-file "$notes_file"
           else
+            test -s "$notes_file" || { echo "请先编写面向用户的更新说明：$notes_file" >&2; exit 1; }
             gh release edit "$tag" \
               --target "$GITHUB_SHA" \
               --title "$title" \
-              --notes "$notes"
+              --notes-file "$notes_file"
           fi
           gh release upload "$tag" "$asset_arm64" "$asset_armv7" --clobber
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = "true"

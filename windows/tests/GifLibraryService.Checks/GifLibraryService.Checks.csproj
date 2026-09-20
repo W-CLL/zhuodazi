@@ -7,6 +7,16 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
+    <None Include="..\..\ZhuoDazi\SettingsWindow.xaml" Link="assets\SettingsWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\ZhuoDazi\App.xaml" Link="assets\App.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <Compile Include="..\..\ZhuoDazi\Models\OnboardingProgress.cs" Link="OnboardingProgress.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\SettingsStore.cs" Link="SettingsStore.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\ReminderSchedule.cs" Link="ReminderSchedule.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\GifImportValidator.cs" Link="GifImportValidator.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\CompanionVisit.cs" Link="CompanionVisit.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\CompanionInboxStore.cs" Link="CompanionInboxStore.cs" />
+    <Compile Include="..\..\ZhuoDazi\CompanionVisitorQueue.cs" Link="CompanionVisitorQueue.cs" />
     <None Include="..\..\ZhuoDazi\PetWindow.xaml" Link="assets\PetWindow.xaml" CopyToOutputDirectory="PreserveNewest" />
     <Compile Include="..\..\ZhuoDazi\Controls\InteractionCardLayout.cs" Link="InteractionCardLayout.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\GifLibraryService.cs" Link="GifLibraryService.cs" />

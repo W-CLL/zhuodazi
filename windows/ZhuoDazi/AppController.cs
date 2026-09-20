@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Text;
 using System.Windows;
 using System.Windows.Threading;
 using Microsoft.Win32;
@@ -10,9 +11,9 @@ using Point = System.Windows.Point;
 
 namespace ZhuoDazi;
 
-public sealed class AppController : IDisposable
+public sealed partial class AppController : IDisposable
 {
-    private readonly SettingsStore _store = new();
+    private readonly SettingsStore _store;
     private readonly LicenseService _licenses;
     private readonly AnalyticsService _analytics;
     private readonly StartupRegistrationService _startupRegistration = new();
@@ -26,7 +27,6 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer _interactionSyncTimer = new() { Interval = TimeSpan.FromMinutes(15) };
     private readonly DispatcherTimer _companionTimer = new() { Interval = TimeSpan.FromSeconds(4) };
     private readonly DispatcherTimer _trialDisplayTimer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly DispatcherTimer _demoVisitTimer = new() { Interval = TimeSpan.FromSeconds(12) };
     private readonly CompanionVisitorQueue _visitorQueue = new();
     private readonly RemoteConfigService _remoteConfig;
     private IReadOnlyList<string> _libraryFiles = [];
@@ -41,11 +41,13 @@ public sealed class AppController : IDisposable
     private DateOnly? _lastMidnightSecret;
     private bool _theaterActive;
     private bool _interactionActive;
+    private bool _interactionWasManual;
     private bool _interactionSyncing;
     private bool _interactionSyncRequested;
     private bool _companionSyncing;
     private bool _trialVisitBusy;
     private bool _autoUpdateStarted;
+    private Task _remoteInitialization = Task.CompletedTask;
     private bool _disposed;
 
     public AppSettings Settings { get; }
@@ -71,31 +73,39 @@ public sealed class AppController : IDisposable
     public string LibraryPath => ActiveLibrary?.Path ?? "内置：月薪喵";
     public int LibraryCount => _libraryFiles.Count;
     public int InteractionWordCount => ActiveInteractionWordPack?.WordCount ?? 0;
-    public string LicenseSummary => _licenses.IsActivated
-        ? _licenses.Summary
-        : IsTrialActive
+    public string LicenseSummary => _licenses.IsActivated ? _licenses.Summary
+        : IsTrialVerificationPending ? "桌宠已就位 · 正在验证完整体验，基础陪伴和本地引导可用"
+        : TrialVerificationStatus ?? (IsTrialActive
             ? $"完整体验还剩 {FormatTrialClock(RemainingTrialSeconds)}"
-            : "基础陪伴中 · 桌宠会一直在";
+            : "基础陪伴中 · 桌宠会一直在");
     public string InteractionStatus => Interactions.StatusSummary;
+    public bool IsQuiet => Settings.QuietUntilUtc is { } until && until > DateTimeOffset.UtcNow;
+    public bool CanShowVisits => !IsGuideActive && !GuideBusy && !IsQuiet && !_theaterActive && !_interactionActive && !Settings.ClickThrough;
+    public string CurrentPetName => Settings.Pets.FirstOrDefault(p => p.Path == CurrentPetPath())?.Name
+        ?? (CurrentPetPath() is { } path ? Path.GetFileNameWithoutExtension(path) : "基础矢量桌宠");
+    public string CurrentPetSource => CurrentPetPath() is null ? "内置基础形象 · 无 GIF"
+        : Settings.Pets.Any(p => p.Path == CurrentPetPath()) ? "我的自定义 GIF" : $"来自 {LibraryName} 图鉴";
+    public string QuietStatus => IsQuiet ? $"已暂停主动打扰，{Settings.QuietUntilUtc!.Value.LocalDateTime:HH:mm} 恢复" : "主动陪伴正常 · 设置自动保存";
 
-    public AppController(LicenseService licenses)
+    public AppController(LicenseService licenses, SettingsStore? store = null)
     {
+        _store = store ?? new SettingsStore();
         _licenses = licenses;
-        _analytics = new AnalyticsService(_licenses);
+        _analytics = new AnalyticsService(_licenses, _store.DataDirectory);
         Settings = _store.Load();
         _remoteConfig = new RemoteConfigService(_store);
         Updates = new UpdateService(_store, _licenses);
         Feedback = new FeedbackService(_licenses);
         Interactions = new InteractionService(_store, _licenses);
         Companions = new CompanionService(_store, _licenses);
+        _visitorQueue.Restore(Companions.Inbox);
         Updates.StateChanged += OnUpdateStateChanged;
         _randomTimer.Tick += (_, _) => RandomizePet();
         _reminderTimer.Tick += (_, _) => CheckReminders();
         _idleTimer.Tick += (_, _) =>
         {
-            if (_interactionActive || _visitorQueue.IsShowing) return;
+            if (IsGuideActive || IsQuiet || !Settings.DailySpeechEnabled || _interactionActive || _theaterActive || _visitorQueue.IsShowing) return;
             if (_petWindow is not { IsVisible: true }) return;
-            if (IsTrialActive && RemoteConfig.TrialVisits && !Settings.DemoVisitSeen) return;
             _petWindow.ShowReaction(GetInteractionWord("idle", "你忙你的，我负责把角落占住。"));
         };
         _theaterTimer.Tick += async (_, _) =>
@@ -119,15 +129,12 @@ public sealed class AppController : IDisposable
             await PollCompanionAsync();
         };
         _trialDisplayTimer.Tick += (_, _) => RefreshTrialDisplay();
-        _demoVisitTimer.Tick += async (_, _) =>
-        {
-            _demoVisitTimer.Stop();
-            await ShowDemoVisitIfNeededAsync();
-        };
+
     }
 
     public void Start()
     {
+        _remoteInitialization = RefreshRemoteConfigAsync();
         try { _startupRegistration.SetEnabled(Settings.StartWithWindows); } catch { }
         NormalizeReminderTimes();
         RefreshLibrary(true);
@@ -154,19 +161,63 @@ public sealed class AppController : IDisposable
         Save();
         RefreshTrialDisplay();
         StartOnboardingIfNeeded();
-        ScheduleDemoVisitIfNeeded();
         _ = _analytics.TrackStartupAsync();
-        _ = RefreshRemoteConfigAsync();
         MaybeCheckUpdates();
+        _ = ShowQueuedVisitsAsync();
     }
 
     public async Task RefreshRemoteConfigAsync()
     {
         if (await _remoteConfig.RefreshAsync()) ApplyRemoteDefaultsIfNeeded();
+        RestartInteractionTimer();
+        RestartTheaterTimer();
         _petWindow?.RefreshAppearance(CurrentPetPath());
         RefreshTray();
         StateChanged?.Invoke();
         MaybeCheckUpdates();
+    }
+
+    public void ShowHall()
+    {
+        ShowSettings();
+        _settingsWindow?.ShowHallTab();
+    }
+
+    public void SetDailySpeech(bool enabled)
+    {
+        Settings.DailySpeechEnabled = enabled;
+        if (!enabled) _petWindow?.HideSpeech();
+        SaveAndRefresh();
+    }
+
+    public void PauseForOneHour()
+    {
+        DismissGuide();
+        Settings.QuietUntilUtc = DateTimeOffset.UtcNow.AddHours(1);
+        CancelTheater();
+        _visitorQueue.PauseActive();
+        if (_interactionActive && !_interactionWasManual) _petWindow?.DismissCurrentInteraction();
+        _petWindow?.HideSpeech();
+        RestartInteractionTimer();
+        RestartTheaterTimer();
+        SaveAndRefresh();
+    }
+
+    public void ResumeCompanionship()
+    {
+        Settings.QuietUntilUtc = null;
+        RestartInteractionTimer();
+        RestartTheaterTimer();
+        SaveAndRefresh();
+        _ = ShowQueuedVisitsAsync();
+    }
+
+    public void StopCurrentPerformance()
+    {
+        if (IsGuideActive) StopGuideDemo();
+        CancelTheater();
+        _visitorQueue.CloseActive();
+        _petWindow?.HideSpeech();
     }
 
     private void ApplyRemoteDefaultsIfNeeded()
@@ -207,12 +258,26 @@ public sealed class AppController : IDisposable
 
     public bool ShowActivation(Window? owner = null, string? status = null, bool trialEnded = false)
     {
+        var previousInbox = Companions.Inbox;
+        var previousWasTrialIdentity = !_licenses.IsActivated;
+        var previousInstallation = _licenses.InstallationId;
         var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status, trialEnded);
         if (owner is not null) activationWindow.Owner = owner;
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
         {
-            _petWindow?.ShowReaction(_licenses.ActivationSuccessMessage);
+            var activationMessage = _licenses.ActivationSuccessMessage;
+            try
+            {
+                if (previousWasTrialIdentity && previousInstallation == _licenses.InstallationId)
+                    Companions.Inbox.ImportPendingFrom(previousInbox);
+            }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+            {
+                activationMessage += " 旧来访记录暂时无法恢复，原文件已保留。";
+            }
+            _visitorQueue.Restore(Companions.Inbox);
+            _petWindow?.ShowReaction(activationMessage);
             RefreshPremiumAccess();
         }
         StateChanged?.Invoke();
@@ -222,12 +287,14 @@ public sealed class AppController : IDisposable
     public bool RequestPremiumAccess(string feature, Window? owner = null)
     {
         if (HasPremiumAccess) return true;
+        if (IsTrialVerificationPending) { ShowActionMessage("正在验证完整体验，请稍候再试。基础陪伴和本地引导已经可以使用。"); return false; }
         return ShowActivation(owner ?? _settingsWindow, $"{feature}可以在完整体验里接着用，桌宠会一直在。");
     }
 
     public void RefreshPremiumAccess(string? message = null)
     {
-        RefreshLibrary(true);
+        _visitorQueue.Restore(Companions.Inbox);
+        RefreshLibrary(!IsGuideActive && !_theaterActive);
         RestartRandomTimer();
         RestartTheaterTimer();
         RestartInteractionTimer();
@@ -240,96 +307,9 @@ public sealed class AppController : IDisposable
             if (_licenses.IsActivated) _ = RefreshCompanionAsync();
         }
         if (!HasPremiumAccess && _fakeAdWindow is not null) _fakeAdWindow.Close();
-        if (!string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
+        if (!IsGuideActive && !string.IsNullOrWhiteSpace(message)) _petWindow?.ShowReaction(message);
         RefreshTrialDisplay();
         SaveAndRefresh();
-    }
-
-    public void MarkOnboardingSeen()
-    {
-        if (Settings.OnboardingHintSeen) return;
-        Settings.OnboardingHintSeen = true;
-        Save();
-    }
-
-    public void StartOnboardingIfNeeded()
-    {
-        if (Settings.OnboardingHintSeen || _petWindow is null) return;
-        if (IsTrialActive && RemoteConfig.TrialVisits && !Settings.DemoVisitSeen)
-        {
-            _petWindow.ShowReaction("先待一会儿，马上有人来串门。");
-            return;
-        }
-        var steps = new[]
-        {
-            "拖我、点我，右键还有更多。",
-            "来点互动，或上演一小段小剧场。",
-            "有搭子的话，打开设置里的「搭子」交换一对码。"
-        };
-        var index = 0;
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(4.2) };
-        void ShowStep()
-        {
-            if (_disposed || IsExiting || Settings.OnboardingHintSeen || index >= steps.Length)
-            {
-                timer.Stop();
-                MarkOnboardingSeen();
-                return;
-            }
-            _petWindow?.ShowReaction(steps[index]);
-            index++;
-        }
-        ShowStep();
-        timer.Tick += (_, _) => ShowStep();
-        timer.Start();
-    }
-
-    private void ScheduleDemoVisitIfNeeded()
-    {
-        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive || !RemoteConfig.TrialVisits) return;
-        _demoVisitTimer.Stop();
-        _demoVisitTimer.Start();
-    }
-
-    private async Task ShowDemoVisitIfNeededAsync()
-    {
-        if (_disposed || IsExiting || Settings.DemoVisitSeen || !_licenses.IsTrialActive || !RemoteConfig.TrialVisits) return;
-        if (_theaterActive || _interactionActive || _visitorQueue.IsShowing
-            || _petWindow is not { IsVisible: true })
-        {
-            ScheduleDemoVisitIfNeeded();
-            return;
-        }
-
-        var source = PickDemoVisitGif();
-        if (source is null)
-        {
-            Settings.DemoVisitSeen = true;
-            MarkOnboardingSeen();
-            Save();
-            return;
-        }
-
-        string? copy = null;
-        try
-        {
-            copy = Path.Combine(Path.GetTempPath(), $"zhuodazi-demo-visit-{Guid.NewGuid():N}.gif");
-            File.Copy(source, copy, true);
-            _visitorQueue.Enqueue([new CompanionVisit("demo-visit", "桌搭子", copy)]);
-            copy = null;
-            Settings.DemoVisitSeen = true;
-            MarkOnboardingSeen();
-            Save();
-            await _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
-            if (!_disposed && !IsExiting && _petWindow is { IsVisible: true })
-                _petWindow.ShowReaction("刚才那只是演示。想让对象也派一只过来，激活后换一对码。");
-        }
-        catch
-        {
-            if (copy is not null) try { File.Delete(copy); } catch { }
-            Settings.DemoVisitSeen = false;
-            ScheduleDemoVisitIfNeeded();
-        }
     }
 
     private string? PickDemoVisitGif()
@@ -370,11 +350,13 @@ public sealed class AppController : IDisposable
     public string? CurrentPetPath()
     {
         if (Settings.RandomPetEnabled) return _activeLibraryPetPath;
+        if (Settings.SelectedLibraryPetPath is { } selected && _libraryFiles.Contains(selected, StringComparer.OrdinalIgnoreCase) && File.Exists(selected)) return selected;
         return Settings.Pets.FirstOrDefault(item => item.Id == Settings.ActivePetId)?.Path;
     }
 
     public string GetInteractionWord(string action, string fallback)
     {
+        if ((IsGuideActive || !Settings.DailySpeechEnabled || IsQuiet) && !action.StartsWith("theater", StringComparison.Ordinal)) return string.Empty;
         var activeWords = ActiveInteractionWordPack?.Words;
         if (activeWords is null || !activeWords.TryGetValue(action, out var words) || words.Count == 0) return fallback;
         return words[_random.Next(words.Count)];
@@ -413,6 +395,7 @@ public sealed class AppController : IDisposable
 
     public void SetPersonality(string personality)
     {
+        Settings.RemoteDefaultsApplied = true;
         Settings.Personality = personality is "lively" or "shy" or "clingy" or "chaotic"
             ? personality : "lively";
         _petWindow?.RefreshBehavior();
@@ -437,6 +420,7 @@ public sealed class AppController : IDisposable
     public void SetInteractionConfig(bool enabled, string mode)
     {
         if (!RequestPremiumAccess("随机互动")) return;
+        Settings.RemoteDefaultsApplied = true;
         Settings.RandomInteractionsEnabled = enabled;
         Settings.InteractionMode = mode is "quiet" or "standard" or "lively" ? mode : "standard";
         Interactions.MarkProfileDirty(Settings.InteractionMode, enabled);
@@ -447,23 +431,14 @@ public sealed class AppController : IDisposable
 
     public void StartRandomInteraction()
     {
+        if (!PrepareManualScene()) return;
         if (RequestPremiumAccess("互动内容")) _ = PresentRandomInteractionAsync(true);
     }
 
     public async Task RefreshCompanionAsync(CancellationToken cancellationToken = default)
     {
-        if (!_licenses.IsActivated) return;
+        if (!HasPremiumAccess) return;
         await Companions.RefreshProfileAsync(cancellationToken);
-        if (!Settings.CompanionHallDefaultApplied)
-        {
-            if (RemoteConfig.CompanionHall && Companions.Profile is { HallEnabled: false })
-            {
-                try { await Companions.SetHallEnabledAsync(true, cancellationToken); }
-                catch { }
-            }
-            Settings.CompanionHallDefaultApplied = true;
-            Save();
-        }
         RefreshTray();
         StateChanged?.Invoke();
     }
@@ -472,7 +447,7 @@ public sealed class AppController : IDisposable
         CancellationToken cancellationToken = default)
     {
         if (!RemoteConfig.CompanionHall) return [];
-        if (!_licenses.IsActivated) return [];
+        if (!HasPremiumAccess) return [];
         var people = await Companions.RefreshHallAsync(cancellationToken);
         StateChanged?.Invoke();
         return people;
@@ -481,14 +456,16 @@ public sealed class AppController : IDisposable
     public async Task SetCompanionHallEnabledAsync(bool enabled, CancellationToken cancellationToken = default)
     {
         if (!RemoteConfig.CompanionHall) throw new InvalidOperationException("桌宠大厅暂时关闭。");
-        if (!_licenses.IsActivated) throw new InvalidOperationException("激活完整版本后可以使用搭子联机。");
+        if (!HasPremiumAccess) throw new InvalidOperationException("试用期或正式激活后可以加入桌宠大厅。");
         await Companions.SetHallEnabledAsync(enabled, cancellationToken);
         StateChanged?.Invoke();
     }
 
     public async Task UpdateCompanionNameAsync(string displayName, CancellationToken cancellationToken = default)
     {
-        if (!_licenses.IsActivated) throw new InvalidOperationException("激活完整版本后可以使用搭子联机。");
+        if (!HasPremiumAccess) throw new InvalidOperationException("试用期或正式激活后可以设置大厅昵称。");
+        if (string.IsNullOrWhiteSpace(displayName) || displayName.Trim().EnumerateRunes().Count() > 12)
+            throw new InvalidOperationException("昵称请填写 1–12 个字符。");
         await Companions.UpdateNameAsync(displayName, cancellationToken);
         RefreshTray();
         StateChanged?.Invoke();
@@ -512,6 +489,7 @@ public sealed class AppController : IDisposable
 
     public async Task PlayTrialVisitAsync(string category)
     {
+        if (!PrepareManualScene()) return;
         if (!RemoteConfig.TrialVisits)
         {
             _petWindow?.ShowReaction("体验来访暂时关掉了。");
@@ -519,7 +497,7 @@ public sealed class AppController : IDisposable
         }
         if (!IsTrialActive)
         {
-            ShowActivation(_settingsWindow, "体验结束后，点一下发给对象才需要激活。");
+            ShowActivation(_settingsWindow, "演示来访在有效体验期可用；体验期也能去大厅，正式激活后还可绑定私人搭子。");
             return;
         }
         if (_trialVisitBusy || _visitorQueue.IsShowing)
@@ -531,8 +509,11 @@ public sealed class AppController : IDisposable
         try
         {
             var visit = await Companions.PlayTrialVisitAsync(category);
-            _visitorQueue.Enqueue([visit]);
-            await _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
+            visit = visit with { SenderName = $"演示来访 · {visit.SenderName}" };
+            _visitorQueue.EnqueueFirst(visit);
+            await ShowQueuedVisitsAsync(true);
+            if (!IsGuideActive && _petWindow is { IsVisible: true })
+                _petWindow.ShowReaction("刚才是演示来访。体验期可去桌宠大厅；正式激活后还可绑定私人搭子。");
         }
         catch (Exception error)
         {
@@ -563,10 +544,9 @@ public sealed class AppController : IDisposable
         string message,
         CancellationToken cancellationToken = default)
     {
-        if (!_licenses.IsActivated)
+        if (!HasPremiumAccess)
         {
-            ShowActivation(_settingsWindow, "打开大厅和陌生人互动前，请先激活完整版本。");
-            throw new InvalidOperationException("需要激活完整版本");
+            throw new InvalidOperationException("试用期或正式激活后可以向大厅用户发送 GIF。");
         }
         var path = CurrentPetPath();
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -577,6 +557,7 @@ public sealed class AppController : IDisposable
 
     public async Task<int> SyncInteractionContentAsync(CancellationToken cancellationToken = default)
     {
+        await _remoteInitialization;
         if (!HasPremiumAccess) throw new InvalidOperationException("激活后可同步互动内容。");
         var profile = await Interactions.SyncProfileAsync(
             Settings.InteractionMode,
@@ -600,6 +581,7 @@ public sealed class AppController : IDisposable
     public void SetTheaterConfig(bool enabled, int intervalSeconds)
     {
         if (!RequestPremiumAccess("小剧场")) return;
+        Settings.RemoteDefaultsApplied = true;
         Settings.TheaterEnabled = enabled;
         Settings.TheaterIntervalSeconds = intervalSeconds is 60 or 180 or 300 or 600 or 1800
             ? intervalSeconds : 300;
@@ -609,6 +591,7 @@ public sealed class AppController : IDisposable
 
     public void SetClickThrough(bool value)
     {
+        if (value) DismissGuide();
         Settings.ClickThrough = value;
         SaveAndRefresh();
         if (!value)
@@ -636,6 +619,7 @@ public sealed class AppController : IDisposable
         };
         Settings.Pets.Add(pet);
         Settings.ActivePetId = pet.Id;
+        Settings.SelectedLibraryPetPath = null;
         Settings.RandomPetEnabled = false;
         RestartRandomTimer();
         SaveAndRefresh();
@@ -645,6 +629,7 @@ public sealed class AppController : IDisposable
     public void SelectPet(string? id)
     {
         Settings.ActivePetId = id;
+        Settings.SelectedLibraryPetPath = null;
         Settings.RandomPetEnabled = false;
         RestartRandomTimer();
         SaveAndRefresh();
@@ -689,6 +674,7 @@ public sealed class AppController : IDisposable
         Settings.Libraries.Add(library);
         Settings.ActiveLibraryId = library.Id;
         RefreshLibrary(true);
+        Settings.SelectedLibraryPetPath = _activeLibraryPetPath;
         RestartRandomTimer();
         SaveAndRefresh();
         return library;
@@ -701,6 +687,7 @@ public sealed class AppController : IDisposable
             throw new InvalidOperationException("所选资源库不存在。");
         Settings.ActiveLibraryId = id;
         RefreshLibrary(true);
+        Settings.SelectedLibraryPetPath = _activeLibraryPetPath;
         RestartRandomTimer();
         SaveAndRefresh();
     }
@@ -711,13 +698,14 @@ public sealed class AppController : IDisposable
         if (library is null) return;
         Settings.Libraries.Remove(library);
         if (Settings.ActiveLibraryId == id) Settings.ActiveLibraryId = null;
-        RefreshLibrary(true);
+        RefreshLibrary(!IsGuideActive);
         RestartRandomTimer();
         SaveAndRefresh();
     }
 
     public void SetRandomPetConfig(bool enabled, int intervalSeconds)
     {
+        if (!enabled && Settings.RandomPetEnabled) Settings.SelectedLibraryPetPath = _activeLibraryPetPath;
         Settings.RandomPetEnabled = enabled;
         Settings.RandomPetIntervalSeconds = intervalSeconds is 30 or 60 or 300 or 600 or 1800 ? intervalSeconds : 30;
         if (enabled && _activeLibraryPetPath is null) _activeLibraryPetPath = _library.Pick(_libraryFiles);
@@ -727,14 +715,14 @@ public sealed class AppController : IDisposable
 
     public void RandomizePet()
     {
-        if (_theaterActive || _interactionActive)
+        if (IsGuideActive || GuideBusy || _theaterActive || _interactionActive)
         {
             RestartRandomTimer();
             return;
         }
         if (_libraryFiles.Count == 0) return;
-        Settings.RandomPetEnabled = true;
         _activeLibraryPetPath = _library.Pick(_libraryFiles, _activeLibraryPetPath);
+        Settings.SelectedLibraryPetPath = _activeLibraryPetPath;
         RestartRandomTimer();
         SaveAndRefresh();
         _petWindow?.ShowReaction(GetInteractionWord("switch", "换班了，上一位把零食吃完就跑。"));
@@ -742,6 +730,7 @@ public sealed class AppController : IDisposable
 
     public void StartTheater()
     {
+        if (!PrepareManualScene()) return;
         if (RequestPremiumAccess("小剧场")) _ = RunTheaterAsync(true);
     }
 
@@ -832,6 +821,7 @@ public sealed class AppController : IDisposable
     public void SaveReminder(ReminderDefinition reminder)
     {
         if (!RequestPremiumAccess("提醒")) return;
+        reminder.LocalTime = ReminderSchedule.ValidateAndAdvance(reminder.LocalTime, reminder.Enabled, reminder.RepeatDaily, DateTime.Now);
         var existing = Settings.Reminders.FindIndex(item => item.Id == reminder.Id);
         if (existing < 0 && Settings.Reminders.Count >= 20) throw new InvalidOperationException("最多只能添加 20 个提醒。");
         reminder.Message = string.Join(' ', reminder.Message.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
@@ -875,8 +865,16 @@ public sealed class AppController : IDisposable
         if (_petWindow is null) return;
         if (_petWindow.IsVisible)
         {
+            DismissGuide();
             CancelTheater();
+            _visitorQueue.PauseActive();
             _petWindow.Hide();
+            if (!Settings.HideRecoveryHintSeen)
+            {
+                _tray?.ShowBalloonTip(5000, "桌宠已隐藏", "从托盘图标打开菜单，选择“显示桌宠”就能找回。退出应用需选择“退出桌搭子”。", Forms.ToolTipIcon.Info);
+                Settings.HideRecoveryHintSeen = true;
+                Save();
+            }
         }
         else _petWindow.Show();
         RefreshTray();
@@ -885,9 +883,10 @@ public sealed class AppController : IDisposable
     public void Exit()
     {
         IsExiting = true;
+        DismissGuide();
         _theaterCancellation?.Cancel();
         if (_companionWindow?.IsLoaded == true) _companionWindow.Close();
-        _visitorQueue.CloseActive();
+        _visitorQueue.PauseActive();
         _fakeAdWindow?.Close();
         _settingsWindow?.Close();
         _petWindow?.Close();
@@ -904,7 +903,7 @@ public sealed class AppController : IDisposable
     private void RestartRandomTimer()
     {
         _randomTimer.Stop();
-        if (!Settings.RandomPetEnabled || _libraryFiles.Count < 2) return;
+        if (IsGuideActive || GuideBusy || !Settings.RandomPetEnabled || _libraryFiles.Count < 2) return;
         _randomTimer.Interval = TimeSpan.FromSeconds(Settings.RandomPetIntervalSeconds);
         _randomTimer.Start();
     }
@@ -912,7 +911,7 @@ public sealed class AppController : IDisposable
     private void RestartTheaterTimer()
     {
         _theaterTimer.Stop();
-        if (_disposed || IsExiting || !HasPremiumAccess || !Settings.TheaterEnabled) return;
+        if (_disposed || IsExiting || IsGuideActive || GuideBusy || IsQuiet || !HasPremiumAccess || !Settings.TheaterEnabled) return;
         _theaterTimer.Interval = TimeSpan.FromSeconds(Settings.TheaterIntervalSeconds);
         _theaterTimer.Start();
     }
@@ -920,7 +919,7 @@ public sealed class AppController : IDisposable
     private void RestartInteractionTimer()
     {
         _interactionTimer.Stop();
-        if (_disposed || IsExiting || !HasPremiumAccess || !Settings.RandomInteractionsEnabled) return;
+        if (_disposed || IsExiting || IsGuideActive || GuideBusy || IsQuiet || !HasPremiumAccess || !Settings.RandomInteractionsEnabled) return;
         _interactionTimer.Interval = InteractionScheduler.NextDelay(Settings.InteractionMode);
         _interactionTimer.Start();
     }
@@ -934,7 +933,7 @@ public sealed class AppController : IDisposable
             RestartInteractionTimer();
             return;
         }
-        if (!manual && (Settings.ClickThrough || !Settings.RandomInteractionsEnabled))
+        if (IsGuideActive || GuideBusy || !manual && (IsQuiet || Settings.ClickThrough || !Settings.RandomInteractionsEnabled))
         {
             RestartInteractionTimer();
             return;
@@ -942,6 +941,7 @@ public sealed class AppController : IDisposable
         if (manual && Settings.ClickThrough) SetClickThrough(false);
 
         _interactionActive = true;
+        _interactionWasManual = manual;
         try
         {
             var moodDue = Interactions.IsMoodPromptDue(DateTimeOffset.UtcNow);
@@ -951,7 +951,7 @@ public sealed class AppController : IDisposable
                 return;
             }
             if (Interactions.CachedContentCount == 0) await Interactions.RefillAsync();
-            if (IsExiting || _theaterActive || _petWindow is not { IsVisible: true })
+            if (IsExiting || !manual && IsQuiet || _theaterActive || _petWindow is not { IsVisible: true })
             {
                 FinishInteraction();
                 return;
@@ -963,7 +963,7 @@ public sealed class AppController : IDisposable
                 if (moodDue) ShowMoodInteraction(pet);
                 else
                 {
-                    if (manual) pet.ShowReaction("趣味内容正在补货，稍后再来找我吧。");
+                    if (manual) pet.ShowReaction("稍后再来找我玩吧。");
                     FinishInteraction();
                 }
                 return;
@@ -1139,6 +1139,7 @@ public sealed class AppController : IDisposable
 
     private async Task RunInteractionSyncAsync()
     {
+        await _remoteInitialization;
         if (_disposed || IsExiting || !HasPremiumAccess) return;
         if (_interactionSyncing)
         {
@@ -1184,6 +1185,7 @@ public sealed class AppController : IDisposable
     private async Task RunTheaterAsync(bool manual)
     {
         if (!HasPremiumAccess) return;
+        if (IsGuideActive || GuideBusy || !manual && IsQuiet) return;
         if (_theaterActive || _interactionActive || _visitorQueue.IsShowing || _petWindow is not { IsVisible: true } main)
         {
             if (!_theaterActive) RestartTheaterTimer();
@@ -1375,11 +1377,19 @@ public sealed class AppController : IDisposable
 
     private void CheckReminders()
     {
+        if (Settings.QuietUntilUtc is { } until && until <= DateTimeOffset.UtcNow) ResumeCompanionship();
         CheckMidnightSecret();
         if (!HasPremiumAccess) return;
         var now = DateTime.Now;
         var due = Settings.Reminders.Where(item => item.Enabled && item.At.HasValue && item.LocalTime <= now).ToArray();
         if (due.Length == 0) return;
+        // A cancelled short play cleans up asynchronously. Keep the reminder due until
+        // the next tick so that its newly displayed bubble cannot be cleared by that cleanup.
+        if (GuideBusy) { DismissGuide(); return; }
+        DismissGuide();
+        // Preserve due reminders through question/answer cards; ordinary deferred
+        // status text may be superseded, but a reminder must not be consumed unseen.
+        if (_petWindow is { IsInteractionVisible: true }) return;
         foreach (var reminder in due)
         {
             SetClickThrough(false);
@@ -1398,6 +1408,7 @@ public sealed class AppController : IDisposable
 
     private void CheckMidnightSecret()
     {
+        if (IsGuideActive || IsQuiet || !Settings.DailySpeechEnabled) return;
         var now = DateTime.Now;
         var today = DateOnly.FromDateTime(now);
         if (now.Hour != 0 || now.Minute > 2 || _lastMidnightSecret == today) return;
@@ -1493,7 +1504,13 @@ public sealed class AppController : IDisposable
         _trayMenu?.Dispose();
         _trayMenu = new Forms.ContextMenuStrip();
         var partner = Companions.Profile?.Partner;
-        _trayMenu.Items.Add("打开设置", null, (_, _) => ShowSettings());
+        _trayMenu.Items.Add("陪伴设置", null, (_, _) => ShowSettings());
+        if (RemoteConfig.CompanionHall) _trayMenu.Items.Add("桌宠大厅", null, (_, _) => ShowHall());
+        _trayMenu.Items.Add(IsQuiet ? "恢复主动陪伴" : "暂停主动打扰 1 小时", null, (_, _) =>
+        {
+            if (IsQuiet) ResumeCompanionship(); else PauseForOneHour();
+        });
+        _trayMenu.Items.Add("停止当前剧场 / 关闭来访", null, (_, _) => StopCurrentPerformance());
         _trayMenu.Items.Add(_petWindow?.IsVisible == true ? "隐藏桌宠" : "显示桌宠", null, (_, _) => TogglePetVisibility());
         _trayMenu.Items.Add("随机换一只", null, (_, _) => RandomizePet()).Enabled = _libraryFiles.Count > 0;
         _trayMenu.Items.Add(new Forms.ToolStripSeparator());
@@ -1501,9 +1518,9 @@ public sealed class AppController : IDisposable
         {
             if (RemoteConfig.TrialVisits)
             {
-                _trayMenu.Items.Add("模仿女友来访", null, async (_, _) => await PlayTrialVisitAsync("girlfriend"));
-                _trayMenu.Items.Add("模仿好友来访", null, async (_, _) => await PlayTrialVisitAsync("friend"));
-                _trayMenu.Items.Add("模仿搭子来访", null, async (_, _) => await PlayTrialVisitAsync("companion"));
+                _trayMenu.Items.Add("演示来访 · 女友", null, async (_, _) => await PlayTrialVisitAsync("girlfriend"));
+                _trayMenu.Items.Add("演示来访 · 好友", null, async (_, _) => await PlayTrialVisitAsync("friend"));
+                _trayMenu.Items.Add("演示来访 · 搭子", null, async (_, _) => await PlayTrialVisitAsync("companion"));
             }
         }
         else
@@ -1518,8 +1535,8 @@ public sealed class AppController : IDisposable
                 }
             }).Enabled = _licenses.IsActivated && partner is not null && File.Exists(CurrentPetPath());
         }
-        _trayMenu.Items.Add("来点互动", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
-        _trayMenu.Items.Add("上演小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
+        _trayMenu.Items.Add("陪我玩一会", null, (_, _) => StartRandomInteraction()).Enabled = !_theaterActive;
+        _trayMenu.Items.Add("看一场小剧场", null, (_, _) => StartTheater()).Enabled = _libraryFiles.Count > 1 && !_theaterActive;
         if (RemoteConfig.FishMode)
         {
             var fishModeLabel = _licenses.IsActivated
@@ -1554,6 +1571,7 @@ public sealed class AppController : IDisposable
 
         void Notify()
         {
+            if (IsQuiet || IsGuideActive) return;
             _petWindow?.ShowReaction($"发现新版本 v{manifest.Version}");
             _tray?.ShowBalloonTip(5000, "桌搭子可以更新", $"新版本 v{manifest.Version} 已发布，双击托盘图标查看。", Forms.ToolTipIcon.Info);
         }
@@ -1562,11 +1580,38 @@ public sealed class AppController : IDisposable
         if (dispatcher.CheckAccess()) Notify(); else dispatcher.BeginInvoke(Notify);
     }
 
+    private Task ShowQueuedVisitsAsync(bool manual = false)
+        => _visitorQueue.ShowQueuedAsync(
+            () => !_disposed && !IsExiting && !IsGuideActive && !GuideBusy && (manual || CanShowVisits) && _petWindow is { IsVisible: true },
+            PresentVisitAsync, oneOnly: manual);
+
+    private async Task PresentVisitAsync(CompanionVisit visit, CancellationToken cancellationToken)
+    {
+        if (_petWindow is not { IsVisible: true } main) throw new OperationCanceledException();
+        var visitor = new PetWindow(this, true);
+        try
+        {
+            visitor.RefreshAppearance(visit.FilePath);
+            visitor.EnterScriptedMode();
+            var area = main.GetWorkingArea();
+            var left = main.Left - visitor.Width - 12;
+            if (left < area.Left) left = main.Left + main.Width + 12;
+            left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - visitor.Width));
+            var top = Math.Clamp(main.Top, area.Top, Math.Max(area.Top, area.Bottom - visitor.Height));
+            visitor.Place(new Point(left, top));
+            visitor.Show();
+            visitor.ShowReaction(string.IsNullOrWhiteSpace(visit.Message)
+                ? $"{visit.SenderName} 来串门啦" : $"{visit.SenderName}：{visit.Message}");
+            await Task.Delay(TimeSpan.FromSeconds(10), cancellationToken);
+        }
+        finally { if (visitor.IsLoaded) visitor.Close(); }
+    }
+
     private async Task PollCompanionAsync()
     {
         if (_disposed || IsExiting || !(_licenses.IsActivated || _licenses.IsTrialActive))
             return;
-        if (_companionSyncing || _theaterActive || _petWindow is not { IsVisible: true })
+        if (_companionSyncing)
         {
             _companionTimer.Start();
             return;
@@ -1575,15 +1620,18 @@ public sealed class AppController : IDisposable
         _companionSyncing = true;
         try
         {
+            _visitorQueue.Restore(Companions.Inbox);
             var visits = await Companions.ReceiveAsync();
             _visitorQueue.Enqueue(visits);
             if (!_visitorQueue.IsShowing && _visitorQueue.HasPending)
-                _ = _visitorQueue.ShowQueuedAsync(this, () => _petWindow);
+                _ = ShowQueuedVisitsAsync();
         }
         catch { }
         finally
         {
             _companionSyncing = false;
+            if (!_disposed && !IsExiting && _visitorQueue.HasPending)
+                _ = ShowQueuedVisitsAsync();
             if (!_disposed && !IsExiting) _companionTimer.Start();
         }
     }
@@ -1592,6 +1640,7 @@ public sealed class AppController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        DismissGuide();
         _randomTimer.Stop();
         _reminderTimer.Stop();
         _idleTimer.Stop();
@@ -1600,7 +1649,6 @@ public sealed class AppController : IDisposable
         _interactionSyncTimer.Stop();
         _companionTimer.Stop();
         _trialDisplayTimer.Stop();
-        _demoVisitTimer.Stop();
         _theaterCancellation?.Cancel();
         Updates.StateChanged -= OnUpdateStateChanged;
         Updates.Dispose();

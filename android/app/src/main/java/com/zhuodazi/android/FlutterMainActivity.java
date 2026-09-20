@@ -11,6 +11,11 @@ import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.ResultReceiver;
+import android.os.SystemClock;
 import android.provider.Settings;
 
 import androidx.annotation.NonNull;
@@ -27,6 +32,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -80,6 +86,7 @@ public final class FlutterMainActivity extends FlutterActivity {
                 case "snapshot" -> result.success(snapshot());
                 case "petGif" -> result.success(pets.readGif((String) call.argument("petId"), 8 * 1024 * 1024));
                 case "setSetting" -> setSetting(call, result);
+                case "guideAction" -> guideAction((String) call.argument("action"), result);
                 case "serviceAction" -> serviceAction((String) call.argument("action"), result);
                 case "react" -> react((String) call.argument("reaction"), result);
                 case "syncInteractions" -> syncInteractions(result);
@@ -115,7 +122,7 @@ public final class FlutterMainActivity extends FlutterActivity {
                 case "companionHallSet" -> runAsync(result,
                     () -> profileMap(companions.setHallEnabled(Boolean.TRUE.equals(call.argument("enabled")))));
                 case "companionHallSend" -> runAsync(result,
-                    () -> companions.sendToHall((String) call.argument("recipientId"), (String) call.argument("message")));
+                    () -> companions.sendToHall((String) call.argument("recipientId"), (String) call.argument("message"), (String) call.argument("petId")));
                 default -> result.notImplemented();
             }
         } catch (Exception error) {
@@ -129,6 +136,8 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("notificationAllowed", Build.VERSION.SDK_INT < 33
             || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED);
         value.put("running", settings.running());
+        value.putAll(settings.guide().snapshot());
+        value.putAll(PetOverlayService.runtimeSnapshot());
         value.put("hidden", settings.petHidden());
         value.put("clickThrough", settings.clickThrough());
         value.put("sizeDp", settings.sizeDp());
@@ -136,6 +145,8 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("mirrored", settings.mirrored());
         value.put("movement", settings.movement());
         value.put("interactions", settings.interactions());
+        value.put("dailySpeechEnabled", settings.dailySpeechEnabled());
+        value.put("quietUntilUtc", settings.quietUntilUtc());
         value.put("randomPet", settings.randomPet());
         value.put("startOnBoot", settings.startOnBoot());
         value.put("personality", settings.personality());
@@ -204,34 +215,55 @@ public final class FlutterMainActivity extends FlutterActivity {
     private void setSetting(MethodCall call, MethodChannel.Result result) {
         String key = (String) call.argument("key");
         Object value = call.argument("value");
-        if (SettingsStore.ACTIVE_PET.equals(key)) {
-            settings.putString(key, String.valueOf(value));
-            settings.putBoolean(SettingsStore.RANDOM_PET, false);
-        } else if (SettingsStore.SIZE.equals(key) || SettingsStore.OPACITY.equals(key)
-            || SettingsStore.RANDOM_PET_INTERVAL.equals(key)
-            || SettingsStore.THEATER_INTERVAL.equals(key)) {
-            int number = ((Number) value).intValue();
-            if (SettingsStore.THEATER_INTERVAL.equals(key)
-                && number != 60 && number != 180 && number != 300 && number != 600 && number != 1800) {
-                number = 300;
+        synchronized (SettingsStore.class) {
+            settings.markUserEdited(key);
+            if (SettingsStore.QUIET_UNTIL.equals(key)) {
+                settings.putLong(key, Math.max(0L, ((Number) value).longValue()));
+            } else if (SettingsStore.ACTIVE_PET.equals(key)) {
+                settings.putString(key, String.valueOf(value));
+                settings.putBoolean(SettingsStore.RANDOM_PET, false);
+            } else if (SettingsStore.SIZE.equals(key) || SettingsStore.OPACITY.equals(key)
+                || SettingsStore.RANDOM_PET_INTERVAL.equals(key)
+                || SettingsStore.THEATER_INTERVAL.equals(key)) {
+                int number = ((Number) value).intValue();
+                if (SettingsStore.THEATER_INTERVAL.equals(key)
+                    && number != 60 && number != 180 && number != 300 && number != 600 && number != 1800) {
+                    number = 300;
+                }
+                settings.putInt(key, number);
+            } else if (SettingsStore.PERSONALITY.equals(key) || SettingsStore.INTERACTION_MODE.equals(key)
+                || SettingsStore.WORD_PACK.equals(key)
+                || SettingsStore.IGNORED_UPDATE_VERSION.equals(key)) {
+                settings.putString(key, String.valueOf(value));
+            } else {
+                settings.putBoolean(key, Boolean.TRUE.equals(value));
             }
-            settings.putInt(key, number);
-        } else if (SettingsStore.PERSONALITY.equals(key) || SettingsStore.INTERACTION_MODE.equals(key)
-            || SettingsStore.WORD_PACK.equals(key)
-            || SettingsStore.IGNORED_UPDATE_VERSION.equals(key)) {
-            settings.putString(key, String.valueOf(value));
-        } else {
-            settings.putBoolean(key, Boolean.TRUE.equals(value));
+            if (SettingsStore.INTERACTION_MODE.equals(key) || SettingsStore.INTERACTIONS.equals(key)) {
+                interactionContent.markProfileEdited();
+            }
         }
         if (!SettingsStore.START_ON_BOOT.equals(key)) sendService(PetOverlayService.ACTION_REFRESH);
+        if (SettingsStore.INTERACTION_MODE.equals(key) || SettingsStore.INTERACTIONS.equals(key)) {
+            executor.execute(() -> {
+                try {
+                    interactionContent.syncProfile();
+                    runOnUiThread(() -> {
+                        sendService(PetOverlayService.ACTION_REFRESH);
+                        if (channel != null) channel.invokeMethod("snapshotChanged", snapshot());
+                    });
+                } catch (Exception ignored) { /* A later content sync retries the saved user choice. */ }
+            });
+        }
         result.success(snapshot());
     }
 
     private void serviceAction(String action, MethodChannel.Result result) {
+        if ("stop".equals(action)) startAfterOverlayGrant = false;
         String nativeAction = switch (action == null ? "" : action) {
             case "start" -> PetOverlayService.ACTION_START;
             case "stop" -> PetOverlayService.ACTION_STOP;
             case "next" -> PetOverlayService.ACTION_NEXT;
+            case "endScene" -> PetOverlayService.ACTION_END_SCENE;
             case "interact" -> PetOverlayService.ACTION_INTERACT;
             case "send" -> PetOverlayService.ACTION_SEND_COMPANION;
             case "trialVisitGirlfriend" -> PetOverlayService.ACTION_TRIAL_VISIT;
@@ -243,21 +275,69 @@ public final class FlutterMainActivity extends FlutterActivity {
             case "clickThrough" -> PetOverlayService.ACTION_CLICK_THROUGH;
             default -> PetOverlayService.ACTION_REFRESH;
         };
-        if ("start".equals(action) && !Settings.canDrawOverlays(this)) {
-            result.error("OVERLAY_PERMISSION", "请先授予悬浮窗权限", null);
-            return;
-        }
+        Intent intent = new Intent(this, PetOverlayService.class).setAction(nativeAction);
         if (PetOverlayService.ACTION_TRIAL_VISIT.equals(nativeAction)) {
-            String category = switch (action) {
+            intent.putExtra(PetOverlayService.EXTRA_VISIT_CATEGORY, switch (action) {
                 case "trialVisitFriend" -> "friend";
                 case "trialVisitCompanion" -> "companion";
                 default -> "girlfriend";
-            };
-            sendService(nativeAction, category);
-        } else {
-            sendService(nativeAction);
+            });
         }
-        result.success(snapshot());
+        sendCheckedService(intent, result);
+    }
+
+    private void guideAction(String action, MethodChannel.Result result) {
+        if ("dismiss".equals(action) || "dismissNotice".equals(action)) startAfterOverlayGrant = false;
+        if ("dismissNotice".equals(action)) {
+            settings.guide().dismissNotice();
+            result.success(snapshot());
+            return;
+        }
+        if ("dismiss".equals(action) && !settings.running()) {
+            settings.guide().dismiss();
+            result.success(snapshot());
+            return;
+        }
+        sendCheckedService(new Intent(this, PetOverlayService.class)
+            .setAction(PetOverlayService.ACTION_GUIDE).putExtra("guide_action", action), result);
+    }
+
+    private void sendCheckedService(Intent intent, MethodChannel.Result result) {
+        if (!Settings.canDrawOverlays(this) && !PetOverlayService.ACTION_STOP.equals(intent.getAction())) {
+            result.error("OVERLAY_PERMISSION", "请先允许悬浮窗，返回后继续体验", null);
+            return;
+        }
+        Handler main = new Handler(Looper.getMainLooper());
+        String requestId = UUID.randomUUID().toString();
+        long deadline = SystemClock.elapsedRealtime() + 30_000L;
+        intent.putExtra("request_id", requestId).putExtra("request_deadline", deadline);
+        boolean[] answered = { false };
+        Runnable timeout = () -> {
+            if (answered[0]) return;
+            answered[0] = true;
+            try { startService(new Intent(this, PetOverlayService.class)
+                .setAction(PetOverlayService.ACTION_CANCEL_REQUEST).putExtra("request_id", requestId)); }
+            catch (RuntimeException ignored) { /* The deadline is also enforced inside the service. */ }
+            result.error("ACTION_TIMEOUT", "桌宠还没有准备好，请稍后重试", null);
+        };
+        intent.putExtra(PetOverlayService.EXTRA_RESULT, new ResultReceiver(main) {
+            @Override protected void onReceiveResult(int code, Bundle data) {
+                if (answered[0]) return;
+                answered[0] = true;
+                main.removeCallbacks(timeout);
+                if (code == 0) result.success(snapshot());
+                else result.error("PET_ACTION", data == null ? "操作未完成，请重试" : data.getString("message"), null);
+            }
+        });
+        main.postDelayed(timeout, 30_000L);
+        try {
+            if (!settings.running() && !PetOverlayService.ACTION_STOP.equals(intent.getAction())) startForegroundService(intent);
+            else startService(intent);
+        } catch (RuntimeException error) {
+            answered[0] = true;
+            main.removeCallbacks(timeout);
+            result.error("PET_START", "系统暂时不允许启动桌宠，请回到首页重试", null);
+        }
     }
 
     private void sendService(String action) {
@@ -404,6 +484,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private void activate(String code, MethodChannel.Result result) {
         runAsync(result, () -> {
             licenses.activate(code);
+            runOnUiThread(() -> sendService(PetOverlayService.ACTION_REFRESH));
             return snapshot();
         });
     }

@@ -28,14 +28,14 @@ final class CompanionService {
 
     Profile refreshProfile() throws Exception {
         return parseProfile(NetworkClient.json(context, "GET", DeskPetApi.COMPANION, null,
-            licenses, NetworkClient.Auth.ACTIVATED));
+            licenses, NetworkClient.Auth.PREMIUM));
     }
 
     Profile updateName(String displayName) throws Exception {
         String name = displayName == null ? "" : displayName.trim();
-        if (name.length() < 1 || name.length() > 20) throw new IllegalArgumentException("昵称需为 1 至 20 个字符");
+        if (name.isEmpty() || name.codePointCount(0, name.length()) > 12) throw new IllegalArgumentException("昵称需为 1 至 12 个字符");
         return parseProfile(NetworkClient.json(context, "PATCH", DeskPetApi.COMPANION,
-            new JSONObject().put("displayName", name), licenses, NetworkClient.Auth.ACTIVATED));
+            new JSONObject().put("displayName", name), licenses, NetworkClient.Auth.PREMIUM));
     }
 
     Profile pair(String pairingCode) throws Exception {
@@ -55,7 +55,7 @@ final class CompanionService {
 
     Hall refreshHall() throws Exception {
         JSONObject json = NetworkClient.json(context, "GET", DeskPetApi.COMPANION_HALL, null,
-            licenses, NetworkClient.Auth.ACTIVATED);
+            licenses, NetworkClient.Auth.PREMIUM);
         JSONArray peopleJson = json.optJSONArray("people");
         List<HallPerson> people = new ArrayList<>();
         if (peopleJson != null) {
@@ -72,18 +72,19 @@ final class CompanionService {
 
     Profile setHallEnabled(boolean enabled) throws Exception {
         return parseProfile(NetworkClient.json(context, "PATCH", DeskPetApi.COMPANION_HALL,
-            new JSONObject().put("enabled", enabled), licenses, NetworkClient.Auth.ACTIVATED));
+            new JSONObject().put("enabled", enabled), licenses, NetworkClient.Auth.PREMIUM));
     }
 
-    String sendToHall(String recipientId, String message) throws Exception {
+    String sendToHall(String recipientId, String message, String petId) throws Exception {
         String target = recipientId == null ? "" : recipientId.trim();
         if (target.isEmpty() || target.length() > 128) throw new IllegalArgumentException("请选择一位在线用户");
-        byte[] gif = pets.readGif(pets.selectedPet(), MAXIMUM_GIF_BYTES);
+        if (message != null && message.codePointCount(0, message.length()) > 120) throw new IllegalArgumentException("留言最多 120 个字符");
+        byte[] gif = pets.readGif(petId == null || petId.isEmpty() ? pets.selectedPet() : petId, MAXIMUM_GIF_BYTES);
         String path = DeskPetApi.COMPANION_HALL_DELIVERIES + "/"
             + URLEncoder.encode(target, "UTF-8").replace("+", "%20")
             + "?message=" + URLEncoder.encode(message == null ? "" : message.trim(), "UTF-8").replace("+", "%20");
         byte[] response = NetworkClient.request(context, "POST", path, gif, "image/gif", licenses,
-            NetworkClient.Auth.ACTIVATED, NetworkClient.DEFAULT_MAX_RESPONSE);
+            NetworkClient.Auth.PREMIUM, NetworkClient.DEFAULT_MAX_RESPONSE);
         JSONObject json = new JSONObject(new String(response, StandardCharsets.UTF_8));
         String recipient = json.optString("recipientName");
         if (recipient.trim().isEmpty()) throw new IOException("搭子服务返回的数据无效");
@@ -101,9 +102,11 @@ final class CompanionService {
     }
 
     Visit playTrialVisit(String category) throws Exception {
+        LicenseService session = licenses.snapshot();
+        String owner = session.visitOwner();
         JSONObject body = new JSONObject().put("category", category == null ? "" : category);
         JSONObject json = NetworkClient.json(context, "POST", DeskPetApi.TRIAL_VISIT_PLAY, body,
-            licenses, NetworkClient.Auth.PREMIUM);
+            session, NetworkClient.Auth.PREMIUM);
         String id = json.optString("id");
         String sender = json.optString("senderName", "桌搭子");
         String hash = json.optString("sha256");
@@ -113,18 +116,27 @@ final class CompanionService {
             throw new IOException("来访表情无效");
         }
         byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
-            licenses, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
+            session, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
         validateGif(gif, hash);
-        return new Visit(id, sender, "", pets.saveInboxGif(id, gif));
+        synchronized (LicenseService.IDENTITY_LOCK) {
+            requireOwner(owner);
+            Visit visit = new Visit(owner, id, sender, "", pets.saveInboxGif(PendingVisitQueue.ownerKey(owner) + "-" + id, gif));
+            retainVisit(visit);
+            return visit;
+        }
     }
 
     List<Visit> receive() throws Exception {
+        LicenseService session = licenses.snapshot();
+        String owner = session.visitOwner();
+        PendingVisitQueue inbox = inbox(owner);
         JSONObject response = NetworkClient.json(context, "GET", DeskPetApi.COMPANION_DELIVERIES, null,
-            licenses, NetworkClient.Auth.PREMIUM);
+            session, NetworkClient.Auth.PREMIUM);
         JSONArray deliveries = response.optJSONArray("deliveries");
         List<Visit> visits = new ArrayList<>();
         if (deliveries == null) return visits;
         for (int index = 0; index < Math.min(10, deliveries.length()); index++) {
+            requireOwner(owner);
             JSONObject item = deliveries.optJSONObject(index);
             if (item == null) continue;
             String id = item.optString("id");
@@ -134,18 +146,59 @@ final class CompanionService {
             String downloadPath = item.optString("downloadPath");
             if (!id.matches("[A-Za-z0-9._:-]{1,128}") || !hash.matches("(?i)[0-9a-f]{64}")
                 || !downloadPath.startsWith(DeskPetApi.COMPANION_DOWNLOAD_PREFIX)) continue;
-            byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
-                licenses, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
-            validateGif(gif, hash);
-            File file = pets.saveInboxGif(id, gif);
+            if (!inbox.contains(id)) {
+                byte[] gif = NetworkClient.request(context, "GET", downloadPath, null, null,
+                    session, NetworkClient.Auth.PREMIUM, MAXIMUM_GIF_BYTES);
+                validateGif(gif, hash);
+                synchronized (LicenseService.IDENTITY_LOCK) {
+                    requireOwner(owner);
+                    File file = pets.saveInboxGif(PendingVisitQueue.ownerKey(owner) + "-" + id, gif);
+                    // Persist before acknowledging device receipt, including when presentation is paused.
+                    inbox.enqueue(new PendingVisitQueue.Entry(id, sender, message, file.getAbsolutePath()));
+                }
+            }
             NetworkClient.json(context, "POST", DeskPetApi.COMPANION_DELIVERIES + "/" + id + "/acknowledge",
-                null, licenses, NetworkClient.Auth.PREMIUM);
-            visits.add(new Visit(id, sender, message, file));
+                null, session, NetworkClient.Auth.PREMIUM);
         }
-        return visits;
+        return pendingVisits(owner);
     }
 
-    private static Profile parseProfile(JSONObject json) throws Exception {
+    List<Visit> pendingVisits() throws IOException {
+        return pendingVisits(licenses.visitOwner());
+    }
+
+    private List<Visit> pendingVisits(String owner) throws IOException {
+        List<Visit> result = new ArrayList<>();
+        for (PendingVisitQueue.Entry item : inbox(owner).pending()) {
+            result.add(new Visit(owner, item.id(), item.senderName(), item.message(), new File(item.path())));
+        }
+        return result;
+    }
+
+    boolean retainVisit(Visit visit) throws IOException {
+        synchronized (LicenseService.IDENTITY_LOCK) {
+            if (!isCurrentVisit(visit)) return false;
+            inbox(visit.owner()).enqueue(new PendingVisitQueue.Entry(visit.id(), visit.senderName(), visit.message(), visit.file().getAbsolutePath()));
+            return true;
+        }
+    }
+
+    void completeVisit(Visit visit) throws IOException {
+        synchronized (LicenseService.IDENTITY_LOCK) {
+            requireOwner(visit.owner());
+            inbox(visit.owner()).complete(visit.id());
+        }
+    }
+
+    boolean isCurrentVisit(Visit visit) { return visit.owner().equals(licenses.visitOwner()); }
+
+    private void requireOwner(String owner) throws IOException {
+        if (!owner.equals(licenses.visitOwner())) throw new IOException("账号已切换，请重试");
+    }
+
+    private PendingVisitQueue inbox(String owner) { return PendingVisitQueue.forOwner(context.getFilesDir(), owner); }
+
+    private Profile parseProfile(JSONObject json) throws Exception {
         JSONObject payload = json.optJSONObject("profile");
         if (payload == null) payload = json;
         JSONObject partnerJson = payload.optJSONObject("partner");
@@ -155,7 +208,7 @@ final class CompanionService {
         if (displayName.isEmpty()) displayName = "桌搭子";
         String pairingCode = payload.optString("pairingCode").replaceAll("[^A-Za-z0-9]", "")
             .toUpperCase(Locale.ROOT);
-        if (pairingCode.length() != 6 && pairingCode.length() != 8) {
+        if ((licenses.isActivated() || !pairingCode.isEmpty()) && pairingCode.length() != 6 && pairingCode.length() != 8) {
             throw new IOException("搭子服务未返回有效配对码，请稍后重试");
         }
         return new Profile(displayName, pairingCode, partner,
@@ -179,9 +232,5 @@ final class CompanionService {
     record Profile(String displayName, String pairingCode, Partner partner, boolean hallEnabled, boolean online) { }
     record Hall(boolean enabled, List<HallPerson> people) { }
     record HallPerson(String id, String displayName, boolean online) { }
-    record Visit(String id, String senderName, String message, File file) {
-        Visit(String id, String senderName, File file) {
-            this(id, senderName, "", file);
-        }
-    }
+    record Visit(String owner, String id, String senderName, String message, File file) { }
 }

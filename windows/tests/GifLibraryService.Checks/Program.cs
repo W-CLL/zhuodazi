@@ -25,7 +25,13 @@ internal static class Program
         CheckSignedInteractionContent();
         CheckInteractionCacheNormalization();
         CheckInteractionSchedulerBounds();
+        CheckReminderSchedule();
+        CheckQuietSettingsPersistAcrossRestart();
+        CheckGifImportLimits();
+        OnboardingChecks.Run();
+        CompanionQueueChecks.Run().GetAwaiter().GetResult();
         InteractionCardLayoutChecks.Run();
+        SettingsLayoutPreview.RenderIfRequested();
         var reproductionPath = Environment.GetEnvironmentVariable("ZHUODAZI_GIF_REPRO_PATH");
         if (!string.IsNullOrWhiteSpace(reproductionPath))
         {
@@ -35,6 +41,47 @@ internal static class Program
             CheckPartialGifComposition(reproductionPath, requireRetainedPixels: false, maximumDimension);
         }
         Console.WriteLine("Windows checks passed.");
+    }
+
+    private static void CheckReminderSchedule()
+    {
+        var beforeMidnight = new DateTime(2026, 9, 18, 23, 55, 0);
+        var next = ReminderSchedule.DefaultTime(beforeMidnight);
+        Require(next == new DateTime(2026, 9, 19, 0, 5, 0), "A midnight reminder must use tomorrow's date.");
+        RequireThrows(() => ReminderSchedule.ValidateAndAdvance(beforeMidnight.AddMinutes(-1), true, false, beforeMidnight),
+            "An enabled one-time reminder must reject a past time.");
+        var recurring = ReminderSchedule.ValidateAndAdvance(beforeMidnight.AddDays(-3), true, true, beforeMidnight);
+        Require(recurring == beforeMidnight.AddDays(1), "A past daily reminder must advance to the next future occurrence.");
+        Require(ReminderSchedule.ValidateAndAdvance(beforeMidnight.AddDays(-1), false, false, beforeMidnight) == beforeMidnight.AddDays(-1),
+            "A disabled reminder must remain editable without changing its saved time.");
+    }
+
+    private static void CheckGifImportLimits()
+    {
+        GifImportValidator.Validate(Path.Combine(AppContext.BaseDirectory, "assets", "partial-frame.gif"));
+        var path = Path.Combine(Path.GetTempPath(), $"zhuodazi-gif-check-{Guid.NewGuid():N}.gif");
+        try
+        {
+            using (var file = File.Create(path)) file.SetLength(GifImportValidator.MaximumBytes + 1);
+            RequireThrows(() => GifImportValidator.Validate(path), "Oversized GIFs must be rejected before decoding.");
+            File.WriteAllBytes(path, [71, 73, 70, 56, 57, 97, 1, 8, 1, 0]);
+            RequireThrows(() => GifImportValidator.Validate(path), "A GIF wider than 2048 pixels must be rejected.");
+            File.WriteAllText(path, "this-is-not-a-gif");
+            RequireThrows(() => GifImportValidator.Validate(path), "A renamed non-GIF file must be rejected.");
+        }
+        finally { File.Delete(path); }
+    }
+
+    private static void CheckQuietSettingsPersistAcrossRestart()
+    {
+        var oldSettings = JsonSerializer.Deserialize<AppSettings>("{\"randomInteractionsEnabled\":false}")!;
+        oldSettings.Normalize();
+        Require(oldSettings.DailySpeechEnabled && oldSettings.QuietUntilUtc is null, "Upgrades must retain daily speech unless explicitly changed.");
+        var settings = new AppSettings { DailySpeechEnabled = false, QuietUntilUtc = DateTimeOffset.UtcNow.AddHours(1), RandomPetEnabled = false };
+        var restored = JsonSerializer.Deserialize<AppSettings>(JsonSerializer.Serialize(settings))!;
+        restored.Normalize();
+        Require(!restored.DailySpeechEnabled && restored.QuietUntilUtc == settings.QuietUntilUtc && !restored.RandomPetEnabled,
+            "Quiet deadline, daily speech and automatic rotation must survive restart independently.");
     }
 
     private static void CheckManagedEd25519Verification()

@@ -105,7 +105,7 @@ public partial class FakeAdWindow : Window
         _surface.Controls.Add(_videoHost);
 
         _dropHint.Dock = Forms.DockStyle.Fill;
-        _dropHint.Text = "广告素材加载中…";
+        _dropHint.Text = "先打开抖音电脑版\n再按住抖音窗口标题栏，拖到这里\n接入后可切换标准 / 紧凑尺寸\n关闭此窗口也会关闭嵌入的抖音窗口";
         _dropHint.TextAlign = ContentAlignment.MiddleCenter;
         _dropHint.ForeColor = Color.FromArgb(210, 210, 210);
         _dropHint.BackColor = SurfaceColor;

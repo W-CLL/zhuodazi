@@ -21,6 +21,11 @@ final class WordRepository {
     WordRepository(Context context, SettingsStore settings) {
         this.context = context;
         this.settings = settings;
+        List<String> available = packs();
+        if (!available.isEmpty() && !available.contains(settings.wordPack())) {
+            settings.putString(SettingsStore.WORD_PACK, available.contains("互联网嘴替.json")
+                ? "互联网嘴替.json" : available.get(0));
+        }
     }
 
     List<String> packs() {

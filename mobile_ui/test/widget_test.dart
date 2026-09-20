@@ -106,7 +106,7 @@ void main() {
   }
 
   Future<void> tapHomeSend(WidgetTester tester) async {
-    final sendHome = find.widgetWithText(QuickAction, '女友来访');
+    final sendHome = find.widgetWithText(QuickAction, '女友来访·演示');
     await tester.scrollUntilVisible(
       sendHome,
       180,
@@ -126,7 +126,7 @@ void main() {
     await pumpApp(tester, const Size(360, 800));
     expect(find.text('桌搭子'), findsOneWidget);
     expect(find.text('今天也一起'), findsOneWidget);
-    expect(find.text('先打开悬浮窗，才会看到来访'), findsOneWidget);
+    expect(find.text('允许桌宠显示在其他应用上'), findsOneWidget);
     expect(find.text('去打开悬浮窗'), findsOneWidget);
     expect(find.text('首页'), findsWidgets);
 
@@ -134,24 +134,55 @@ void main() {
         .widgetList<NavigationDestination>(find.byType(NavigationDestination))
         .map((item) => item.label)
         .toList();
-    expect(destinations, ['首页', '互动', '桌宠', '搭子', '我的']);
+    expect(destinations, ['首页', '互动', '桌宠', '大厅', '我的']);
 
     await tester.tap(find.text('互动').last);
     await tester.pumpAndSettle();
     expect(find.text('随机来一个'), findsOneWidget);
-    expect(find.text('18 条可用内容'), findsOneWidget);
-    expect(find.text('线上趣味内容'), findsOneWidget);
-    await tester.drag(
-      find.descendant(
+    await tester.scrollUntilVisible(
+      find.text('换一批内容'),
+      200,
+      scrollable: find.descendant(
         of: find.byType(InteractionPage),
-        matching: find.byType(ListView),
+        matching: find.byType(Scrollable),
       ),
-      const Offset(0, -1400),
     );
-    await tester.pumpAndSettle();
-    expect(find.text('小剧场'), findsWidgets);
+    expect(find.text('换一批内容'), findsOneWidget);
+    expect(find.text('线上趣味内容'), findsNothing);
+    expect(find.text('18 条可用内容'), findsNothing);
+    await tester.scrollUntilVisible(
+      find.textContaining('看一场'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(InteractionPage),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    expect(find.textContaining('看一场'), findsOneWidget);
+    expect(find.textContaining('无需好友或自备剧本'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('自动随机上演'),
+      150,
+      scrollable: find
+          .descendant(
+            of: find.byType(InteractionPage),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('自动随机上演'), findsOneWidget);
-    expect(find.text('提醒'), findsWidgets);
+    await tester.scrollUntilVisible(
+      find.text('新建提醒'),
+      200,
+      scrollable: find
+          .descendant(
+            of: find.byType(InteractionPage),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(find.text('新建提醒'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
@@ -159,7 +190,7 @@ void main() {
     await tester.pump();
     expect(find.text('激活后可导入'), findsOneWidget);
     await tester.scrollUntilVisible(
-      find.text('图鉴目录'),
+      find.text('桌宠图鉴'),
       180,
       scrollable: find.descendant(
         of: find.byType(PetPage),
@@ -167,13 +198,13 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('图鉴目录'), findsOneWidget);
+    expect(find.text('桌宠图鉴'), findsOneWidget);
     expect(find.text('体验后可绑定'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.text('搭子').last);
+    await tester.tap(find.text('大厅').last);
     await tester.pump();
-    expect(find.text('体验期先自己叫人来串门'), findsOneWidget);
+    expect(find.text('碰个面，送只小可爱'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
     await tester.tap(find.text('我的').last);
@@ -200,10 +231,7 @@ void main() {
     expect(find.text('检查更新'), findsOneWidget);
     expect(find.text('自动检查更新'), findsOneWidget);
     expect(find.text('可以检查更新'), findsOneWidget);
-    expect(
-      calls.any((call) => call.method == 'checkUpdate'),
-      isTrue,
-    );
+    expect(calls.any((call) => call.method == 'checkUpdate'), isTrue);
     await tester.tap(find.text('检查更新'));
     await tester.pumpAndSettle();
     expect(
@@ -234,30 +262,33 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('trial home leads with visit, not send', (tester) async {
-    overlayAllowed = true;
-    running = true;
-    await pumpApp(tester, const Size(360, 800));
-    expect(find.textContaining('叫人来串门'), findsWidgets);
-    expect(find.widgetWithText(FilledButton, '女友来访'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '发给搭子'), findsNothing);
-    await tester.scrollUntilVisible(
-      find.widgetWithText(QuickAction, '女友来访'),
-      180,
-      scrollable: find.descendant(
-        of: find.byType(HomePage),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    expect(find.widgetWithText(QuickAction, '女友来访'), findsOneWidget);
-    expect(find.widgetWithText(QuickAction, '好友来访'), findsOneWidget);
-    expect(find.widgetWithText(QuickAction, '搭子来访'), findsOneWidget);
-    expect(find.widgetWithText(QuickAction, '发给搭子'), findsNothing);
-  });
+  testWidgets(
+    'trial home distinguishes simulated visits from the public hall',
+    (tester) async {
+      overlayAllowed = true;
+      running = true;
+      await pumpApp(tester, const Size(360, 800));
+      expect(find.textContaining('体验期也可去大厅真实互发'), findsWidgets);
+      expect(find.widgetWithText(FilledButton, '女友来访·演示'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, '发给搭子'), findsNothing);
+      await tester.scrollUntilVisible(
+        find.widgetWithText(QuickAction, '女友来访·演示'),
+        180,
+        scrollable: find.descendant(
+          of: find.byType(HomePage),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(find.widgetWithText(QuickAction, '女友来访·演示'), findsOneWidget);
+      expect(find.widgetWithText(QuickAction, '好友来访·演示'), findsOneWidget);
+      expect(find.widgetWithText(QuickAction, '搭子来访·演示'), findsOneWidget);
+      expect(find.widgetWithText(QuickAction, '发给搭子'), findsNothing);
+    },
+  );
 
   testWidgets('home send path asks for overlay first', (tester) async {
     await pumpApp(tester, const Size(360, 800));
-    expect(find.text('先打开悬浮窗，才会看到来访'), findsOneWidget);
+    expect(find.text('允许桌宠显示在其他应用上'), findsOneWidget);
     await tapHomeSend(tester);
     expect(
       calls.any((call) => call.method == 'requestOverlayPermission'),
@@ -318,34 +349,36 @@ void main() {
     Size(412, 915),
     Size(768, 1024),
   ]) {
-    testWidgets('tabs stay tappable at ${size.width.toInt()}x${size.height.toInt()}', (
-      tester,
-    ) async {
-      await pumpApp(tester, size);
-      expect(tester.takeException(), isNull);
-      if (size.height >= 700) {
-        await tester.scrollUntilVisible(
-          find.widgetWithText(QuickAction, '女友来访'),
-          180,
-          scrollable: find.descendant(
-            of: find.byType(HomePage),
-            matching: find.byType(Scrollable),
-          ),
-        );
-        expect(find.widgetWithText(QuickAction, '女友来访'), findsOneWidget);
-        await tapHomeSend(tester);
+    testWidgets(
+      'tabs stay tappable at ${size.width.toInt()}x${size.height.toInt()}',
+      (tester) async {
+        await pumpApp(tester, size);
         expect(tester.takeException(), isNull);
-      }
+        if (size.height >= 700) {
+          await tester.scrollUntilVisible(
+            find.widgetWithText(QuickAction, '女友来访·演示'),
+            180,
+            scrollable: find.descendant(
+              of: find.byType(HomePage),
+              matching: find.byType(Scrollable),
+            ),
+          );
+          expect(find.widgetWithText(QuickAction, '女友来访·演示'), findsOneWidget);
+          await tapHomeSend(tester);
+          expect(tester.takeException(), isNull);
+        }
 
-      for (final tab in ['互动', '桌宠', '搭子', '我的', '首页']) {
-        await tester.tap(
-          find.byWidgetPredicate(
-            (widget) => widget is NavigationDestination && widget.label == tab,
-          ),
-        );
-        await tester.pump();
-        expect(tester.takeException(), isNull);
-      }
-    });
+        for (final tab in ['互动', '桌宠', '大厅', '我的', '首页']) {
+          await tester.tap(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is NavigationDestination && widget.label == tab,
+            ),
+          );
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+        }
+      },
+    );
   }
 }

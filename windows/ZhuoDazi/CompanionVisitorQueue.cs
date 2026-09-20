@@ -1,74 +1,104 @@
-using System.Windows;
+using System.IO;
 using ZhuoDazi.Services;
-using Point = System.Windows.Point;
 
 namespace ZhuoDazi;
 
 internal sealed class CompanionVisitorQueue
 {
-    private readonly Queue<CompanionVisit> _visits = new();
-    private PetWindow? _visitorWindow;
+    private readonly LinkedList<CompanionVisit> _visits = new();
+    private readonly HashSet<string> _known = new(StringComparer.Ordinal);
+    private CancellationTokenSource? _activeCancellation;
     private bool _showing;
+    private bool _preserveActive;
+    private bool _stopAfterCurrent;
+    private CompanionInboxStore? _inbox;
+    private long _generation;
 
     public bool IsShowing => _showing;
     public bool HasPending => _visits.Count > 0;
 
+    public void Restore(CompanionInboxStore inbox)
+    {
+        if (_inbox?.Identity != inbox.Identity)
+        {
+            PauseActive();
+            _generation++;
+            _visits.Clear();
+            _known.Clear();
+            _inbox = inbox;
+        }
+        try { Enqueue(inbox.Pending()); }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // Startup and account switching remain usable. The store still rejects mutations
+            // until its existing manifest can be read, preserving acknowledged pending receipts.
+        }
+    }
+
     public void Enqueue(IEnumerable<CompanionVisit> visits)
     {
-        foreach (var visit in visits) _visits.Enqueue(visit);
+        foreach (var visit in visits)
+            if (_inbox?.IsCompleted(visit.Id) != true && _known.Add(visit.Id)) _visits.AddLast(visit);
+    }
+
+    public void EnqueueFirst(CompanionVisit visit)
+    {
+        if (_inbox?.IsCompleted(visit.Id) != true && _known.Add(visit.Id)) _visits.AddFirst(visit);
     }
 
     public void CloseActive()
     {
-        if (_visitorWindow?.IsLoaded == true) _visitorWindow.Close();
+        _preserveActive = false;
+        _stopAfterCurrent = true;
+        _activeCancellation?.Cancel();
     }
 
-    public Task ShowQueuedAsync(AppController controller, Func<PetWindow?> mainWindow)
+    public void PauseActive()
     {
-        if (_showing || _visits.Count == 0) return Task.CompletedTask;
-        return ShowQueuedInternalAsync(controller, mainWindow);
+        _preserveActive = true;
+        _stopAfterCurrent = true;
+        _activeCancellation?.Cancel();
     }
 
-    private async Task ShowQueuedInternalAsync(AppController controller, Func<PetWindow?> mainWindow)
+    public Task ShowQueuedAsync(Func<bool> canShow, Func<CompanionVisit, CancellationToken, Task> present, bool oneOnly = false)
+    {
+        if (_showing || _visits.Count == 0 || !canShow()) return Task.CompletedTask;
+        return ShowQueuedInternalAsync(canShow, present, oneOnly);
+    }
+
+    private async Task ShowQueuedInternalAsync(Func<bool> canShow, Func<CompanionVisit, CancellationToken, Task> present, bool oneOnly)
     {
         if (_showing) return;
         _showing = true;
+        _stopAfterCurrent = false;
         try
         {
-            while (_visits.TryDequeue(out var visit))
+            while (_visits.First is { } next && canShow())
             {
-                if (mainWindow() is not { IsVisible: true } main)
-                {
-                    _visits.Enqueue(visit);
-                    break;
-                }
-                var visitor = new PetWindow(controller, true);
-                _visitorWindow = visitor;
-                visitor.RefreshAppearance(visit.FilePath);
-                visitor.EnterScriptedMode();
-                var area = main.GetWorkingArea();
-                var left = main.Left - visitor.Width - 12;
-                if (left < area.Left) left = main.Left + main.Width + 12;
-                left = Math.Clamp(left, area.Left, Math.Max(area.Left, area.Right - visitor.Width));
-                var top = Math.Clamp(main.Top, area.Top, Math.Max(area.Top, area.Bottom - visitor.Height));
-                visitor.Place(new Point(left, top));
-                visitor.Show();
-                var reaction = string.IsNullOrWhiteSpace(visit.Message)
-                    ? $"{visit.SenderName} 来串门啦"
-                    : $"{visit.SenderName}：{visit.Message}";
-                visitor.ShowReaction(reaction);
-                try { await Task.Delay(TimeSpan.FromSeconds(10)); }
+                var visit = next.Value;
+                var generation = _generation;
+                var inbox = _inbox;
+                _visits.RemoveFirst();
+                _preserveActive = false;
+                using var cancellation = new CancellationTokenSource();
+                _activeCancellation = cancellation;
+                try { await present(visit, cancellation.Token); }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+                catch { _preserveActive = true; _stopAfterCurrent = true; }
                 finally
                 {
-                    if (visitor.IsLoaded) visitor.Close();
-                    if (ReferenceEquals(_visitorWindow, visitor)) _visitorWindow = null;
-                    try { File.Delete(visit.FilePath); } catch { }
+                    _activeCancellation = null;
+                    if (generation == _generation && _preserveActive) _visits.AddFirst(visit);
+                    else if (generation == _generation)
+                    {
+                        _known.Remove(visit.Id);
+                        if (inbox?.Contains(visit.Id) == true) inbox.Complete(visit.Id);
+                        else try { File.Delete(visit.FilePath); } catch { }
+                    }
                 }
+                if (_stopAfterCurrent || oneOnly) break;
             }
         }
-        finally
-        {
-            _showing = false;
-        }
+        finally { _showing = false; }
     }
 }

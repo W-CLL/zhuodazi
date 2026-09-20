@@ -4,7 +4,7 @@
         Title="解锁桌搭子完整功能" Width="580" Height="720"
         MinWidth="560" MinHeight="620" MaxWidth="620"
         WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
-        Background="#F8FAF9" Icon="pack://application:,,,/assets/app-icon.png"
+        Background="#F8FAF9" Icon="pack://application:,,,/ZhuoDazi;component/assets/app-icon.png"
         FontFamily="Microsoft YaHei UI" UseLayoutRounding="True">
     <Window.Resources>
         <Style TargetType="Button">
@@ -65,7 +65,7 @@
             </Grid.RowDefinitions>
 
             <StackPanel Orientation="Horizontal">
-                <Image Width="48" Height="48" Source="pack://application:,,,/assets/app-icon.png" />
+                <Image Width="48" Height="48" Source="pack://application:,,,/ZhuoDazi;component/assets/app-icon.png" />
                 <StackPanel Margin="14,1,0,0">
                     <TextBlock x:Name="HeadingText" Text="解锁桌搭子完整功能" FontSize="22" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
                     <TextBlock x:Name="SubtitleText" Text="一组码最多填两台。电脑激活后，手机再填同一组码也能进同一个账号。"
@@ -120,7 +120,7 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Image Width="168" Height="168" Stretch="Uniform"
-                           Source="pack://application:,,,/assets/contact-author-wechat.png" />
+                           Source="pack://application:,,,/ZhuoDazi;component/assets/contact-author-wechat.png" />
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
                         <TextBlock Text="还没有激活码" FontSize="15" FontWeight="SemiBold"
                                    Foreground="{StaticResource InkBrush}" />

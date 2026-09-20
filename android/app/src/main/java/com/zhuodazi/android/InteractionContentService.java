@@ -45,6 +45,10 @@ final class InteractionContentService {
     private static final int MAX_CACHE = 90;
     private static final int MAX_SHOWN = 500;
     private static final int MAX_EVENTS = 1000;
+    private static final Object PROFILE_LOCK = new Object();
+    private static final String PROFILE_DIRTY = "profile_dirty";
+    private static final String PROFILE_REVISION = "profile_revision";
+    private static final String PROFILE_OWNER = "profile_owner";
 
     private final Context context;
     private final LicenseService licenses;
@@ -132,6 +136,7 @@ final class InteractionContentService {
 
     int refillOnline() throws Exception {
         try {
+            syncProfile();
             int added = performRefillOnline();
             store.edit().putString(LAST_SYNC_ERROR, "")
                 .putLong(LAST_SYNC_AT, System.currentTimeMillis()).apply();
@@ -141,6 +146,56 @@ final class InteractionContentService {
             store.edit().putString(LAST_SYNC_ERROR,
                 message == null || message.trim().isEmpty() ? "线上内容同步失败" : message.trim()).apply();
             throw error;
+        }
+    }
+
+    void markProfileEdited() {
+        synchronized (SettingsStore.class) {
+            store.edit().putBoolean(PROFILE_DIRTY, true)
+                .putString(PROFILE_OWNER, profileOwner())
+                .putLong(PROFILE_REVISION, store.getLong(PROFILE_REVISION, 0L) + 1).apply();
+        }
+    }
+
+    private String profileOwner() {
+        return licenses.visitOwner();
+    }
+
+    void syncProfile() throws Exception {
+        if (!licenses.hasPremiumAccess()) return;
+        synchronized (PROFILE_LOCK) {
+            SettingsStore settings = new SettingsStore(context);
+            if (!settings.remoteDefaultsApplied()) {
+                try {
+                    JSONObject remote = NetworkClient.json(context, "GET", DeskPetApi.SITE_SETTINGS, null,
+                        licenses, NetworkClient.Auth.NONE);
+                    settings.applyRemoteConfig(remote);
+                } catch (Exception ignored) {
+                    // Existing account preferences and cached/local content remain available during a settings outage.
+                }
+            }
+            final long revision;
+            final boolean dirty;
+            final LicenseService session = licenses.snapshot();
+            final String owner = session.visitOwner();
+            final JSONObject body;
+            synchronized (SettingsStore.class) {
+                revision = store.getLong(PROFILE_REVISION, 0L);
+                dirty = store.getBoolean(PROFILE_DIRTY, false) && owner.equals(store.getString(PROFILE_OWNER, ""));
+                body = dirty ? new JSONObject().put("mode", settings.interactionMode()).put("promptsEnabled", settings.interactions()) : null;
+            }
+            JSONObject envelope = NetworkClient.json(context, dirty ? "PATCH" : "GET", DeskPetApi.INTERACTION_PROFILE,
+                body, session, NetworkClient.Auth.PREMIUM);
+            JSONObject profile = envelope.optJSONObject("profile");
+            if (profile == null) throw new IllegalStateException("互动设置同步失败，请稍后重试");
+            synchronized (SettingsStore.class) {
+                if (revision != store.getLong(PROFILE_REVISION, 0L) || !owner.equals(profileOwner())) return;
+                String mode = profile.optString("mode", "standard");
+                if (!Arrays.asList("quiet", "standard", "lively").contains(mode)) mode = "standard";
+                settings.putString(SettingsStore.INTERACTION_MODE, mode);
+                settings.putBoolean(SettingsStore.INTERACTIONS, profile.optBoolean("promptsEnabled", true));
+                store.edit().putBoolean(PROFILE_DIRTY, false).putString(PROFILE_OWNER, owner).apply();
+            }
         }
     }
 

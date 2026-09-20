@@ -9,10 +9,13 @@ import java.util.Locale;
 import java.util.UUID;
 
 final class LicenseService {
+    static final Object IDENTITY_LOCK = new Object();
     private final Context context;
     private final SettingsStore settings;
     private final SecureLicenseStore secureStore;
     private int lastDeviceCount = 1;
+    private SecureLicenseStore.LicenseRecord frozenRecord;
+    private boolean frozenTrialActive;
 
     LicenseService(Context context) {
         this.context = context.getApplicationContext();
@@ -20,12 +23,33 @@ final class LicenseService {
         secureStore = new SecureLicenseStore(this.context);
     }
 
-    boolean isActivated() { return secureStore.record().isActivated(); }
-    boolean isTrialActive() { return !isActivated() && settings.trialActive(); }
+    private LicenseService(LicenseService source) {
+        context = source.context;
+        settings = source.settings;
+        secureStore = source.secureStore;
+        frozenRecord = source.record();
+        frozenTrialActive = source.isTrialActive();
+    }
+
+    private SecureLicenseStore.LicenseRecord record() {
+        return frozenRecord == null ? secureStore.record() : frozenRecord.copy();
+    }
+
+    LicenseService snapshot() {
+        synchronized (IDENTITY_LOCK) { return new LicenseService(this); }
+    }
+
+    String visitOwner() {
+        SecureLicenseStore.LicenseRecord value = record();
+        return value.isActivated() ? "license:" + value.licenseId : "trial:" + value.installationId;
+    }
+
+    boolean isActivated() { return record().isActivated(); }
+    boolean isTrialActive() { return !isActivated() && (frozenRecord == null ? settings.trialActive() : frozenTrialActive); }
     boolean hasPremiumAccess() { return isActivated() || isTrialActive(); }
-    String installationId() { return secureStore.record().installationId; }
+    String installationId() { return record().installationId; }
     String licenseSuffix() {
-        String id = secureStore.record().licenseId;
+        String id = record().licenseId;
         return id.length() < 8 ? "" : id.substring(id.length() - 8);
     }
     int deviceCount() { return lastDeviceCount; }
@@ -48,8 +72,20 @@ final class LicenseService {
         catch (Exception error) { throw new IllegalStateException("激活服务返回的授权无效"); }
         int deviceCount = response.optInt("deviceCount", 1);
         lastDeviceCount = deviceCount >= 1 && deviceCount <= 2 ? deviceCount : 1;
-        secureStore.activate(licenseId, response.optString("activatedAt"));
-        settings.clearTrial();
+        synchronized (IDENTITY_LOCK) {
+            if (!record().licenseId.equals(record.licenseId)) throw new IllegalStateException("账号已切换，请重新激活");
+            PendingVisitQueue.migrateForActivation(context.getFilesDir(),
+                record.isActivated() ? "license:" + record.licenseId : "trial:" + record.installationId,
+                "license:" + licenseId);
+            secureStore.activate(licenseId, response.optString("activatedAt"));
+            try {
+                PendingVisitQueue.finishTrialMigration(context.getFilesDir(),
+                    record.isActivated() ? "license:" + record.licenseId : "trial:" + record.installationId);
+            } catch (java.io.IOException ignored) {
+                // The destination is already durable; an inaccessible source index must not undo activation.
+            }
+            settings.clearTrial();
+        }
     }
 
     TrialStatus checkTrial() throws Exception {
@@ -57,7 +93,7 @@ final class LicenseService {
             settings.clearTrial();
             return new TrialStatus(false, 0);
         }
-        SecureLicenseStore.LicenseRecord record = secureStore.record();
+        SecureLicenseStore.LicenseRecord record = record();
         JSONObject body = new JSONObject().put("installationId", record.installationId)
             .put("credential", record.credential).put("appVersion", NetworkClient.appVersion(context));
         JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.TRIAL, body,
@@ -100,10 +136,10 @@ final class LicenseService {
     }
 
     void authorize(HttpURLConnection connection, boolean activatedOnly) {
-        SecureLicenseStore.LicenseRecord record = secureStore.record();
+        SecureLicenseStore.LicenseRecord record = record();
         if (record.isActivated()) {
             connection.setRequestProperty("Authorization", "Bearer " + record.licenseId + "." + record.credential);
-        } else if (!activatedOnly && settings.trialActive()) {
+        } else if (!activatedOnly && isTrialActive()) {
             connection.setRequestProperty("Authorization", "Trial " + record.installationId + "." + record.credential);
         } else {
             throw new IllegalStateException(activatedOnly ? "搭子联机需要正式激活" : "此功能需要激活或有效体验");

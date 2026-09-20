@@ -11,10 +11,10 @@ public sealed class AnalyticsService : IDisposable
     private readonly string _firstLaunchMarkerPath;
     private bool _disposed;
 
-    public AnalyticsService(LicenseService licenses)
+    public AnalyticsService(LicenseService licenses, string? dataDirectory = null)
     {
         _licenses = licenses;
-        var dataDirectory = Path.Combine(
+        dataDirectory ??= Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "poko-desktop-pet");
         Directory.CreateDirectory(dataDirectory);
         _firstLaunchMarkerPath = Path.Combine(dataDirectory, "analytics-first-launch.marker");

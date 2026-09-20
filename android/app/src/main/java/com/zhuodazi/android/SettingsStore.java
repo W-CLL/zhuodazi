@@ -10,6 +10,9 @@ final class SettingsStore {
     static final String MIRRORED = "mirrored";
     static final String MOVEMENT = "random_movement";
     static final String INTERACTIONS = "random_interactions";
+    static final String DAILY_SPEECH = "dailySpeechEnabled";
+    static final String QUIET_UNTIL = "quietUntilUtc";
+    static final String USER_EDITED_DEFAULTS = "user_edited_defaults";
     static final String INTERACTION_MODE = "interaction_mode";
     static final String PERSONALITY = "personality";
     static final String RANDOM_PET = "random_pet";
@@ -37,6 +40,7 @@ final class SettingsStore {
     static final String COMPANION_HALL_DEFAULT_APPLIED = "companion_hall_default_applied";
     static final String REMOTE_CONFIG = "remote_config";
     static final String REMOTE_DEFAULTS_APPLIED = "remote_defaults_applied";
+    private static final String REMOTE_DEFAULTS_VERSION = "remote_defaults_version";
     static final String WECHAT_ID = "wechat_id";
     static final String ANNOUNCEMENT = "announcement";
     static final String FEATURE_TRIAL_VISITS = "feature_trial_visits";
@@ -47,24 +51,31 @@ final class SettingsStore {
     private final SharedPreferences values;
 
     SettingsStore(Context context) {
-        values = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        this(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE));
     }
+
+    SettingsStore(SharedPreferences preferences) { values = preferences; new GuideStore(values); }
+    GuideStore guide() { return new GuideStore(values); }
 
     int sizeDp() { return clamp(values.getInt(SIZE, 96), 96, 280); }
     int opacity() { return clamp(values.getInt(OPACITY, 100), 20, 100); }
     boolean mirrored() { return values.getBoolean(MIRRORED, false); }
     boolean movement() { return values.getBoolean(MOVEMENT, true); }
     boolean interactions() { return values.getBoolean(INTERACTIONS, true); }
+    boolean dailySpeechEnabled() { return values.getBoolean(DAILY_SPEECH, true); }
+    long quietUntilUtc() { return values.getLong(QUIET_UNTIL, 0L); }
+    boolean isQuiet() { return quietUntilUtc() > System.currentTimeMillis(); }
     boolean randomPet() { return values.getBoolean(RANDOM_PET, true); }
     boolean startOnBoot() { return values.getBoolean(START_ON_BOOT, false); }
     boolean running() { return values.getBoolean(RUNNING, false); }
     boolean petHidden() { return values.getBoolean(PET_HIDDEN, false); }
+    boolean recoveryHintSeen() { return values.getBoolean("recovery_hint_seen", false); }
     boolean clickThrough() { return values.getBoolean(CLICK_THROUGH, false); }
     boolean trialActive() { return trialExpiresAt() > System.currentTimeMillis(); }
     String personality() { return values.getString(PERSONALITY, "lively"); }
     String interactionMode() { return values.getString(INTERACTION_MODE, "standard"); }
     String activePet() { return values.getString(ACTIVE_PET, ""); }
-    String wordPack() { return values.getString(WORD_PACK, "元气夸夸.json"); }
+    String wordPack() { return values.getString(WORD_PACK, "互联网嘴替.json"); }
     int randomPetInterval() { return clamp(values.getInt(RANDOM_PET_INTERVAL, 300), 30, 3600); }
     int positionX(int fallback) { return values.getInt(POSITION_X, fallback); }
     int positionY(int fallback) { return values.getInt(POSITION_Y, fallback); }
@@ -76,6 +87,7 @@ final class SettingsStore {
         return value == 60 || value == 180 || value == 300 || value == 600 || value == 1800 ? value : 300;
     }
     String theaterScriptsJson() { return values.getString(THEATER_SCRIPTS, "[]"); }
+    String pendingReminderOccurrences() { return values.getString("pending_reminder_occurrences", "{}"); }
     String remindersJson() { return values.getString(REMINDERS, "[]"); }
     String xianyuUrl() { return values.getString(XIANYU_URL, ""); }
     boolean autoCheckUpdates() { return values.getBoolean(AUTO_CHECK_UPDATES, true); }
@@ -84,7 +96,7 @@ final class SettingsStore {
     String activeLibrary() { return values.getString(ACTIVE_LIBRARY, ""); }
     boolean demoVisitSeen() { return values.getBoolean(DEMO_VISIT_SEEN, false); }
     boolean companionHallDefaultApplied() { return values.getBoolean(COMPANION_HALL_DEFAULT_APPLIED, false); }
-    boolean remoteDefaultsApplied() { return values.getBoolean(REMOTE_DEFAULTS_APPLIED, false); }
+    boolean remoteDefaultsApplied() { return values.getInt(REMOTE_DEFAULTS_VERSION, 0) >= 2; }
     String wechatId() { return values.getString(WECHAT_ID, "wcl_lcw627"); }
     String announcement() { return values.getString(ANNOUNCEMENT, ""); }
     boolean trialVisitsEnabled() { return values.getBoolean(FEATURE_TRIAL_VISITS, true); }
@@ -111,55 +123,55 @@ final class SettingsStore {
         putLong(TRIAL_EXPIRES_AT, 0L);
     }
 
+    void markUserEdited(String key) {
+        if (!PERSONALITY.equals(key) && !INTERACTION_MODE.equals(key) && !THEATER_INTERVAL.equals(key)) return;
+        java.util.Set<String> edited = new java.util.HashSet<>(values.getStringSet(USER_EDITED_DEFAULTS, java.util.Collections.emptySet()));
+        edited.add(key);
+        values.edit().putStringSet(USER_EDITED_DEFAULTS, edited).apply();
+    }
+
     void applyRemoteConfig(org.json.JSONObject payload) {
-        org.json.JSONObject features = payload.optJSONObject("features");
-        org.json.JSONObject defaults = payload.optJSONObject("defaults");
-        String wechat = payload.optString("wechatId", "wcl_lcw627").trim();
-        if (wechat.isEmpty()) wechat = "wcl_lcw627";
-        String announcement = payload.optString("announcement", "").replace('\r', ' ').replace('\n', ' ').trim();
-        String url = payload.optString("xianyuUrl", "").trim();
-        android.content.SharedPreferences.Editor editor = values.edit();
-        editor.putString(REMOTE_CONFIG, payload.toString());
-        editor.putString(WECHAT_ID, wechat);
-        editor.putString(ANNOUNCEMENT, announcement);
-        if (url.startsWith("https://")) editor.putString(XIANYU_URL, url);
-        editor.putBoolean(FEATURE_TRIAL_VISITS, features == null || features.optBoolean("trialVisits", true));
-        editor.putBoolean(FEATURE_COMPANION_HALL, features == null || features.optBoolean("companionHall", true));
-        editor.putBoolean(FEATURE_FISH_MODE, features == null || features.optBoolean("fishMode", true));
-        editor.putBoolean(FEATURE_AUTO_UPDATES, features == null || features.optBoolean("autoUpdates", true));
-        boolean existingUser = false;
-        for (String key : values.getAll().keySet()) {
-            if (REMOTE_CONFIG.equals(key) || WECHAT_ID.equals(key) || ANNOUNCEMENT.equals(key)
-                || XIANYU_URL.equals(key) || FEATURE_TRIAL_VISITS.equals(key)
-                || FEATURE_COMPANION_HALL.equals(key) || FEATURE_FISH_MODE.equals(key)
-                || FEATURE_AUTO_UPDATES.equals(key) || REMOTE_DEFAULTS_APPLIED.equals(key)) {
-                continue;
+        synchronized (SettingsStore.class) {
+            org.json.JSONObject features = payload.optJSONObject("features");
+            org.json.JSONObject defaults = payload.optJSONObject("defaults");
+            String wechat = payload.optString("wechatId", "wcl_lcw627").trim();
+            if (wechat.isEmpty()) wechat = "wcl_lcw627";
+            String announcement = payload.optString("announcement", "").replace('\r', ' ').replace('\n', ' ').trim();
+            String url = payload.optString("xianyuUrl", "").trim();
+            android.content.SharedPreferences.Editor editor = values.edit();
+            editor.putString(REMOTE_CONFIG, payload.toString());
+            editor.putString(WECHAT_ID, wechat);
+            editor.putString(ANNOUNCEMENT, announcement);
+            editor.putString(XIANYU_URL, url.startsWith("https://") ? url : "");
+            editor.putBoolean(FEATURE_TRIAL_VISITS, features == null || features.optBoolean("trialVisits", true));
+            editor.putBoolean(FEATURE_COMPANION_HALL, features == null || features.optBoolean("companionHall", true));
+            editor.putBoolean(FEATURE_FISH_MODE, features == null || features.optBoolean("fishMode", true));
+            editor.putBoolean(FEATURE_AUTO_UPDATES, features == null || features.optBoolean("autoUpdates", true));
+            if (!remoteDefaultsApplied() && defaults != null) {
+                String personality = defaults.optString("personality", "lively");
+                String mode = defaults.optString("interactionMode", "standard");
+                int interval = defaults.optInt("theaterIntervalSeconds", 300);
+                if (!personality.equals("lively") && !personality.equals("shy")
+                    && !personality.equals("clingy") && !personality.equals("chaotic")) {
+                    personality = "lively";
+                }
+                if (!mode.equals("quiet") && !mode.equals("standard") && !mode.equals("lively")) {
+                    mode = "standard";
+                }
+                if (interval != 60 && interval != 180 && interval != 300 && interval != 600 && interval != 1800) {
+                    interval = 300;
+                }
+                // Runtime/trial metadata is not a user choice. Preserve each existing setting,
+                // including legacy installations, and only fill fields that have never been set.
+                java.util.Set<String> edited = values.getStringSet(USER_EDITED_DEFAULTS, java.util.Collections.emptySet());
+                if (!values.contains(PERSONALITY) && !edited.contains(PERSONALITY)) editor.putString(PERSONALITY, personality);
+                if (!values.contains(INTERACTION_MODE) && !edited.contains(INTERACTION_MODE)) editor.putString(INTERACTION_MODE, mode);
+                if (!values.contains(THEATER_INTERVAL) && !edited.contains(THEATER_INTERVAL)) editor.putInt(THEATER_INTERVAL, interval);
+                editor.putBoolean(REMOTE_DEFAULTS_APPLIED, true);
+                editor.putInt(REMOTE_DEFAULTS_VERSION, 2);
             }
-            existingUser = true;
-            break;
+            editor.apply();
         }
-        if (existingUser || remoteDefaultsApplied()) {
-            editor.putBoolean(REMOTE_DEFAULTS_APPLIED, true);
-        } else if (defaults != null) {
-            String personality = defaults.optString("personality", "lively");
-            String mode = defaults.optString("interactionMode", "standard");
-            int interval = defaults.optInt("theaterIntervalSeconds", 300);
-            if (!personality.equals("lively") && !personality.equals("shy")
-                && !personality.equals("clingy") && !personality.equals("chaotic")) {
-                personality = "lively";
-            }
-            if (!mode.equals("quiet") && !mode.equals("standard") && !mode.equals("lively")) {
-                mode = "standard";
-            }
-            if (interval != 60 && interval != 180 && interval != 300 && interval != 600 && interval != 1800) {
-                interval = 300;
-            }
-            editor.putString(PERSONALITY, personality);
-            editor.putString(INTERACTION_MODE, mode);
-            editor.putInt(THEATER_INTERVAL, interval);
-            editor.putBoolean(REMOTE_DEFAULTS_APPLIED, true);
-        }
-        editor.apply();
     }
 
     void savePosition(int x, int y) {

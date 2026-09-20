@@ -1,6 +1,7 @@
 import importlib.util
 from pathlib import Path
 import subprocess
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -63,7 +64,7 @@ class DesktopReleaseTests(unittest.TestCase):
     def test_draft_is_reused(self):
         with patch.object(releases, "read_release", return_value={"isDraft": True, "assets": []}):
             plan = releases.plan_release("macos", "3.2.9", "target")
-        with patch.object(releases.subprocess, "run") as run:
+        with patch.object(releases, "release_notes_path", return_value=Path("notes.md")), patch.object(releases.subprocess, "run") as run:
             releases.prepare_release(plan, "target")
         command = run.call_args.args[0]
         self.assertEqual(command[:4], ["gh", "release", "edit", "macos-v3.2.9"])
@@ -76,13 +77,28 @@ class DesktopReleaseTests(unittest.TestCase):
 
     def test_new_release_uses_exact_notes_target_and_draft(self):
         plan = {"published": False, "exists": False, "tag": "macos-v3.2.9", "platform": "macos", "version": "3.2.9"}
-        with patch.object(releases.subprocess, "run") as run:
+        with patch.object(releases, "release_notes_path", return_value=Path("notes.md")), patch.object(releases.subprocess, "run") as run:
             releases.prepare_release(plan, "target")
         command = run.call_args.args[0]
         self.assertIn("--draft", command)
         self.assertIn("--latest=false", command)
-        self.assertEqual(command[command.index("--notes") + 1], "更新/修复了一些功能")
+        self.assertEqual(command[command.index("--notes-file") + 1], "notes.md")
         self.assertEqual(command[command.index("--target") + 1], "target")
+
+    def test_missing_or_empty_release_notes_prevent_release_mutation(self):
+        plan = {"published": False, "exists": False, "tag": "v3.2.10", "platform": "windows", "version": "3.2.10"}
+        with tempfile.TemporaryDirectory() as folder, patch.object(releases, "ROOT", Path(folder)):
+            with patch.object(releases.subprocess, "run") as run:
+                with self.assertRaisesRegex(RuntimeError, "更新说明"):
+                    releases.prepare_release(plan, "target")
+                notes = Path(folder) / "docs" / "releases" / "desktop-3.2.10.md"
+                notes.parent.mkdir(parents=True)
+                notes.write_text("  \n", encoding="utf-8")
+                with self.assertRaisesRegex(RuntimeError, "更新说明"):
+                    releases.prepare_release(plan, "target")
+                run.assert_not_called()
+                notes.write_text("体验期也能向大厅里的在线朋友送出桌宠。\n", encoding="utf-8")
+                self.assertEqual(releases.release_notes_path("macos", "3.2.10"), notes)
 
     def test_read_release_only_treats_not_found_as_absent(self):
         missing = subprocess.CompletedProcess([], 1, "", "release not found\n")

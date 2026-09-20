@@ -20,6 +20,8 @@ public partial class SettingsWindow : Window
     private bool _interactionContentLoading;
     private bool _companionLoading;
     private bool _hallLoading;
+    private DateTimeOffset _hallSendAllowedAt;
+    private readonly System.Windows.Threading.DispatcherTimer _hallClock = new() { Interval = TimeSpan.FromSeconds(1) };
     private string? _editingReminderId;
 
     public SettingsWindow(AppController controller)
@@ -33,17 +35,34 @@ public partial class SettingsWindow : Window
         _controller.Updates.StateChanged += Updates_StateChanged;
         Loaded += (_, _) =>
         {
-            MainTabs.SelectedIndex = 0;
             RefreshAll();
         };
         Closing += OnClosing;
-        ReminderDatePicker.SelectedDate = DateTime.Today;
+        _hallClock.Tick += (_, _) => RefreshHallSendButton();
+        _hallClock.Start();
+        Closed += (_, _) => _hallClock.Stop();
+        var nextReminder = ReminderSchedule.DefaultTime(DateTime.Now);
+        ReminderDatePicker.SelectedDate = nextReminder.Date;
         ReminderHourCombo.ItemsSource = Enumerable.Range(0, 24)
             .Select(hour => hour.ToString("00", CultureInfo.InvariantCulture)).ToList();
         ReminderMinuteCombo.ItemsSource = Enumerable.Range(0, 60)
             .Select(minute => minute.ToString("00", CultureInfo.InvariantCulture)).ToList();
-        SetReminderTime(DateTime.Now.AddMinutes(10).TimeOfDay);
+        SetReminderTime(nextReminder.TimeOfDay);
         RefreshAll();
+    }
+
+    public void ShowInteractionTab()
+    {
+        MainTabs.SelectedIndex = 1;
+        Show();
+        Activate();
+    }
+
+    public void ShowHallTab()
+    {
+        MainTabs.SelectedItem = HallTab;
+        Show();
+        Activate();
     }
 
     public void ShowUpdateTab()
@@ -68,6 +87,9 @@ public partial class SettingsWindow : Window
     private void RefreshLicenseBanner()
     {
         if (LicenseBannerText is null || LicenseStatusText is null) return;
+        GuideButton.Content = _controller.GuideActionLabel;
+        RetryTrialButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
+        RetryTrialButton.IsEnabled = !_controller.IsTrialVerificationPending;
         LicenseBannerText.Text = _controller.LicenseSummary;
         LicenseStatusText.Text = _controller.LicenseSummary;
         if (TodayActivateButton is not null)
@@ -109,13 +131,20 @@ public partial class SettingsWindow : Window
         OpacitySlider.Value = settings.Opacity;
         OpacityValue.Text = $"{settings.Opacity}%";
         CurrentPetPreview.FilePath = _controller.CurrentPetPath();
-        CurrentPetNameText.Text = _controller.LibraryName;
+        CurrentPetNameText.Text = _controller.CurrentPetName;
+        CurrentPetSourceText.Text = _controller.CurrentPetSource;
+        DailySpeechCheck.IsChecked = settings.DailySpeechEnabled;
+        QuietStatusText.Text = _controller.QuietStatus;
+        PauseCompanionshipButton.Content = _controller.IsQuiet ? "恢复主动陪伴" : "暂停 1 小时";
+        GuideButton.Content = _controller.GuideActionLabel;
+        RetryTrialButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
+        RetryTrialButton.IsEnabled = !_controller.IsTrialVerificationPending;
         LicenseBannerText.Text = _controller.LicenseSummary;
         var announcement = _controller.RemoteConfig.Announcement;
         AnnouncementBanner.Visibility = string.IsNullOrWhiteSpace(announcement) ? Visibility.Collapsed : Visibility.Visible;
         AnnouncementText.Text = announcement;
         FishModeRow.Visibility = _controller.RemoteConfig.FishMode ? Visibility.Visible : Visibility.Collapsed;
-        CompanionHallPanel.Visibility = _controller.RemoteConfig.CompanionHall ? Visibility.Visible : Visibility.Collapsed;
+        HallTab.Visibility = _controller.RemoteConfig.CompanionHall ? Visibility.Visible : Visibility.Collapsed;
         TodayActivateButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
         TodayActivateButton.Content = _controller.IsTrialActive ? "体验中，也可现在激活" : "继续完整体验";
         TopmostCheck.IsChecked = settings.AlwaysOnTop;
@@ -127,7 +156,10 @@ public partial class SettingsWindow : Window
         MouseInteractionCheck.IsChecked = settings.MouseInteractionEnabled;
         RandomMovementCheck.IsChecked = settings.RandomMovementEnabled;
         RandomInteractionCheck.IsChecked = settings.RandomInteractionsEnabled;
-        InteractionModeCombo.IsEnabled = settings.RandomInteractionsEnabled;
+        RandomInteractionCheck.IsEnabled = premium;
+        InteractionModeCombo.IsEnabled = premium && settings.RandomInteractionsEnabled;
+        TheaterEnabledCheck.IsEnabled = premium;
+        TheaterIntervalCombo.IsEnabled = premium;
         foreach (var item in InteractionModeCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == settings.InteractionMode) item.IsSelected = true;
         TheaterEnabledCheck.IsChecked = settings.TheaterEnabled;
@@ -141,7 +173,7 @@ public partial class SettingsWindow : Window
 
         var libraryItems = new List<LibraryListItem>
         {
-            new(null, "月薪喵", "内置资源库", true)
+            new(null, "月薪喵", "内置桌宠图鉴", true)
         };
         libraryItems.AddRange(settings.Libraries.Select(item => new LibraryListItem(
             item.Id, item.Name, item.Path, false)));
@@ -162,7 +194,7 @@ public partial class SettingsWindow : Window
 
         var wordPackItems = new List<WordPackListItem>
         {
-            new(null, "内置提示语", "桌搭子默认互动内容", true)
+            new(null, "日常悄悄话", "小搭子的问候与碎碎念", true)
         };
         wordPackItems.AddRange(settings.InteractionWordPacks.Select(item => new WordPackListItem(
             item.Id, item.Name, $"{item.WordCount} 条互动台词", false)));
@@ -170,7 +202,7 @@ public partial class SettingsWindow : Window
         WordPackList.SelectedItem = premium
             ? wordPackItems.FirstOrDefault(item => item.Id == settings.ActiveInteractionWordPackId) ?? wordPackItems[0]
             : wordPackItems[0];
-        WordPackSummary.Text = $"已上传 {settings.InteractionWordPacks.Count}/5 个词包 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "内置提示语")}";
+        WordPackSummary.Text = $"已收藏 {settings.InteractionWordPacks.Count}/5 套 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "日常悄悄话")}";
         DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
         InteractionContentStatusText.Text = premium
             ? _controller.InteractionStatus
@@ -195,7 +227,7 @@ public partial class SettingsWindow : Window
         ReminderList.ItemsSource = reminderItems;
         ReminderList.SelectedItem = reminderItems.FirstOrDefault(item => item.Id == selectedReminderId);
         ReminderCountText.Text = premium
-            ? settings.Reminders.Count == 0 ? "暂无提醒" : $"共 {settings.Reminders.Count} 个提醒"
+            ? $"已保存 {settings.Reminders.Count}/20 个提醒"
             : "完整体验里可以让桌宠到点来叫你";
         ReminderEmptyState.Visibility = settings.Reminders.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
@@ -235,26 +267,38 @@ public partial class SettingsWindow : Window
             ? Visibility.Collapsed : Visibility.Visible;
         CompanionActivateButton.Content = _controller.IsTrialActive ? "体验结束后继续使用" : "继续完整体验后使用";
 
-        var hallEnabled = companionEnabled && companionProfile?.HallEnabled == true;
+        var hallAllowed = premium && _controller.RemoteConfig.CompanionHall;
+        var hallEnabled = hallAllowed && companionProfile?.HallEnabled == true;
+        if (!_hallLoading && !HallNicknameText.IsKeyboardFocusWithin)
+            HallNicknameText.Text = companionProfile?.DisplayName ?? string.Empty;
+        HallNicknameText.IsEnabled = hallAllowed && !_hallLoading;
+        SaveHallNicknameButton.IsEnabled = hallAllowed && !_hallLoading;
         CompanionHallEnabledCheck.IsChecked = companionProfile?.HallEnabled == true;
-        CompanionHallEnabledCheck.IsEnabled = companionEnabled && !_hallLoading;
-        RefreshHallButton.IsEnabled = companionEnabled && !_hallLoading;
-        CompanionHallStatusText.Text = hallEnabled
-            ? $"大厅已开启 · 当前 {_controller.Companions.HallPeople.Count} 人在线"
-            : "关闭大厅后，你不会出现在陌生人列表里。";
+        CompanionHallEnabledCheck.IsEnabled = hallAllowed && !_hallLoading && companionProfile is not null;
+        RefreshHallButton.IsEnabled = hallAllowed && !_hallLoading;
+        RefreshHallButton.Content = _hallLoading ? "正在连接…" : "刷新大厅";
+        CompanionHallStatusText.Text = !hallAllowed
+            ? "试用已结束。正式激活后可以继续加入大厅并发送表情。"
+            : _hallLoading ? "正在连接大厅…"
+            : hallEnabled ? "已加入大厅 · 昵称与在线状态对大厅用户可见"
+            : "尚未加入 · 勾选上方选项后才会公开在线并接收来访。";
+        HallCountText.Text = $"{_controller.Companions.HallPeople.Count} 人在线";
         var selectedHallId = (CompanionHallList.SelectedItem as HallListItem)?.Id;
-        var hallItems = _controller.Companions.HallPeople
-            .Select(person => new HallListItem(person))
-            .ToList();
+        var hallItems = _controller.Companions.HallPeople.Select(person => new HallListItem(person)).ToList();
         CompanionHallList.ItemsSource = hallItems;
         CompanionHallList.SelectedItem = hallItems.FirstOrDefault(item => item.Id == selectedHallId);
         CompanionHallList.IsEnabled = hallEnabled && !_hallLoading;
         CompanionHallEmptyText.Visibility = hallItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        CompanionHallMessageText.IsEnabled = hallEnabled;
-        SendHallButton.IsEnabled = hallEnabled
-            && CompanionHallList.SelectedItem is HallListItem
-            && File.Exists(_controller.CurrentPetPath())
-            && !_hallLoading;
+        CompanionHallEmptyText.Text = _hallLoading ? "正在寻找此刻在线的朋友…"
+            : !hallAllowed ? "大厅支持有效试用与正式激活设备。"
+            : !hallEnabled ? "先加入大厅，再看看谁在这里。"
+            : "暂时没有其他人在场。保持加入状态，稍后刷新看看。";
+        CompanionHallMessageText.IsEnabled = hallEnabled && !_hallLoading;
+        HallPreviewImage.FilePath = _controller.CurrentPetPath();
+        HallPetNameText.Text = _controller.CurrentPetName + " · " + _controller.CurrentPetSource;
+        HallSendTargetText.Text = CompanionHallList.SelectedItem is HallListItem selected
+            ? $"发送给 {selected.DisplayName}" : "先选择一位在线用户";
+        RefreshHallSendButton();
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
         AutoUpdateCheck.Visibility = _controller.RemoteConfig.AutoUpdates ? Visibility.Visible : Visibility.Collapsed;
@@ -266,6 +310,9 @@ public partial class SettingsWindow : Window
     private void RenderUpdateState(UpdateState state)
     {
         UpdateStatusText.Text = state.Message;
+        UpdateNotesText.Text = state.Manifest?.Notes?.Trim() is { Length: > 0 } notes
+            ? notes : "此版本暂未提供详细更新说明。";
+        UpdateNotesPanel.Visibility = state.Manifest is null ? Visibility.Collapsed : Visibility.Visible;
         UpdateProgress.Visibility = state.Phase is UpdatePhase.Downloading or UpdatePhase.Downloaded
             ? Visibility.Visible : Visibility.Collapsed;
         UpdateProgress.Value = state.Progress;
@@ -363,7 +410,7 @@ public partial class SettingsWindow : Window
     {
         if (!_controller.RequestPremiumAccess("在线互动内容", this)) return;
         if (_interactionContentLoading) return;
-        SetInteractionContentLoading(true, "正在同步线上内容…");
+        SetInteractionContentLoading(true, "正在找新趣事…");
         try
         {
             var added = await _controller.SyncInteractionContentAsync();
@@ -373,7 +420,7 @@ public partial class SettingsWindow : Window
         catch (Exception error)
         {
             InteractionContentStatusText.Text = _controller.InteractionStatus;
-            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法同步互动内容，请稍后重试。"), "同步互动内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时没找到新趣事，稍后再试。"), "稍后再试", MessageBoxButton.OK, MessageBoxImage.Warning);
         }
         finally
         {
@@ -428,7 +475,8 @@ public partial class SettingsWindow : Window
 
     private void AddPet_Click(object sender, RoutedEventArgs e)
     {
-        var dialog = new WpfOpenFileDialog { Title = "选择桌宠 GIF", Filter = "GIF 动图 (*.gif)|*.gif", Multiselect = false };
+        if (_controller.Settings.Pets.Count >= 3) { WpfMessageBox.Show(this, "自定义桌宠已满（3/3），请先删除不再使用的 GIF。", "已达到容量上限"); return; }
+        var dialog = new WpfOpenFileDialog { Title = "选择 GIF（最多 8 MB、2048×2048）", Filter = "GIF 动图 (*.gif)|*.gif", Multiselect = false };
         if (dialog.ShowDialog(this) != true) return;
         RunUiAction(() => _controller.AddPet(dialog.FileName));
     }
@@ -449,8 +497,9 @@ public partial class SettingsWindow : Window
 
     private void ChooseLibrary_Click(object sender, RoutedEventArgs e)
     {
+        if (_controller.Settings.Libraries.Count >= 3) { WpfMessageBox.Show(this, "外部图鉴已满（3/3），请先删除一个目录。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("外部 GIF 资源库", this)) return;
-        using var dialog = new Forms.FolderBrowserDialog { Description = "选择包含 GIF 的资源库目录", UseDescriptionForTitle = true };
+        using var dialog = new Forms.FolderBrowserDialog { Description = "选择桌宠图鉴的 GIF 文件夹", UseDescriptionForTitle = true };
         if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
         RunUiAction(() => _controller.AddLibraryDirectory(dialog.SelectedPath));
     }
@@ -488,8 +537,9 @@ public partial class SettingsWindow : Window
 
     private void ImportWords_Click(object sender, RoutedEventArgs e)
     {
+        if (_controller.Settings.InteractionWordPacks.Count >= 5) { WpfMessageBox.Show(this, "词包已满（5/5），请先删除一套。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("互动词包导入", this)) return;
-        var dialog = new WpfOpenFileDialog { Title = "导入互动词包", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = true };
+        var dialog = new WpfOpenFileDialog { Title = $"导入互动词包（还可添加 {5 - _controller.Settings.InteractionWordPacks.Count} 套）", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = true };
         if (dialog.ShowDialog(this) != true) return;
         RunUiAction(() => _controller.ImportInteractionWords(dialog.FileNames));
     }
@@ -513,10 +563,11 @@ public partial class SettingsWindow : Window
 
     private void ImportTheaterScript_Click(object sender, RoutedEventArgs e)
     {
+        if (_controller.Settings.TheaterScripts.Count >= 10) { WpfMessageBox.Show(this, "剧本已满（10/10），请先删除一个剧本。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("小剧场剧本导入", this)) return;
         var dialog = new WpfOpenFileDialog
         {
-            Title = "导入小剧场剧本",
+            Title = $"导入小剧场剧本（还可添加 {10 - _controller.Settings.TheaterScripts.Count} 个）",
             Filter = "小剧场剧本 (*.json)|*.json",
             Multiselect = true
         };
@@ -548,16 +599,17 @@ public partial class SettingsWindow : Window
 
     private void NewReminder_Click(object sender, RoutedEventArgs e)
     {
+        if (_controller.Settings.Reminders.Count >= 20) { WpfMessageBox.Show(this, "提醒已满（20/20），请先删除一条提醒。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("提醒", this)) return;
         _editingReminderId = null;
         ReminderList.SelectedItem = null;
         ReminderFormTitle.Text = "新建提醒";
-        ReminderDatePicker.SelectedDate = DateTime.Today;
-        SetReminderTime(DateTime.Now.AddMinutes(10).TimeOfDay);
+        var nextReminder = ReminderSchedule.DefaultTime(DateTime.Now);
+        ReminderDatePicker.SelectedDate = nextReminder.Date;
+        SetReminderTime(nextReminder.TimeOfDay);
         ReminderMessageText.Text = "休息一下吧";
         ReminderEnabledCheck.IsChecked = true;
         ReminderDailyCheck.IsChecked = false;
-        ReminderEmotionCombo.SelectedIndex = 0;
         ReminderExpressionPath.Text = string.Empty;
         DeleteReminderButton.IsEnabled = false;
     }
@@ -571,8 +623,6 @@ public partial class SettingsWindow : Window
         ReminderMessageText.Text = reminder.Message;
         ReminderEnabledCheck.IsChecked = reminder.Enabled;
         ReminderDailyCheck.IsChecked = reminder.RepeatDaily;
-        foreach (var item in ReminderEmotionCombo.Items.OfType<ComboBoxItem>())
-            if (item.Tag?.ToString() == reminder.Emotion) item.IsSelected = true;
         ReminderExpressionPath.Text = reminder.ExpressionPath ?? string.Empty;
         DeleteReminderButton.IsEnabled = true;
     }
@@ -606,15 +656,20 @@ public partial class SettingsWindow : Window
             Id = _editingReminderId ?? $"reminder-{Guid.NewGuid():N}",
             Enabled = ReminderEnabledCheck.IsChecked == true,
             Message = ReminderMessageText.Text,
-            Emotion = (ReminderEmotionCombo.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "happy",
+            Emotion = "happy",
             ExpressionPath = string.IsNullOrWhiteSpace(ReminderExpressionPath.Text)
                 ? null : ReminderExpressionPath.Text,
             RepeatDaily = ReminderDailyCheck.IsChecked == true,
             LocalTime = date.Date + time
         };
-        RunUiAction(() => _controller.SaveReminder(reminder));
-        _editingReminderId = reminder.Id;
-        RefreshAll();
+        RunUiAction(() =>
+        {
+            _controller.SaveReminder(reminder);
+            _editingReminderId = reminder.Id;
+            RefreshAll();
+            LoadReminder(reminder);
+            ReminderFormTitle.Text = $"已保存 · 下次 {reminder.LocalTime:M月d日 HH:mm}";
+        });
     }
 
     private void ReminderTimeSelector_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -661,6 +716,7 @@ public partial class SettingsWindow : Window
         if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
         if (MainTabs.SelectedItem == FeedbackTab) await LoadFeedbackAsync();
         else if (MainTabs.SelectedItem == CompanionTab) await LoadCompanionAsync();
+        else if (MainTabs.SelectedItem == HallTab) await LoadHallAsync();
     }
 
     private async Task LoadCompanionAsync()
@@ -672,7 +728,6 @@ public partial class SettingsWindow : Window
         try
         {
             await _controller.RefreshCompanionAsync();
-            await LoadHallAsync();
         }
         catch (Exception error)
         {
@@ -692,28 +747,52 @@ public partial class SettingsWindow : Window
 
     private async Task LoadHallAsync()
     {
-        if (_hallLoading || !_controller.HasActivatedLicense) return;
+        if (_hallLoading || !_controller.HasPremiumAccess) return;
         _hallLoading = true;
-        CompanionErrorText.Visibility = Visibility.Collapsed;
+        HallErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
-        try { await _controller.RefreshCompanionHallAsync(); }
+        try
+        {
+            await _controller.RefreshCompanionAsync();
+            await _controller.RefreshCompanionHallAsync();
+        }
         catch (Exception error)
         {
-            CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "暂时无法连接桌宠大厅。");
-            CompanionErrorText.Visibility = Visibility.Visible;
+            HallErrorText.Text = NetworkConnectionErrors.ForUser(error, "暂时无法连接大厅，请点刷新重试。");
+            HallErrorText.Visibility = Visibility.Visible;
         }
-        finally
+        finally { _hallLoading = false; RefreshAll(); }
+    }
+
+    private void RefreshHallSendButton()
+    {
+        var seconds = Math.Max(0, (int)Math.Ceiling((_hallSendAllowedAt - DateTimeOffset.UtcNow).TotalSeconds));
+        SendHallButton.Content = _hallLoading ? "处理中…" : seconds > 0 ? $"{seconds} 秒后可再发送" : "发送这只 GIF";
+        SendHallButton.IsEnabled = _controller.HasPremiumAccess && _controller.Companions.Profile?.HallEnabled == true
+            && CompanionHallList.SelectedItem is HallListItem && File.Exists(_controller.CurrentPetPath()) && !_hallLoading && seconds == 0;
+    }
+
+    private async void SaveHallNickname_Click(object sender, RoutedEventArgs e)
+    {
+        await RunHallActionAsync(async () =>
         {
-            _hallLoading = false;
-            RefreshAll();
-        }
+            await _controller.UpdateCompanionNameAsync(HallNicknameText.Text);
+            HallResultText.Text = "昵称已保存，大厅名片已更新。";
+            HallResultText.Visibility = Visibility.Visible;
+        });
     }
 
     private async void CompanionHallEnabled_Click(object sender, RoutedEventArgs e)
     {
         if (_refreshing) return;
         var enabled = CompanionHallEnabledCheck.IsChecked == true;
-        await RunHallActionAsync(() => _controller.SetCompanionHallEnabledAsync(enabled));
+        await RunHallActionAsync(async () =>
+        {
+            await _controller.SetCompanionHallEnabledAsync(enabled);
+            if (enabled) await _controller.RefreshCompanionHallAsync();
+            HallResultText.Text = enabled ? "已加入大厅。现在可以选择用户发送表情。" : "已退出大厅，其他用户不会再看到你在线。";
+            HallResultText.Visibility = Visibility.Visible;
+        });
     }
 
     private void CompanionHallList_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -728,15 +807,24 @@ public partial class SettingsWindow : Window
         {
             await _controller.SendCurrentGifToHallAsync(person.Id, CompanionHallMessageText.Text);
             CompanionHallMessageText.Clear();
+            _hallSendAllowedAt = DateTimeOffset.UtcNow.AddSeconds(30);
+            HallResultText.Text = $"已发出，正在投递给 {person.DisplayName}。这不代表对方已经查看。";
+            HallResultText.Visibility = Visibility.Visible;
         });
     }
 
     private async void SaveCompanionName_Click(object sender, RoutedEventArgs e)
-        => await RunCompanionActionAsync(() => _controller.UpdateCompanionNameAsync(CompanionNameText.Text));
+        => await RunCompanionActionAsync(async () =>
+        {
+            await _controller.UpdateCompanionNameAsync(CompanionNameText.Text);
+            SaveCompanionNameButton.Content = "已保存";
+        });
 
     private void CopyCompanionCode_Click(object sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(CompanionCodeText.Text)) System.Windows.Clipboard.SetText(CompanionCodeText.Text);
+        if (string.IsNullOrWhiteSpace(CompanionCodeText.Text)) return;
+        System.Windows.Clipboard.SetText(CompanionCodeText.Text);
+        CopyCompanionCodeButton.Content = "已复制";
     }
 
     private void CopyCompanionShare_Click(object sender, RoutedEventArgs e)
@@ -748,19 +836,20 @@ public partial class SettingsWindow : Window
             : CompanionNameText.Text.Trim();
         System.Windows.Clipboard.SetText($"{name} 的桌搭子码是 {code}。打开「搭子」填进去，就能互相发 GIF 了。");
         CompanionErrorText.Visibility = Visibility.Collapsed;
+        CopyCompanionShareButton.Content = "已复制";
     }
 
     private async void PairCompanion_Click(object sender, RoutedEventArgs e)
-        => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text), clearPairCode: true);
+        => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text), clearPairCode: true, success: "已完成配对，可以把当前 GIF 发给搭子了。");
 
     private async void SendCompanionGif_Click(object sender, RoutedEventArgs e)
-        => await RunCompanionActionAsync(() => _controller.SendCurrentGifToCompanionAsync());
+        => await RunCompanionActionAsync(() => _controller.SendCurrentGifToCompanionAsync(), success: "GIF 已发出，等待对方设备接收；这不代表对方已经查看。");
 
     private async void UnpairCompanion_Click(object sender, RoutedEventArgs e)
     {
         if (WpfMessageBox.Show(this, "解除搭子绑定？双方之后都不能继续投递 GIF。", "解除绑定",
             MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        await RunCompanionActionAsync(() => _controller.UnpairCompanionAsync());
+        await RunCompanionActionAsync(() => _controller.UnpairCompanionAsync(), success: "已解除配对，双方可以重新绑定搭子。");
     }
 
     private void CompanionActivate_Click(object sender, RoutedEventArgs e)
@@ -768,16 +857,18 @@ public partial class SettingsWindow : Window
         if (_controller.ShowActivation(this, "绑定一位熟人后，可以把当前 GIF 发到对方桌角。")) _ = LoadCompanionAsync();
     }
 
-    private async Task RunCompanionActionAsync(Func<Task> action, bool clearPairCode = false)
+    private async Task RunCompanionActionAsync(Func<Task> action, bool clearPairCode = false, string? success = null)
     {
         if (_companionLoading) return;
         _companionLoading = true;
         CompanionErrorText.Visibility = Visibility.Collapsed;
+        CompanionResultText.Visibility = Visibility.Collapsed;
         RefreshAll();
         try
         {
             await action();
             if (clearPairCode) PairCodeText.Clear();
+            if (success is not null) { CompanionResultText.Text = success; CompanionResultText.Visibility = Visibility.Visible; }
         }
         catch (Exception error)
         {
@@ -795,13 +886,13 @@ public partial class SettingsWindow : Window
     {
         if (_hallLoading) return;
         _hallLoading = true;
-        CompanionErrorText.Visibility = Visibility.Collapsed;
+        HallErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
         try { await action(); }
         catch (Exception error)
         {
-            CompanionErrorText.Text = NetworkConnectionErrors.ForUser(error, "大厅操作未完成，请稍后重试。");
-            CompanionErrorText.Visibility = Visibility.Visible;
+            HallErrorText.Text = NetworkConnectionErrors.ForUser(error, "大厅操作未完成，请稍后重试。");
+            HallErrorText.Visibility = Visibility.Visible;
         }
         finally
         {
@@ -827,6 +918,7 @@ public partial class SettingsWindow : Window
             FeedbackQuotaText.Text = response.Quota.Remaining > 0
                 ? $"当前设备有 {response.Quota.Active}/{response.Quota.Maximum} 条处理中反馈，还可提交 {response.Quota.Remaining} 条"
                 : $"当前设备已有 {response.Quota.Active} 条处理中反馈，请等待后台处理后再提交";
+            _feedbackLoading = false;
             SetFeedbackFormEnabled(response.Quota.Remaining > 0);
         }
         catch (Exception error)
@@ -889,9 +981,52 @@ public partial class SettingsWindow : Window
         FeedbackTitleText.IsEnabled = enabled;
         FeedbackContentText.IsEnabled = enabled;
         FeedbackSubmitButton.IsEnabled = enabled;
-        FeedbackFormHint.Text = enabled
-            ? "待处理和进行中的反馈最多同时保留 3 条。"
+        FeedbackFormHint.Text = _feedbackLoading && !enabled
+            ? "正在提交，请稍候…"
+            : enabled ? "待处理和进行中的反馈最多同时保留 3 条。"
             : "已有 3 条反馈正在处理，后台处理完成后会自动释放名额。";
+    }
+
+    private void DailySpeechCheck_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_refreshing) _controller.SetDailySpeech(DailySpeechCheck.IsChecked == true);
+    }
+
+    private void PauseCompanionship_Click(object sender, RoutedEventArgs e)
+    {
+        if (_controller.IsQuiet) _controller.ResumeCompanionship(); else _controller.PauseForOneHour();
+    }
+
+    private void StopPerformance_Click(object sender, RoutedEventArgs e) => _controller.StopCurrentPerformance();
+    private void RetryTrial_Click(object sender, RoutedEventArgs e) => _controller.RetryTrialVerification();
+    private void ReplayGuide_Click(object sender, RoutedEventArgs e) => _controller.ReplayGuide();
+
+    private void FeedbackList_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { ShowFeedbackDetails(); e.Handled = true; }
+    }
+
+    private void FeedbackDetails_Click(object sender, MouseButtonEventArgs e) => ShowFeedbackDetails();
+
+    private void ShowFeedbackDetails()
+    {
+        if (FeedbackList.SelectedItem is not FeedbackListItem selected) return;
+        var item = selected.Item;
+        var text = $"{item.Title}\n\n{selected.Metadata}\n更新时间：{item.UpdatedAt}\n\n你的说明\n{item.Content}\n\n完整回复\n{(string.IsNullOrWhiteSpace(item.AdminNote) ? "暂未回复" : item.AdminNote)}";
+        var body = new System.Windows.Controls.TextBox
+        {
+            Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto, Margin = new Thickness(20),
+            BorderThickness = new Thickness(0), Background = System.Windows.Media.Brushes.Transparent,
+            FontSize = 14, Padding = new Thickness(8)
+        };
+        var window = new Window
+        {
+            Owner = this, Title = "反馈详情 · 可选择复制全文", Width = 660, Height = 600,
+            MinWidth = 440, MinHeight = 360, WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Content = body, Background = System.Windows.Media.Brushes.White
+        };
+        window.ShowDialog();
     }
 
     private void AutoUpdateCheck_Click(object sender, RoutedEventArgs e)
@@ -962,9 +1097,12 @@ public partial class SettingsWindow : Window
     {
         public string Title { get; }
         public string Detail { get; }
+        public FeedbackItem Item { get; }
+        public string Metadata { get; }
 
         public FeedbackListItem(FeedbackItem item)
         {
+            Item = item;
             Title = item.Title;
             var type = item.Type == "suggestion" ? "功能建议" : "问题反馈";
             var status = item.Status switch
@@ -980,7 +1118,8 @@ public partial class SettingsWindow : Window
             var note = string.IsNullOrWhiteSpace(item.AdminNote)
                 ? string.Empty
                 : $" · 回复：{Shorten(item.AdminNote, 80)}";
-            Detail = $"{type} · {status} · {createdAt}{note}";
+            Metadata = $"{type} · {status} · {createdAt}";
+            Detail = Metadata + note;
         }
 
         private static string Shorten(string value, int length)
@@ -994,7 +1133,8 @@ public partial class SettingsWindow : Window
     {
         public string Id { get; }
         public string DisplayName { get; }
-        public string StatusText => "在线，可以收到你的表情";
+        public string Initial => string.IsNullOrEmpty(DisplayName) ? "搭" : System.Globalization.StringInfo.GetNextTextElement(DisplayName);
+        public string StatusText => "● 在线 · 点击选择";
 
         public HallListItem(CompanionHallPerson person)
         {
