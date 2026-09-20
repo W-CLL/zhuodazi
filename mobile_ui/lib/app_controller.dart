@@ -19,7 +19,7 @@ class AppController extends ChangeNotifier {
   bool busy = false;
   bool companionLoading = false;
   String? companionError;
-  String? hallError;
+  HallFailure? hallError;
   bool hallLoading = false;
   DateTime? hallNextSendAt;
   DateTime? _trialSyncedAt;
@@ -411,15 +411,31 @@ class AppController extends ChangeNotifier {
   }
 
   Future<void> refreshCompanionHall() async {
-    if (!snapshot.companionHallEnabled || hallLoading) return;
+    if (!snapshot.companionHallEnabled ||
+        hallLoading ||
+        (!snapshot.activated && liveTrialSeconds <= 0)) {
+      return;
+    }
+    final revalidateAccess = hallError?.revalidateAccess ?? false;
     hallLoading = true;
     hallError = null;
     notifyListeners();
     try {
+      if (revalidateAccess) {
+        await _pullSnapshot(checkTrial: true);
+        if (!snapshot.activated && liveTrialSeconds <= 0) {
+          companion = null;
+          companionHall = null;
+          return;
+        }
+      }
       companion = await _api.companionRefresh();
       companionHall = await _api.companionHallRefresh();
     } catch (error) {
-      hallError = readableHostError(error);
+      hallError = HallFailure.from(
+        error,
+        trialActive: !snapshot.activated && liveTrialSeconds > 0,
+      );
     } finally {
       hallLoading = false;
       notifyListeners();

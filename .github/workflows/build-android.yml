@@ -152,6 +152,35 @@ jobs:
           cp "$APK_DIR/app-arm64-v8a-release.apk" "ZhuoDazi-Android-${APP_VERSION}-arm64.apk"
           cp "$APK_DIR/app-armeabi-v7a-release.apk" "ZhuoDazi-Android-${APP_VERSION}-armv7.apk"
 
+      - name: Check packaged version and dialogue assets
+        if: github.event_name != 'pull_request'
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess, zipfile
+          from pathlib import Path
+
+          aapt = Path(os.environ["ANDROID_HOME"]) / "build-tools/36.0.0/aapt"
+          sources = {file.name: file.read_bytes() for file in Path("content-packs/互动词包").glob("*.json")}
+          assert sources, "No bundled dialogue packs"
+          for apk in sorted(Path(os.environ["APK_DIR"]).glob("*.apk")):
+              metadata = subprocess.check_output([str(aapt), "dump", "badging", str(apk)], text=True)
+              package = next(line for line in metadata.splitlines() if line.startswith("package:"))
+              fields = dict(re.findall(r"(\w+)='([^']*)'", package))
+              assert fields["name"] == "com.zhuodazi.android", package
+              assert fields["versionName"] == os.environ["APP_VERSION"], package
+              assert fields["versionCode"] == os.environ["APP_VERSION_CODE"], package
+              with zipfile.ZipFile(apk) as archive:
+                  names = set(archive.namelist())
+                  expected = {f"assets/word-packs/{name}" for name in sources}
+                  actual = {name for name in names if name.startswith("assets/word-packs/") and not name.endswith("/")}
+                  assert actual == expected, (actual, expected)
+                  for name, content in sources.items():
+                      assert archive.read(f"assets/word-packs/{name}") == content, name
+                      assert f"assets/{name}" not in names, "Dialogue still present at asset root"
+                  assert archive.read("assets/interaction_fallback.json"), "Missing offline interaction content"
+              print(f"{apk.name}: {fields['versionName']}+{fields['versionCode']}, {len(sources)} dialogue packs verified")
+          PY
+
       - name: Upload APK to Android draft release
         if: github.event_name != 'pull_request'
         env:

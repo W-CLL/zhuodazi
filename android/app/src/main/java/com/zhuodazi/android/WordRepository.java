@@ -5,46 +5,79 @@ import android.content.Context;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 final class WordRepository {
-    private final Context context;
+    private static final String ASSET_DIRECTORY = "word-packs";
+    private static final String DEFAULT_PACK = "互联网嘴替.json";
     private final SettingsStore settings;
     private final Random random = new Random();
+    private final Map<String, Map<String, List<String>>> bundledPacks = new LinkedHashMap<>();
 
     WordRepository(Context context, SettingsStore settings) {
-        this.context = context;
         this.settings = settings;
-        List<String> available = packs();
-        if (!available.isEmpty() && !available.contains(settings.wordPack())) {
-            settings.putString(SettingsStore.WORD_PACK, available.contains("互联网嘴替.json")
-                ? "互联网嘴替.json" : available.get(0));
-        }
-    }
-
-    List<String> packs() {
-        List<String> result = new ArrayList<>();
+        // Device vendors may add unrelated JSON assets at the APK root. Only our
+        // dedicated directory and validated dialogue documents form the catalog.
         try {
-            String[] names = context.getAssets().list("");
+            String[] names = context.getAssets().list(ASSET_DIRECTORY);
             if (names != null) {
                 Arrays.sort(names);
                 for (String name : names) {
-                    if (isWordPackAsset(name)) result.add(name);
+                    if (!isWordPackAsset(name)) continue;
+                    try (InputStream input = context.getAssets().open(ASSET_DIRECTORY + "/" + name)) {
+                        JSONObject root = new JSONObject(new String(
+                            NetworkClient.readLimited(input, 256 * 1024), StandardCharsets.UTF_8));
+                        Map<String, List<String>> reactions = readReactions(root);
+                        if (reactions != null) bundledPacks.put(name, reactions);
+                    } catch (Exception ignored) { }
                 }
             }
         } catch (Exception ignored) { }
-        return result;
+        restoreValidSelection();
+    }
+
+    List<String> packs() {
+        restoreValidSelection();
+        return new ArrayList<>(bundledPacks.keySet());
+    }
+
+    private void restoreValidSelection() {
+        if (!bundledPacks.containsKey(settings.wordPack())) {
+            String replacement = bundledPacks.containsKey(DEFAULT_PACK) ? DEFAULT_PACK
+                : bundledPacks.isEmpty() ? "" : bundledPacks.keySet().iterator().next();
+            if (!replacement.equals(settings.wordPack())) settings.putString(SettingsStore.WORD_PACK, replacement);
+        }
     }
 
     private static boolean isWordPackAsset(String name) {
-        if (!name.endsWith(".json") || name.equals("interaction_fallback.json")) return false;
-        return !name.contains("/") && !name.contains("\\");
+        return name.endsWith(".json") && !name.contains("/") && !name.contains("\\");
+    }
+
+    private static Map<String, List<String>> readReactions(JSONObject root) {
+        JSONObject source = root.optJSONObject("reactions");
+        if (source == null) return null;
+        Map<String, List<String>> reactions = new LinkedHashMap<>();
+        for (Iterator<String> keys = source.keys(); keys.hasNext();) {
+            String action = keys.next();
+            JSONArray values = source.optJSONArray(action);
+            if (values == null) return null;
+            List<String> lines = new ArrayList<>();
+            for (int index = 0; index < values.length(); index++) {
+                Object value = values.opt(index);
+                if (!(value instanceof String) || ((String) value).trim().isEmpty()) return null;
+                lines.add(((String) value).trim());
+            }
+            if (!lines.isEmpty()) reactions.put(action, lines);
+        }
+        return reactions.containsKey("idle") ? reactions : null;
     }
 
     String displayName(String file) {
@@ -52,24 +85,15 @@ final class WordRepository {
     }
 
     String reaction(String action, String fallback) {
+        restoreValidSelection();
         return reaction(settings.wordPack(), action, fallback);
     }
 
     String reaction(String pack, String action, String fallback) {
-        try (InputStream input = context.getAssets().open(pack);
-             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[4096];
-            int count;
-            while ((count = input.read(buffer)) >= 0) output.write(buffer, 0, count);
-            JSONObject root = new JSONObject(new String(output.toByteArray(), StandardCharsets.UTF_8));
-            JSONArray values = root.getJSONObject("reactions").optJSONArray(action);
-            if (values == null || values.length() == 0) {
-                values = root.getJSONObject("reactions").optJSONArray("idle");
-            }
-            if (values != null && values.length() > 0) {
-                return values.optString(random.nextInt(values.length()), fallback);
-            }
-        } catch (Exception ignored) { }
-        return fallback;
+        Map<String, List<String>> reactions = bundledPacks.get(pack);
+        if (reactions == null) return fallback;
+        List<String> values = reactions.get(action);
+        if (values == null) values = reactions.get("idle");
+        return values == null || values.isEmpty() ? fallback : values.get(random.nextInt(values.size()));
     }
 }

@@ -481,6 +481,60 @@ class HostFailure implements Exception {
   String toString() => message;
 }
 
+class HallFailure {
+  const HallFailure(
+    this.title,
+    this.message, {
+    this.revalidateAccess = false,
+    this.retryLabel = '重试',
+  });
+
+  final String title;
+  final String message;
+  final bool revalidateAccess;
+  final String retryLabel;
+
+  factory HallFailure.from(Object error, {required bool trialActive}) {
+    final platform = error is PlatformException ? error : null;
+    final details = platform?.details;
+    final status = details is Map ? details['status'] : null;
+    final serverCode = details is Map ? details['serverCode'] : null;
+    final legacyMessage = readableHostError(error);
+    // Older hosts returned permission failures with the NETWORK_ERROR code.
+    final trialHallUnavailable =
+        serverCode == 'COMPANION_ACTIVATION_REQUIRED' ||
+        ((serverCode == null || serverCode == '') &&
+            legacyMessage == '激活完整版本后可以使用搭子联机');
+    if (trialActive && trialHallUnavailable) {
+      return HallFailure('体验大厅暂未开放', '大厅服务尚未更新，请稍后再试。', revalidateAccess: true);
+    }
+    if (status == 403 || trialHallUnavailable) {
+      return const HallFailure(
+        '暂时无法使用大厅',
+        '这次访问未获允许，请稍后重试。',
+        revalidateAccess: true,
+      );
+    }
+    if (status == 401 ||
+        platform?.code == 'PREMIUM_REQUIRED' ||
+        (status == null && legacyMessage.contains('激活已失效'))) {
+      return const HallFailure('需要重新验证', '请重试以更新使用资格。', revalidateAccess: true);
+    }
+    if (status == 429) {
+      return const HallFailure('操作有点频繁', '稍等一会儿再试。');
+    }
+    if (status != null || platform?.code == 'HTTP_ERROR') {
+      return const HallFailure('大厅暂时不可用', '稍后再来看看。');
+    }
+    if (platform?.code == 'NETWORK_ERROR' ||
+        legacyMessage.contains('网络') ||
+        legacyMessage.contains('离线')) {
+      return const HallFailure('暂时没连上大厅', '请检查网络后重试。', retryLabel: '重新连接');
+    }
+    return const HallFailure('大厅暂时不可用', '稍后再来看看。');
+  }
+}
+
 String readableHostError(Object error) {
   if (error is PlatformException) return error.message ?? '操作失败，请稍后重试';
   if (error is HostFailure) return error.message;

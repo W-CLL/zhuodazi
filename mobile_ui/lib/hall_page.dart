@@ -144,18 +144,18 @@ class _HallPageState extends State<HallPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '暂时没连上大厅',
-                    style: TextStyle(fontWeight: FontWeight.w700),
+                  Text(
+                    controller.hallError!.title,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 6),
-                  Text(controller.hallError!),
+                  Text(controller.hallError!.message),
                   TextButton.icon(
                     onPressed: controller.hallLoading
                         ? null
                         : controller.refreshCompanionHall,
                     icon: const Icon(Icons.refresh),
-                    label: const Text('重新连接'),
+                    label: Text(controller.hallError!.retryLabel),
                   ),
                 ],
               ),
@@ -270,7 +270,9 @@ class _HallPageState extends State<HallPage> {
               ],
             ),
             const SizedBox(height: 8),
-            if (people.isEmpty && !controller.hallLoading)
+            if (people.isEmpty &&
+                !controller.hallLoading &&
+                controller.hallError == null)
               const Panel(
                 child: Column(
                   children: [

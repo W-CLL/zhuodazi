@@ -629,6 +629,11 @@ public final class FlutterMainActivity extends FlutterActivity {
             try {
                 Object value = operation.get();
                 runOnUiThread(() -> result.success(value));
+            } catch (NetworkClient.HttpFailure error) {
+                Map<String, Object> details = new LinkedHashMap<>();
+                details.put("status", error.status);
+                details.put("serverCode", error.serverCode);
+                runOnUiThread(() -> result.error("HTTP_ERROR", safeMessage(error), details));
             } catch (Exception error) {
                 runOnUiThread(() -> result.error("NETWORK_ERROR", safeMessage(error), null));
             }

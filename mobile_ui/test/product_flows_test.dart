@@ -16,6 +16,9 @@ class ProductHost extends HostApi {
   bool trial = true;
   bool failHall = false;
   bool populated = true;
+  Object? profileFailure;
+  Object? hallFailure;
+  bool expireTrialOnCheck = false;
   String? sentPet;
   String? sentTarget;
   int sends = 0;
@@ -65,6 +68,7 @@ class ProductHost extends HostApi {
   @override
   Future<HostSnapshot> checkTrial() async {
     calls.add('checkTrial');
+    if (expireTrialOnCheck) trial = false;
     return state;
   }
 
@@ -79,12 +83,14 @@ class ProductHost extends HostApi {
   @override
   Future<Map<String, dynamic>> companionRefresh() async {
     calls.add('profile');
+    if (profileFailure != null) throw profileFailure!;
     return profile;
   }
 
   @override
   Future<Map<String, dynamic>> companionHallRefresh() async {
     calls.add('hall');
+    if (hallFailure != null) throw hallFailure!;
     if (failHall) throw const HostFailure('暂时离线，请稍后重试');
     return {
       'enabled': joined,
@@ -256,7 +262,126 @@ void main() {
       await tester.tap(find.byTooltip('刷新大厅'));
       await tester.pumpAndSettle();
       expect(find.text('暂时没连上大厅'), findsOneWidget);
+      expect(find.text('请检查网络后重试。'), findsOneWidget);
       expect(find.text('重新连接'), findsOneWidget);
+      expect(find.text('还没有其他人在线'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'legacy trial rejection is not shown as a network or activation problem',
+    (tester) async {
+      final host = ProductHost()
+        ..profileFailure = PlatformException(
+          code: 'NETWORK_ERROR',
+          message: '激活完整版本后可以使用搭子联机',
+        );
+      await pump(tester, host);
+      await showHall(tester);
+      expect(find.text('体验大厅暂未开放'), findsOneWidget);
+      expect(find.text('大厅服务尚未更新，请稍后再试。'), findsOneWidget);
+      expect(find.text('激活完整版本后可以使用搭子联机'), findsNothing);
+      expect(find.text('暂时没连上大厅'), findsNothing);
+      expect(find.text('查看激活方式'), findsNothing);
+      expect(host.calls.where((call) => call == 'hall'), isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'permission retry verifies trial and recovers without exposing server text',
+    (tester) async {
+      final host = ProductHost()
+        ..profileFailure = PlatformException(
+          code: 'HTTP_ERROR',
+          message: 'Forbidden: internal_permission_gate',
+          details: {
+            'status': 403,
+            'serverCode': 'COMPANION_ACTIVATION_REQUIRED',
+          },
+        );
+      await pump(tester, host);
+      await showHall(tester);
+      expect(find.text('体验大厅暂未开放'), findsOneWidget);
+      expect(find.textContaining('internal_permission_gate'), findsNothing);
+      expect(find.text('暂时没连上大厅'), findsNothing);
+      host.profileFailure = null;
+      host.calls.clear();
+      await tester.tap(find.text('重试'));
+      await tester.pumpAndSettle();
+      expect(host.calls.indexOf('checkTrial'), greaterThanOrEqualTo(0));
+      expect(
+        host.calls.indexOf('checkTrial'),
+        lessThan(host.calls.indexOf('profile')),
+      );
+      expect(host.calls, contains('hall'));
+      expect(find.text('我愿意加入大厅'), findsOneWidget);
+      expect(find.text('体验大厅暂未开放'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'other access rejections do not claim trial hall support is missing',
+    (tester) async {
+      final host = ProductHost()
+        ..profileFailure = PlatformException(
+          code: 'HTTP_ERROR',
+          message: 'Device disabled',
+          details: {'status': 403, 'serverCode': 'DEVICE_DISABLED'},
+        );
+      await pump(tester, host);
+      await showHall(tester);
+      expect(find.text('暂时无法使用大厅'), findsOneWidget);
+      expect(find.text('体验大厅暂未开放'), findsNothing);
+      expect(find.text('暂时没连上大厅'), findsNothing);
+      expect(find.text('Device disabled'), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('revalidation that expires a trial stops hall requests', (
+    tester,
+  ) async {
+    final host = ProductHost()
+      ..profileFailure = PlatformException(
+        code: 'HTTP_ERROR',
+        message: 'Trial expired',
+        details: {'status': 401},
+      );
+    await pump(tester, host);
+    await showHall(tester);
+    expect(find.text('需要重新验证'), findsOneWidget);
+    host.expireTrialOnCheck = true;
+    host.calls.clear();
+    await tester.tap(find.text('重试'));
+    await tester.pumpAndSettle();
+    expect(host.calls, contains('checkTrial'));
+    expect(
+      host.calls.where((call) => call == 'profile' || call == 'hall'),
+      isEmpty,
+    );
+    expect(find.text('完整体验已结束'), findsOneWidget);
+    expect(find.text('我愿意加入大厅'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'server outages do not blame the network or reveal technical text',
+    (tester) async {
+      final host = ProductHost()
+        ..hallFailure = PlatformException(
+          code: 'HTTP_ERROR',
+          message: 'upstream timeout at http://internal-service:3000',
+          details: {'status': 503},
+        );
+      await pump(tester, host);
+      await showHall(tester);
+      expect(find.text('大厅暂时不可用'), findsOneWidget);
+      expect(find.text('稍后再来看看。'), findsOneWidget);
+      expect(find.textContaining('internal-service'), findsNothing);
+      expect(find.text('暂时没连上大厅'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -294,7 +419,7 @@ void main() {
               of: find.byType(InteractionPage),
               matching: find.byType(Scrollable),
             )
-          .first,
+            .first,
       );
       await Scrollable.ensureVisible(
         tester.element(find.text('暂停打扰 1 小时')),

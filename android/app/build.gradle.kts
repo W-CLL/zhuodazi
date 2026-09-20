@@ -22,6 +22,14 @@ val prepareBundledPetAssets by tasks.registering(Sync::class) {
     into(layout.buildDirectory.dir("generated/bundledPetAssets"))
 }
 
+val prepareBundledWordAssets by tasks.registering(Sync::class) {
+    from("../../content-packs/互动词包") {
+        include("*.json")
+        into("word-packs")
+    }
+    into(layout.buildDirectory.dir("generated/bundledWordAssets"))
+}
+
 dependencies {
     implementation(project(":flutter"))
     implementation("androidx.core:core:1.16.0")
@@ -66,13 +74,13 @@ android {
         applicationId = "com.zhuodazi.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20
+        versionCode = 21
         versionName = "1.4.0"
     }
 
     sourceSets["main"].assets.srcDirs(
         layout.buildDirectory.dir("generated/bundledPetAssets"),
-        "../../content-packs/互动词包"
+        layout.buildDirectory.dir("generated/bundledWordAssets")
     )
 
     compileOptions {
@@ -111,5 +119,5 @@ android {
 }
 
 tasks.named("preBuild").configure {
-    dependsOn(prepareBundledPetAssets)
+    dependsOn(prepareBundledPetAssets, prepareBundledWordAssets)
 }

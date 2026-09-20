@@ -33,7 +33,7 @@ final class NetworkClient {
         HttpResult result = execute(context, method, path, payload,
             payload == null ? null : "application/json; charset=utf-8", licenses, auth, maximumResponseBytes);
         if (result.status < 200 || result.status >= 300) {
-            throw new IOException(errorMessage(result.body, result.status));
+            throw httpFailure(result);
         }
         try { return new JSONObject(new String(result.body, StandardCharsets.UTF_8)); }
         catch (Exception error) { throw new IOException("服务返回的数据无效", error); }
@@ -68,7 +68,7 @@ final class NetworkClient {
     static byte[] request(Context context, String method, String path, byte[] body, String contentType,
                           LicenseService licenses, Auth auth, int maximumResponseBytes) throws Exception {
         HttpResult result = execute(context, method, path, body, contentType, licenses, auth, maximumResponseBytes);
-        if (result.status < 200 || result.status >= 300) throw new IOException(errorMessage(result.body, result.status));
+        if (result.status < 200 || result.status >= 300) throw httpFailure(result);
         return result.body;
     }
 
@@ -127,6 +127,26 @@ final class NetworkClient {
         HttpResult(int status, byte[] body) {
             this.status = status;
             this.body = body;
+        }
+    }
+
+    static HttpFailure httpFailure(HttpResult result) {
+        String serverCode = "";
+        try {
+            JSONObject body = new JSONObject(new String(result.body, StandardCharsets.UTF_8));
+            serverCode = body.optString("code", "");
+        } catch (Exception ignored) { }
+        return new HttpFailure(result.status, serverCode, errorMessage(result.body, result.status));
+    }
+
+    static final class HttpFailure extends IOException {
+        final int status;
+        final String serverCode;
+
+        HttpFailure(int status, String serverCode, String message) {
+            super(message);
+            this.status = status;
+            this.serverCode = serverCode;
         }
     }
 }

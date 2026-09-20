@@ -12,7 +12,7 @@ Windows、macOS 和 Android 各自沿用已有版本序列。相同功能同时�
 
 版本基线以最后正式发布为准；同一未发布版本在本地验收中修复缺陷，不再额外增加用户版本。Android 上一仓库正式基线为 v1.3.11（versionCode 15）；v1.3.12/code 16、误设的 v3.3.0/code 17 都只是本地待验收包，不作为正式发布版本。
 
-Android 的 `versionCode` 为独立、持续递增的安装编号，每次交付新的验收包或正式版本都加 1。本轮为 20，用户版本仍为待发布的 v1.4.0。code 18、19 为历史本地验收包。覆盖安装必须同时满足相同包名、相同签名；远程稳定签名包与本地 Debug 应用分开。Debug 使用独立包名和 `-debug` 后缀，不覆盖正式应用。
+Android 的 `versionCode` 为独立、持续递增的安装编号，每次交付新的验收包或正式版本都加 1。本轮为 21，用户版本仍为待发布的 v1.4.0。code 18、19 为历史本地验收包，code 20 为上一轮远程验收包。覆盖安装必须同时满足相同包名、相同签名；远程稳定签名包与本地 Debug 应用分开。Debug 使用独立包名和 `-debug` 后缀，不覆盖正式应用。
 
 Android 版本源为 `android/app/build.gradle.kts`；`mobile_ui/pubspec.yaml` 的版本与构建号必须同步。`scripts/check-release-consistency.py` 检查两者及对应更新说明，CI 在打包前执行。更新说明按平台和用户版本命名，使用用户能看懂的变化描述。
 
