@@ -19,7 +19,7 @@
 
 ## 产品规则与本次改动
 
-当前准备版本为 Windows/macOS **v3.3.0**、Android **v1.4.0**（versionCode 22），尚未发布。新增可跳过、可继续的四步首次体验；本地互动与短剧可离线试看，已有用户升级只看到一次可关闭提示。Android 互动结束后自动恢复操作，小菜单避开桌宠，双宠剧场固定在屏幕上方、轮流接话并留足阅读时间；桌面菜单采用“桌宠小窝”“灵感口袋”等统一名称。详见 [实施基线](docs/product-experience/2026-09-20-plan.md)、[版本递增规则](docs/releases/versioning.md)、[桌面更新说明](docs/releases/desktop-3.3.0.md) 与 [Android 更新说明](docs/releases/android-1.4.0.md)。
+当前发布版本为 Windows/macOS **v3.3.0**、Android **v1.4.0**（versionCode 22）。新增可跳过、可继续的四步首次体验；本地互动与短剧可离线试看，已有用户升级只看到一次可关闭提示。Android 互动结束后自动恢复操作，小菜单避开桌宠，双宠剧场固定在屏幕上方、轮流接话并留足阅读时间；桌面菜单采用“桌宠小窝”“灵感口袋”等统一名称。详见 [实施基线](docs/product-experience/2026-09-20-plan.md)、[版本递增规则](docs/releases/versioning.md)、[桌面更新说明](docs/releases/desktop-3.3.0.md) 与 [Android 更新说明](docs/releases/android-1.4.0.md)。
 
 参见 [2026-09-18 实施基线](docs/product-experience/2026-09-18-plan.md)、[实施对照与手动验收](docs/product-experience/2026-09-18-acceptance.md) 与 [当前功能说明](marketing/桌搭子功能点说明.md)。
 

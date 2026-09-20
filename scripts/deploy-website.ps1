@@ -8,7 +8,9 @@ $ErrorActionPreference = "Stop"
 $repoRoot = (git rev-parse --show-toplevel).Trim()
 $commit = (git -C $repoRoot rev-parse --short=12 HEAD).Trim()
 $deploymentId = "$commit-$([DateTime]::UtcNow.ToString('yyyyMMddHHmmss'))"
-$temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "deskpet-site-$deploymentId"
+$systemTemporaryRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd(
+    [System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$temporaryRoot = Join-Path $systemTemporaryRoot "deskpet-site-$deploymentId"
 $sourceRoot = Join-Path $temporaryRoot "source"
 $sourceArchive = Join-Path $temporaryRoot "source.tar"
 $siteArchive = Join-Path $temporaryRoot "site.tar.gz"
@@ -17,12 +19,27 @@ $target = "$UserName@$HostName"
 
 try {
     New-Item -ItemType Directory -Path $sourceRoot -Force | Out-Null
-    git -C $repoRoot archive --format=tar -o $sourceArchive HEAD -- website scripts/check-release-consistency.py windows/ZhuoDazi/ZhuoDazi.csproj macos/Info.plist
+    $sourcePaths = @(
+        'website',
+        'scripts/check-release-consistency.py',
+        'windows/ZhuoDazi/ZhuoDazi.csproj',
+        'macos/Info.plist',
+        'android/app/build.gradle.kts',
+        'mobile_ui/pubspec.yaml',
+        'docs/releases'
+    )
+    git -C $repoRoot archive --format=tar -o $sourceArchive HEAD -- @sourcePaths
     if ($LASTEXITCODE -ne 0) { throw "Unable to archive HEAD." }
     tar -xf $sourceArchive -C $sourceRoot
     if ($LASTEXITCODE -ne 0) { throw "Unable to extract source archive." }
 
-    python (Join-Path $sourceRoot "scripts\check-release-consistency.py")
+    $versionCheck = Join-Path $sourceRoot "scripts\check-release-consistency.py"
+    if (Get-Command py -ErrorAction SilentlyContinue) {
+        py -3 $versionCheck
+    }
+    else {
+        python $versionCheck
+    }
     if ($LASTEXITCODE -ne 0) { throw "Release metadata check failed." }
     $websiteRoot = Join-Path $sourceRoot "website"
     if (Get-Command npm -ErrorAction SilentlyContinue) {
@@ -104,6 +121,13 @@ printf 'DEPLOYED=%s\nPREVIOUS=%s\n' "$deployment_id" "$previous"
 }
 finally {
     if (Test-Path -LiteralPath $temporaryRoot) {
-        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+        $resolvedTemporaryRoot = [System.IO.Path]::GetFullPath($temporaryRoot)
+        $temporaryParent = [System.IO.Directory]::GetParent($resolvedTemporaryRoot).FullName
+        if (-not [string]::Equals($temporaryParent, $systemTemporaryRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+            [System.IO.Path]::GetFileName($resolvedTemporaryRoot) -ne "deskpet-site-$deploymentId" -or
+            ((Get-Item -LiteralPath $resolvedTemporaryRoot).Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw "Refusing to clean a directory outside this deployment's temporary workspace."
+        }
+        Remove-Item -LiteralPath $resolvedTemporaryRoot -Recurse -Force
     }
 }
