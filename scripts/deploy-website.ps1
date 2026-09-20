@@ -116,7 +116,8 @@ rm -f -- "$archive"
 printf 'DEPLOYED=%s\nPREVIOUS=%s\n' "$deployment_id" "$previous"
 '@
 
-    $remoteScript | ssh -i $IdentityFile -o BatchMode=yes -o ConnectTimeout=15 $target "timeout --foreground --signal=TERM --kill-after=10s 180s bash -s -- '$deploymentId'"
+    # PowerShell can write CRLF to native stdin on Windows; Bash requires LF.
+    $remoteScript | ssh -i $IdentityFile -o BatchMode=yes -o ConnectTimeout=15 $target "tr -d '\r' | timeout --foreground --signal=TERM --kill-after=10s 180s bash -s -- '$deploymentId'"
     if ($LASTEXITCODE -ne 0) { throw "Remote website deployment failed." }
 }
 finally {
