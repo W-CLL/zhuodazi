@@ -170,14 +170,19 @@ jobs:
               assert fields["versionName"] == os.environ["APP_VERSION"], package
               assert fields["versionCode"] == os.environ["APP_VERSION_CODE"], package
               with zipfile.ZipFile(apk) as archive:
-                  names = set(archive.namelist())
+                  # Android reads UTF-8 names even when ZIP writers omit its flag.
+                  entries = {
+                      (entry.filename if entry.flag_bits & 0x800 else entry.filename.encode("cp437").decode("utf-8")): entry
+                      for entry in archive.infolist()
+                  }
+                  names = set(entries)
                   expected = {f"assets/word-packs/{name}" for name in sources}
                   actual = {name for name in names if name.startswith("assets/word-packs/") and not name.endswith("/")}
                   assert actual == expected, (actual, expected)
                   for name, content in sources.items():
-                      assert archive.read(f"assets/word-packs/{name}") == content, name
+                      assert archive.read(entries[f"assets/word-packs/{name}"]) == content, name
                       assert f"assets/{name}" not in names, "Dialogue still present at asset root"
-                  assert archive.read("assets/interaction_fallback.json"), "Missing offline interaction content"
+                  assert archive.read(entries["assets/interaction_fallback.json"]), "Missing offline interaction content"
               print(f"{apk.name}: {fields['versionName']}+{fields['versionCode']}, {len(sources)} dialogue packs verified")
           PY
 
