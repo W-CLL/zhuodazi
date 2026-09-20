@@ -1,0 +1,105 @@
+{
+  "name": "默认桌宠",
+  "files": [
+    {
+      "file": "Kitty1.gif",
+      "sha256": "b006a076ac331b47580c997129c3c374ea2d5a2d029d5db60c653d4c5bf6d27d",
+      "size": 210101
+    },
+    {
+      "file": "Kitty2.gif",
+      "sha256": "d98bdee34904275ce843875517591d356635a892f5611740963ec68629f8f105",
+      "size": 110069
+    },
+    {
+      "file": "Kitty3.gif",
+      "sha256": "ba10d2a0e2a5268ab3aef6f6c8757917c17d4b9d845e09d34b923e4332999a2a",
+      "size": 141429
+    },
+    {
+      "file": "一二布布1.gif",
+      "sha256": "fe391dbf3010c397365fa7eb226ebbb3f61c8a145a69d50b6d0f8bef0ee40e2a",
+      "size": 107544
+    },
+    {
+      "file": "一二布布2.gif",
+      "sha256": "153356e907f9c50fd776b0e55d1a6e6e55624776a6658ecf2642728f6966ae04",
+      "size": 140124
+    },
+    {
+      "file": "一二布布3.gif",
+      "sha256": "ba507b2a70b00ac93b8840b0b74d26945b568e26b9aeec8ea3a88c1804a42f8e",
+      "size": 138323
+    },
+    {
+      "file": "一二布布4.gif",
+      "sha256": "a070223127cff72e6e0d5b3c8003001c7dcbd44767be7e33bbf4778f778e1657",
+      "size": 89174
+    },
+    {
+      "file": "一二布布5.gif",
+      "sha256": "71ba024f0bba25177494b95cc98029b348173e8dcd896bca73f42b115cc256a3",
+      "size": 99919
+    },
+    {
+      "file": "线条小狗1.gif",
+      "sha256": "62886140f9d71692ff8b832fdeea9740e4af784e7519ae02f5fe6a446bdc211f",
+      "size": 828775
+    },
+    {
+      "file": "线条小狗2.gif",
+      "sha256": "1812611cba931ca16042e6ab1ad03df38bb1cf756824fa734881d871a6fcc401",
+      "size": 893092
+    },
+    {
+      "file": "线条小狗3.gif",
+      "sha256": "eaa693989b0e67fc4903f16d4fdf35d189b5239ad99430202dd192d45861b544",
+      "size": 876797
+    },
+    {
+      "file": "线条小狗4.gif",
+      "sha256": "eb827f24c5ee83672e238a7a1acaaabf049dafd2b7e3de255fff25264ed7bc3f",
+      "size": 791108
+    },
+    {
+      "file": "维尼1.gif",
+      "sha256": "4960531b6a0f75e6b66b199bdb50fbd6990441c9691bff76c5b65cc6a76db955",
+      "size": 30206
+    },
+    {
+      "file": "维尼2.gif",
+      "sha256": "59de9dd985305721e47ba8e468dd8cae7e214881189747ed7ec2f8c93fcdbb84",
+      "size": 7616
+    },
+    {
+      "file": "罗小黑1.gif",
+      "sha256": "69fee79945328bb2c4970f99167294582a83635002dccae76c8ea979f8a48dee",
+      "size": 402508
+    },
+    {
+      "file": "罗小黑2.gif",
+      "sha256": "8695a4c9fd7f51263273a49aacdaac12a4b0adce8a2510972fc18826ba151991",
+      "size": 526113
+    },
+    {
+      "file": "罗小黑3.gif",
+      "sha256": "9f9fbd937dd3545e0a7056082edafab81d51ab75dae8cd865e3c306330eee112",
+      "size": 50949
+    },
+    {
+      "file": "蜜桃喵1.gif",
+      "sha256": "caad321c387e272f486c3f74bb52b7278d3f4243cc79c49e6ab9e65d799e7515",
+      "size": 70521
+    },
+    {
+      "file": "蜜桃喵2.gif",
+      "sha256": "c401939a6dbedc0a77d49d94cdda710e9c5589c4e7ceab38a287781cda90475f",
+      "size": 103134
+    },
+    {
+      "file": "蜜桃喵3.gif",
+      "sha256": "daae012c28ac95ed8e6be1d1648a53743699c8185b503e8ff3efba8449bbd891",
+      "size": 41159
+    }
+  ]
+}

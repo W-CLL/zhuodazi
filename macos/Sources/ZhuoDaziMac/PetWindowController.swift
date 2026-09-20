@@ -44,7 +44,7 @@ final class PetWindowController {
         if settings.pets.contains(where: { $0.id == settings.activePetId }) { source = "我的 GIF" }
         else if hasPremiumAccess, let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }),
                 let url = currentPetURL, url.path.hasPrefix(library.path + "/") { source = library.name }
-        else { source = "内置图鉴" }
+        else { source = "默认桌宠" }
         return "\(name) · 来自\(source)"
     }
     var contextMenu: NSMenu? {
@@ -1112,11 +1112,9 @@ final class PetWindowController {
 
     private static func builtInPetURLs() -> [URL] {
         let sourceRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let bundledPets = Bundle.main.resourceURL?.appendingPathComponent("Pets", isDirectory: true)
-        let bundledLibrary = bundledPets?.appendingPathComponent("yuexinmiao", isDirectory: true)
-        let sharedLibrary = sourceRoot.deletingLastPathComponent().appendingPathComponent("windows/assets/pet-libraries/yuexinmiao", isDirectory: true)
-        let fallback = sourceRoot.appendingPathComponent("Resources/Pets", isDirectory: true)
-        for candidate in [bundledLibrary, sharedLibrary, bundledPets, fallback].compactMap({ $0 }) {
+        let bundledLibrary = Bundle.main.resourceURL?.appendingPathComponent("Pets/default", isDirectory: true)
+        let sharedLibrary = sourceRoot.deletingLastPathComponent().appendingPathComponent("assets/default-pets", isDirectory: true)
+        for candidate in [bundledLibrary, sharedLibrary].compactMap({ $0 }) {
             let urls = scanPetURLs(in: candidate)
             if !urls.isEmpty { return urls }
         }

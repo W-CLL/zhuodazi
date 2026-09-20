@@ -2446,7 +2446,7 @@ class PetStage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  pet?.name ?? '月薪喵',
+                  pet?.name ?? '默认桌宠',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(

@@ -10,7 +10,7 @@ public sealed class GifLibraryService
     private string[] _pool = [];
 
     public string BuiltInDirectory { get; } = Path.Combine(
-        AppContext.BaseDirectory, "resources", "pet-libraries", "yuexinmiao");
+        AppContext.BaseDirectory, "resources", "pet-libraries", "default");
 
     public IReadOnlyList<string> Scan(string? customDirectory)
     {

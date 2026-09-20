@@ -42,11 +42,18 @@ internal static class Program
         System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
         using var controller = new AppController(license, new SettingsStore(directory));
         controller.Settings.RemoteDefaultsApplied = true;
+        if (args.Contains("--library-check"))
+        {
+            CheckDefaultLibraryUpgrade(controller, directory);
+            Console.WriteLine("Default library upgrade checks passed.");
+            app.Shutdown(0);
+            return;
+        }
         controller.Settings.RandomPetEnabled = false;
         var pet = new PetDefinition
         {
-            Id = "offline-preview-pet", Name = "月薪喵 · 下班倒计时",
-            Path = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "yuexinmiao", "017-90d741d6.gif")
+            Id = "offline-preview-pet", Name = "Kitty1 · 默认桌宠",
+            Path = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "default", "Kitty1.gif")
         };
         controller.Settings.Pets.Add(pet);
         controller.Settings.ActivePetId = pet.Id;
@@ -89,6 +96,49 @@ internal static class Program
         typeof(AppController).GetMethod("CreateTray", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(controller, null);
         // The settings close button hides the window. Exit through the real tray command.
         app.Run();
+    }
+
+    private static void CheckDefaultLibraryUpgrade(AppController controller, string directory)
+    {
+        var library = new GifLibraryService();
+        var defaults = library.Scan(null);
+        if (defaults.Count != 20) throw new InvalidOperationException("The default collection must include the 20 selected GIFs.");
+        foreach (var path in defaults) GifImportValidator.Validate(path);
+
+        // Simulate a portable upgrade that leaves the old collection beside the new one.
+        var legacyDirectory = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "yuexinmiao");
+        Directory.CreateDirectory(legacyDirectory);
+        var legacyPet = Path.Combine(legacyDirectory, $"upgrade-test-{Guid.NewGuid():N}.gif");
+        File.Copy(defaults[0], legacyPet);
+        var refresh = typeof(AppController).GetMethod("RefreshLibrary", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        try
+        {
+            controller.Settings.RandomPetEnabled = false;
+            controller.Settings.SelectedLibraryPetPath = legacyPet;
+            refresh.Invoke(controller, [true]);
+            var replacement = controller.CurrentPetPath();
+            if (replacement is null || !defaults.Contains(replacement) || controller.Settings.RandomPetEnabled)
+                throw new InvalidOperationException("A pinned old pet must migrate to the new collection without enabling rotation.");
+            if (library.Scan(null).Contains(legacyPet) || controller.LibraryCount != 20)
+                throw new InvalidOperationException("Legacy installation files leaked into the new default collection.");
+            var saved = new SettingsStore(directory).Load();
+            if (saved.SelectedLibraryPetPath != replacement || saved.RandomPetEnabled)
+                throw new InvalidOperationException("The replacement pet and disabled rotation must survive restart.");
+
+            // A valid pinned default and an explicitly imported GIF must remain selected.
+            refresh.Invoke(controller, [true]);
+            if (controller.CurrentPetPath() != replacement)
+                throw new InvalidOperationException("Refreshing the library changed the user's valid pinned pet.");
+            var importedPath = Path.Combine(directory, "my-pet.gif");
+            File.Copy(defaults[1], importedPath);
+            controller.Settings.Pets.Add(new PetDefinition { Id = "imported", Name = "我的桌宠", Path = importedPath });
+            controller.Settings.ActivePetId = "imported";
+            controller.Settings.SelectedLibraryPetPath = null;
+            refresh.Invoke(controller, [true]);
+            if (controller.CurrentPetPath() != importedPath || !File.Exists(importedPath))
+                throw new InvalidOperationException("Replacing built-in pets must preserve the user's imported GIF.");
+        }
+        finally { File.Delete(legacyPet); }
     }
 
     private static async Task RenderSettings(AppController controller, string output)

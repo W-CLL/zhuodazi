@@ -115,7 +115,7 @@ class DesktopReleaseTests(unittest.TestCase):
         result = subprocess.CompletedProcess([], 0, "windows/assets/app-icon.png\n", "")
         with patch.object(releases.subprocess, "run", return_value=result) as run:
             self.assertEqual(releases.changed_files("macos", "tag", "target"), "windows/assets/app-icon.png")
-        self.assertEqual(run.call_args.args[0][-2:], ["macos", "windows/assets"])
+        self.assertEqual(run.call_args.args[0][-3:], ["macos", "windows/assets", "assets/default-pets"])
 
 
 if __name__ == "__main__":

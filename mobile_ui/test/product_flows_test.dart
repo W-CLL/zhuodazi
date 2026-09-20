@@ -33,7 +33,7 @@ class ProductHost extends HostApi {
     'autoCheckUpdates': false,
     'activePet': 'preview-pet',
     'pets': [
-      {'id': 'preview-pet', 'name': '月薪喵'},
+      {'id': 'preview-pet', 'name': '默认桌宠'},
     ],
     'dailySpeechEnabled': settings[settingDailySpeech] ?? true,
     'quietUntilUtc': settings[settingQuietUntil] ?? 0,

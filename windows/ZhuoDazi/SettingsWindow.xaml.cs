@@ -173,7 +173,7 @@ public partial class SettingsWindow : Window
 
         var libraryItems = new List<LibraryListItem>
         {
-            new(null, "月薪喵", "内置桌宠图鉴", true)
+            new(null, "默认桌宠", "内置桌宠图鉴", true)
         };
         libraryItems.AddRange(settings.Libraries.Select(item => new LibraryListItem(
             item.Id, item.Name, item.Path, false)));

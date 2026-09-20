@@ -2,22 +2,10 @@ plugins {
     id("com.android.application")
 }
 
-val bundledPetFiles = listOf(
-    "001-76dec374.gif",
-    "005-5473df2b.gif",
-    "006-a3bde93e.gif",
-    "008-49b6477d.gif",
-    "009-a42a3c90.gif",
-    "010-6caffcc9.gif",
-    "011-25ce073b.gif",
-    "012-aeeaaa24.gif",
-    "013-cac05935.gif",
-    "014-7175a815.gif"
-)
-
 val prepareBundledPetAssets by tasks.registering(Sync::class) {
-    from("../../macos/Resources/Pets") {
-        include(bundledPetFiles)
+    from("../../assets/default-pets") {
+        include("*.gif")
+        into("default-pets")
     }
     into(layout.buildDirectory.dir("generated/bundledPetAssets"))
 }
@@ -74,7 +62,7 @@ android {
         applicationId = "com.zhuodazi.android"
         minSdk = 28
         targetSdk = 36
-        versionCode = 21
+        versionCode = 22
         versionName = "1.4.0"
     }
 

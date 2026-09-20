@@ -69,8 +69,8 @@ public sealed partial class AppController : IDisposable
     public InteractionWordPackDefinition? ActiveInteractionWordPack => HasPremiumAccess
         ? Settings.InteractionWordPacks.FirstOrDefault(item => item.Id == Settings.ActiveInteractionWordPackId)
         : null;
-    public string LibraryName => ActiveLibrary?.Name ?? "月薪喵";
-    public string LibraryPath => ActiveLibrary?.Path ?? "内置：月薪喵";
+    public string LibraryName => ActiveLibrary?.Name ?? "默认桌宠";
+    public string LibraryPath => ActiveLibrary?.Path ?? "内置：默认桌宠";
     public int LibraryCount => _libraryFiles.Count;
     public int InteractionWordCount => ActiveInteractionWordPack?.WordCount ?? 0;
     public string LicenseSummary => _licenses.IsActivated ? _licenses.Summary
@@ -351,7 +351,8 @@ public sealed partial class AppController : IDisposable
     {
         if (Settings.RandomPetEnabled) return _activeLibraryPetPath;
         if (Settings.SelectedLibraryPetPath is { } selected && _libraryFiles.Contains(selected, StringComparer.OrdinalIgnoreCase) && File.Exists(selected)) return selected;
-        return Settings.Pets.FirstOrDefault(item => item.Id == Settings.ActivePetId)?.Path;
+        var customPet = Settings.Pets.FirstOrDefault(item => item.Id == Settings.ActivePetId)?.Path;
+        return File.Exists(customPet) ? customPet : _activeLibraryPetPath;
     }
 
     public string GetInteractionWord(string action, string fallback)
@@ -898,6 +899,16 @@ public sealed partial class AppController : IDisposable
         _libraryFiles = _library.Scan(ActiveLibrary?.Path);
         if (pickNew || !_libraryFiles.Contains(_activeLibraryPetPath, StringComparer.OrdinalIgnoreCase))
             _activeLibraryPetPath = _library.Pick(_libraryFiles, _activeLibraryPetPath);
+        // A pinned built-in GIF may disappear when the default collection changes.
+        // Keep the user's rotation preference and persist a valid replacement.
+        if (Settings.ActiveLibraryId is null
+            && Settings.SelectedLibraryPetPath is { } selected
+            && !_libraryFiles.Contains(selected, StringComparer.OrdinalIgnoreCase)
+            && _activeLibraryPetPath is not null)
+        {
+            Settings.SelectedLibraryPetPath = _activeLibraryPetPath;
+            _store.Save(Settings);
+        }
     }
 
     private void RestartRandomTimer()

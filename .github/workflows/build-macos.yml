@@ -53,6 +53,8 @@ jobs:
         run: |
           file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
           codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
+          python3 scripts/check-default-pets.py --root "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/Resources/Pets/default"
+          test ! -d "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/Resources/Pets/yuexinmiao"
 
       - name: Upload macOS package to platform draft release
         if: github.event_name != 'pull_request'

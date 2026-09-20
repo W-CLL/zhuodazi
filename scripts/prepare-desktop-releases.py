@@ -40,7 +40,7 @@ def expected_assets(platform, version):
 
 
 def changed_files(platform, tag, target):
-    paths = ["windows"] if platform == "windows" else ["macos", "windows/assets"]
+    paths = ["windows", "assets/default-pets"] if platform == "windows" else ["macos", "windows/assets", "assets/default-pets"]
     result = subprocess.run(
         ["git", "diff", "--name-only", tag, target, "--", *paths],
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", check=True,

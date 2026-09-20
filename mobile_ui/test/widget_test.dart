@@ -26,7 +26,7 @@ void main() {
     'interactionSyncError': '',
     'interactionLastSyncAt': 0,
     'pets': <Map<String, String>>[
-      <String, String>{'id': '001', 'name': '月薪喵'},
+      <String, String>{'id': '001', 'name': '默认桌宠'},
     ],
     'activePet': '001',
     'libraries': <Map<String, Object>>[],

@@ -823,7 +823,10 @@ public final class PetOverlayService extends Service {
 
     private void startGuideTheater() throws Exception {
         // Dedicated bundled actors guarantee a stable preview even with a one-GIF external library.
-        String actorB = "001-76dec374.gif".equals(currentPet) ? "005-5473df2b.gif" : "001-76dec374.gif";
+        List<String> bundledActors = pets.bundledPets();
+        if (bundledActors.isEmpty()) throw new IllegalStateException("桌宠暂时没有准备好，请稍后再试");
+        String actorB = bundledActors.stream().filter(id -> !id.equals(currentPet))
+            .findFirst().orElse(bundledActors.get(0));
         Drawable drawable = pets.load(actorB);
         Point bounds = screenBounds();
         int petSize = fittedPetSize(bounds, Math.max(96, Math.min(180, settings.sizeDp())));
@@ -1333,7 +1336,7 @@ public final class PetOverlayService extends Service {
 
     static long theaterReadingMillis(String text) {
         int characters = text.codePointCount(0, text.length());
-        return Math.max(6000L, 1200L + characters * 300L);
+        return 3500L + Math.max(0, characters - 24) * 160L;
     }
 
     private void playTheaterScene(TheaterScriptStore.Script script, int index, int version) {
@@ -1564,18 +1567,32 @@ public final class PetOverlayService extends Service {
 
     @Override public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        if (overlay != null) handler.post(() -> {
-            refreshOverlayGeometry();
+        handler.post(() -> {
+            if (overlay != null) refreshOverlayGeometry();
             if (theaterActive && currentTheaterScript != null)
                 playTheaterTurn(currentTheaterScript, currentTheaterScene, ++theaterVersion,
                     currentTheaterPartner, currentTheaterTextOffset);
+            if (visitorOverlay != null && visitorParams != null && !theaterVisitor) {
+                try { placeVisitor(); } catch (Exception ignored) { }
+            }
         });
-        if (visitorOverlay != null && visitorParams != null) {
-            Point bounds = screenBounds();
-            visitorParams.x = SettingsStore.clamp(visitorParams.x, 0, Math.max(0, bounds.x - visitorParams.width));
-            visitorParams.y = SettingsStore.clamp(visitorParams.y, 0, maxWindowY(bounds, visitorParams.height));
-            try { windowManager.updateViewLayout(visitorOverlay, visitorParams); } catch (Exception ignored) { }
-        }
+    }
+
+    private void placeVisitor() {
+        if (visitorOverlay == null || visitorParams == null) return;
+        Rect safe = safeScreenBounds();
+        int margin = Math.min(dp(8), Math.max(0, Math.min(safe.width(), safe.height()) / 8));
+        int availableWidth = Math.max(1, safe.width() - 2 * margin);
+        int availableHeight = Math.max(1, safe.height() - 2 * margin);
+        int petSize = dp(Math.max(96, Math.min(200, settings.sizeDp() - 20)));
+        int width = Math.min(availableWidth, Math.max(petSize + dp(20), dp(168)));
+        int height = visitorOverlay.configureVisitor(petSize, width, availableHeight);
+        visitorParams.width = width;
+        visitorParams.height = height;
+        // A visit has its own stage: the resident pet's resting position is unchanged.
+        visitorParams.x = safe.left + (safe.width() - width) / 2;
+        visitorParams.y = safe.top + (safe.height() - height) / 2;
+        if (visitorOverlay.isAttachedToWindow()) windowManager.updateViewLayout(visitorOverlay, visitorParams);
     }
 
     private void showVisitor(CompanionService.Visit visit) {
@@ -1605,9 +1622,7 @@ public final class PetOverlayService extends Service {
                     | WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT);
             visitorParams.gravity = Gravity.TOP | Gravity.START;
-            int mainX = windowParams == null ? bounds.x / 2 : windowParams.x;
-            visitorParams.x = mainX < bounds.x / 2 ? Math.max(0, bounds.x - width - dp(8)) : dp(8);
-            visitorParams.y = windowParams == null ? bounds.y / 2 : windowParams.y;
+            placeVisitor();
             windowManager.addView(visitorOverlay, visitorParams);
             getSystemService(NotificationManager.class).cancel(VISITOR_NOTIFICATION_ID);
             handler.postDelayed(() -> {

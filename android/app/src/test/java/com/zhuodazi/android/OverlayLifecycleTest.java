@@ -4,6 +4,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Rect;
+import android.graphics.ImageDecoder;
 import android.graphics.drawable.ColorDrawable;
 import android.os.Handler;
 import android.os.Looper;
@@ -15,6 +16,7 @@ import android.widget.LinearLayout;
 import android.content.res.Configuration;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.io.File;
 import java.time.Duration;
 import java.util.List;
 import java.util.ArrayList;
@@ -25,6 +27,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.MockedStatic;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
@@ -45,6 +48,7 @@ public class OverlayLifecycleTest {
     private LicenseService licenses;
     private PetRepository pets;
     private QueuedExecutor network;
+    private MockedStatic<ImageDecoder> visitorDecoder;
 
     @Before public void setUp() throws Exception {
         Context app = RuntimeEnvironment.getApplication();
@@ -62,6 +66,7 @@ public class OverlayLifecycleTest {
         pets = mock(PetRepository.class);
         when(pets.selectedPet()).thenReturn("001-76dec374.gif");
         when(pets.randomPet(anyString())).thenReturn("005-5473df2b.gif");
+        when(pets.bundledPets()).thenReturn(List.of("default-pets/Kitty1.gif", "default-pets/Kitty2.gif"));
         when(pets.load(anyString())).thenAnswer(call -> new ColorDrawable(Color.GREEN));
         service = Robolectric.buildService(PetOverlayService.class).get();
         ((ExecutorService) field("networkExecutor")).shutdownNow();
@@ -86,6 +91,7 @@ public class OverlayLifecycleTest {
     @After public void tearDown() throws Exception {
         field("liveService", null);
         ((Handler) field("handler")).removeCallbacksAndMessages(null);
+        if (visitorDecoder != null) visitorDecoder.close();
         invoke("removeVisitor", new Class<?>[]{boolean.class}, false);
         invoke("removeMainOverlay", new Class<?>[]{boolean.class}, false);
         ((ExecutorService) field("networkExecutor")).shutdownNow();
@@ -106,6 +112,32 @@ public class OverlayLifecycleTest {
         assertEquals(2, settings.guide().step());
     }
 
+    @Test public void guideTheaterUsesAnotherBundledPetInsteadOfTheRetiredDefault() throws Exception {
+        field("currentPet", "default-pets/Kitty1.gif");
+        clearInvocations(pets);
+        invoke("startGuideTheater");
+        verify(pets).load("default-pets/Kitty2.gif");
+        verify(pets, never()).load("001-76dec374.gif");
+        assertNotNull(field("visitorOverlay"));
+    }
+
+    @Test public void guideTheaterGivesEveryLineThreeAndAHalfSeconds() throws Exception {
+        invoke("handleGuideAction", new Class<?>[]{String.class}, "begin");
+        settings.guide().advance(1, true);
+        settings.guide().advance(2, true);
+        invoke("handleGuideAction", new Class<?>[]{String.class}, "theater");
+        assertEquals("我宣布：今天也要按时休息。", bubble((PetOverlayView) field("overlay")).getText().toString());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3499));
+        assertEquals(false, field("currentTheaterPartner"));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2));
+        assertEquals(true, field("currentTheaterPartner"));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(17000));
+        assertEquals(true, field("theaterActive"));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(600));
+        assertEquals(false, field("theaterActive"));
+        assertNull(field("visitorOverlay"));
+    }
+
     @Test public void metadataRefreshKeepsTutorialTheaterAliveForItsFullDuration() throws Exception {
         invoke("handleGuideAction", new Class<?>[]{String.class}, "begin");
         settings.guide().advance(1, true);
@@ -115,7 +147,7 @@ public class OverlayLifecycleTest {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(1));
         invoke("refreshOverlay");
         assertSame(actor, field("visitorOverlay"));
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(34));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(19));
         assertEquals(3, settings.guide().step());
         assertEquals("theater", field("guideDemo"));
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(1100));
@@ -364,7 +396,7 @@ public class OverlayLifecycleTest {
         useKnownTheaterScript();
         invoke("startTheater", new Class<?>[]{boolean.class}, true);
         PetOverlayView actor = (PetOverlayView) field("visitorOverlay");
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(6000));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3500));
         TextView bubble = bubble(actor);
         assertEquals("partner one", bubble.getText().toString());
         assertEquals(View.INVISIBLE, bubble((PetOverlayView) field("overlay")).getVisibility());
@@ -377,7 +409,7 @@ public class OverlayLifecycleTest {
         settings.guide().dismiss();
         useKnownTheaterScript();
         invoke("startTheater", new Class<?>[]{boolean.class}, true);
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(6300));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3800));
         Object oldActor = field("visitorOverlay");
         invoke("finishTheater", new Class<?>[]{boolean.class}, false);
         invoke("startTheater", new Class<?>[]{boolean.class}, true);
@@ -391,7 +423,7 @@ public class OverlayLifecycleTest {
         assertEquals("main one", bubble((PetOverlayView) field("overlay")).getText().toString());
     }
 
-    @Test public void theaterShowsOneSpeakerAtATimeInOrderWithSixSecondsForEachShortLine() throws Exception {
+    @Test public void theaterShowsOneSpeakerAtATimeInOrderWithThreeAndAHalfSecondsForEachShortLine() throws Exception {
         settings.guide().dismiss();
         useKnownTheaterScript();
         invoke("startTheater", new Class<?>[]{boolean.class}, true);
@@ -400,14 +432,14 @@ public class OverlayLifecycleTest {
         assertEquals("main one", main.getText().toString());
         assertEquals(View.VISIBLE, main.getVisibility());
         assertEquals(View.INVISIBLE, partner.getVisibility());
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5900));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3400));
         assertEquals("main one", main.getText().toString());
         assertEquals(View.INVISIBLE, partner.getVisibility());
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200));
         assertEquals(View.INVISIBLE, main.getVisibility());
         assertEquals(View.VISIBLE, partner.getVisibility());
         assertEquals("partner one", partner.getText().toString());
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5800));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3300));
         assertEquals("partner one", partner.getText().toString());
         assertEquals(View.INVISIBLE, main.getVisibility());
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(200));
@@ -439,7 +471,7 @@ public class OverlayLifecycleTest {
         String partnerLine = "搭档的这一段需要分页。\n".repeat(24);
         useTheaterScript("main one", partnerLine);
         invoke("startTheater", new Class<?>[]{boolean.class}, true);
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(6100));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3600));
         PetOverlayView main = (PetOverlayView) field("overlay");
         PetOverlayView partner = (PetOverlayView) field("visitorOverlay");
         long firstPageTime = PetOverlayService.theaterReadingMillis(bubble(partner).getText().toString());
@@ -469,7 +501,7 @@ public class OverlayLifecycleTest {
         invoke("startTheater", new Class<?>[]{boolean.class}, true);
         PetOverlayView main = (PetOverlayView) field("overlay");
         PetOverlayView partner = (PetOverlayView) field("visitorOverlay");
-        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(5950));
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(3450));
         main.hideBubble();
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100));
         assertEquals(View.INVISIBLE, bubble(main).getVisibility());
@@ -584,8 +616,10 @@ public class OverlayLifecycleTest {
         List<String> pages = view.theaterPages(line);
         assertTrue(pages.size() > 1);
         assertEquals(line, String.join("", pages));
-        assertEquals(6000L, PetOverlayService.theaterReadingMillis("你好"));
-        assertTrue(PetOverlayService.theaterReadingMillis(line) > 6000L);
+        assertEquals(3500L, PetOverlayService.theaterReadingMillis("你好"));
+        assertEquals(3500L, PetOverlayService.theaterReadingMillis("字".repeat(24)));
+        assertEquals(4460L, PetOverlayService.theaterReadingMillis("字".repeat(30)));
+        assertTrue(PetOverlayService.theaterReadingMillis(line) > 3500L);
     }
 
     @Test public void eachMixedLanguagePageFitsTheActualTextViewLayout() throws Exception {
@@ -668,6 +702,135 @@ public class OverlayLifecycleTest {
         assertTrue(partner.x + partner.width <= 308);
         assertTrue(main.y + main.height <= 540);
         assertTrue(main.x + main.width < partner.x);
+    }
+
+    @Test public void visitorsUseTheScreenCenterAndKeepTheResidentPetPositionThroughTheQueue() throws Exception {
+        settings.guide().dismiss();
+        WindowManager.LayoutParams resident = (WindowManager.LayoutParams) field("windowParams");
+        Rect safe = (Rect) invoke("safeScreenBounds");
+        resident.y = safe.bottom - resident.height;
+        int originalX = resident.x, originalY = resident.y;
+        CompanionService companions = (CompanionService) field("companions");
+        CompanionService.Visit first = visit("friend-1", "好久不见，来找你玩啦！");
+        CompanionService.Visit second = visit("hall-2", "给你带来一只小可爱。");
+        when(companions.pendingVisits()).thenReturn(List.of(first, second));
+        doAnswer(call -> {
+            when(companions.pendingVisits()).thenReturn(List.of(second));
+            return null;
+        }).when(companions).completeVisit(first);
+        doAnswer(call -> {
+            when(companions.pendingVisits()).thenReturn(List.of());
+            return null;
+        }).when(companions).completeVisit(second);
+        invoke("showNextVisit");
+        Object firstView = field("visitorOverlay");
+        assertVisitorCenteredInsideSafeArea();
+        WindowManager.LayoutParams visitor = (WindowManager.LayoutParams) field("visitorParams");
+        assertTrue("the visitor must not stay beside the bottom resting pet", visitor.y < resident.y);
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(9999));
+        assertSame(firstView, field("visitorOverlay"));
+        verify(companions, never()).completeVisit(any());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(2));
+        verify(companions).completeVisit(first);
+        assertNotSame(firstView, field("visitorOverlay"));
+        assertVisitorCenteredInsideSafeArea();
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(10));
+        verify(companions).completeVisit(second);
+        assertNull(field("visitorOverlay"));
+        assertEquals(originalX, resident.x);
+        assertEquals(originalY, resident.y);
+    }
+
+    @Test public void rotatingAVisitRecentersWithoutReplayingOrAcknowledgingItEarly() throws Exception {
+        settings.guide().dismiss();
+        CompanionService.Visit visit = visit("trial-visit", "我们来串门啦！");
+        invoke("showVisitor", new Class<?>[]{CompanionService.Visit.class}, visit);
+        PetOverlayView actor = (PetOverlayView) field("visitorOverlay");
+        Object generation = field("visitorGeneration");
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(4));
+        RuntimeEnvironment.setQualifiers("w568dp-h320dp-land");
+        service.onConfigurationChanged(service.getResources().getConfiguration());
+        shadowOf(Looper.getMainLooper()).idle();
+        assertSame(actor, field("visitorOverlay"));
+        assertEquals(generation, field("visitorGeneration"));
+        assertVisitorCenteredInsideSafeArea();
+        assertEquals("访客：我们来串门啦！", bubble(actor).getText().toString());
+        CompanionService companions = (CompanionService) field("companions");
+        verify(companions, never()).completeVisit(any());
+        shadowOf(Looper.getMainLooper()).idleFor(Duration.ofSeconds(6));
+        verify(companions).completeVisit(visit);
+        assertNull(field("visitorOverlay"));
+    }
+
+    @Test @Config(sdk = 35, qualifiers = "w320dp-h568dp-port")
+    public void visitsExcludeDisplayCutoutsAndSystemBars() throws Exception {
+        WindowManager manager = spy((WindowManager) field("windowManager"));
+        android.view.WindowInsets insets = new android.view.WindowInsets.Builder()
+            .setInsetsIgnoringVisibility(android.view.WindowInsets.Type.systemBars() | android.view.WindowInsets.Type.displayCutout(),
+                android.graphics.Insets.of(18, 54, 12, 28)).build();
+        doReturn(new android.view.WindowMetrics(new Rect(0, 0, 320, 568), insets))
+            .when(manager).getCurrentWindowMetrics();
+        field("windowManager", manager);
+        invoke("showVisitor", new Class<?>[]{CompanionService.Visit.class}, visit("hall-cutout", "你好呀！"));
+        assertVisitorCenteredInsideSafeArea();
+        WindowManager.LayoutParams visitor = (WindowManager.LayoutParams) field("visitorParams");
+        assertTrue(visitor.x >= 18 && visitor.y >= 54);
+        assertTrue(visitor.x + visitor.width <= 308 && visitor.y + visitor.height <= 540);
+    }
+
+    @Test @Config(qualifiers = "w568dp-h320dp-land")
+    public void landscapeVisitsReserveSpaceForLargeTextWithoutCoveringThePet() throws Exception {
+        RuntimeEnvironment.setFontScale(1.6f);
+        settings.putInt(SettingsStore.SIZE, 220);
+        invoke("showVisitor", new Class<?>[]{CompanionService.Visit.class}, visit("large-text",
+            "这是远方好友寄来的一段问候，希望你今天也能开心一点，记得照顾自己，我们下次再一起玩吧！"));
+        assertVisitorCenteredInsideSafeArea();
+        PetOverlayView actor = (PetOverlayView) field("visitorOverlay");
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) field("visitorParams");
+        actor.measure(View.MeasureSpec.makeMeasureSpec(params.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(params.height, View.MeasureSpec.EXACTLY));
+        actor.layout(0, 0, params.width, params.height);
+        assertTrue("the greeting cannot cover the pet", bubble(actor).getBottom()
+            <= params.height - actor.petImageLayout().height);
+    }
+
+    @Test public void visitorGreetingCanExpandAgainAfterRotationAndALargerFont() throws Exception {
+        PetOverlayView actor = new PetOverlayView(service, 120, 220, 100);
+        actor.say("好友的问候需要完整展示。\n".repeat(6));
+        actor.configureVisitor(120, 220, 100);
+        int shortHeight = bubble(actor).getMeasuredHeight();
+        bubble(actor).setTextSize(22);
+        int tallerWindow = actor.configureVisitor(120, 180, 500);
+        assertTrue("remeasurement must not keep the previous short height limit",
+            bubble(actor).getMeasuredHeight() > shortHeight);
+        actor.measure(View.MeasureSpec.makeMeasureSpec(180, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(tallerWindow, View.MeasureSpec.EXACTLY));
+        actor.layout(0, 0, 180, tallerWindow);
+        assertTrue(bubble(actor).getBottom() <= tallerWindow - actor.petImageLayout().height);
+    }
+
+    private CompanionService.Visit visit(String id, String message) throws Exception {
+        // Robolectric's legacy graphics mode cannot decode file descriptors on Windows.
+        if (visitorDecoder == null) {
+            visitorDecoder = mockStatic(ImageDecoder.class);
+            visitorDecoder.when(() -> ImageDecoder.createSource(any(File.class))).thenReturn(mock(ImageDecoder.Source.class));
+            visitorDecoder.when(() -> ImageDecoder.decodeDrawable(any(ImageDecoder.Source.class)))
+                .thenAnswer(call -> new ColorDrawable(Color.BLUE));
+        }
+        File image = new File(service.getCacheDir(), id + ".gif");
+        CompanionService.Visit visit = new CompanionService.Visit("trial:test", id, "访客", message, image);
+        when(((CompanionService) field("companions")).isCurrentVisit(visit)).thenReturn(true);
+        return visit;
+    }
+
+    private void assertVisitorCenteredInsideSafeArea() throws Exception {
+        assertNotNull(field("visitorOverlay"));
+        WindowManager.LayoutParams params = (WindowManager.LayoutParams) field("visitorParams");
+        Rect safe = (Rect) invoke("safeScreenBounds");
+        assertTrue(params.x >= safe.left && params.y >= safe.top);
+        assertTrue(params.x + params.width <= safe.right && params.y + params.height <= safe.bottom);
+        assertEquals(safe.exactCenterX(), params.x + params.width / 2f, 1f);
+        assertEquals(safe.exactCenterY(), params.y + params.height / 2f, 1f);
     }
 
     @Test public void oldReminderExpressionCannotRestoreOverNewSelection() throws Exception {

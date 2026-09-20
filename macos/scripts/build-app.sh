@@ -21,7 +21,12 @@ rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 cp "$BIN_DIR/ZhuoDaziMac" "$CONTENTS_DIR/MacOS/ZhuoDazi"
 cp "$ROOT_DIR/Info.plist" "$CONTENTS_DIR/Info.plist"
-cp -R "$ROOT_DIR/Resources/." "$CONTENTS_DIR/Resources/"
+# Keep legacy Pets files as development fixtures, outside the shipped app.
+for resource in "$ROOT_DIR/Resources/"*; do
+    [[ -e "$resource" ]] || continue
+    [[ "$(basename "$resource")" == "Pets" ]] && continue
+    cp -R "$resource" "$CONTENTS_DIR/Resources/"
+done
 cp "$ROOT_DIR/../windows/assets/contact-author-wechat.png" \
     "$CONTENTS_DIR/Resources/contact-author-wechat.png"
 ICON_WORK_DIR="$(mktemp -d "$DIST_DIR/app-icon.XXXXXX")"
@@ -33,9 +38,9 @@ for size in 16 32 128 256 512; do
     sips -z "$((size * 2))" "$((size * 2))" "$ROOT_DIR/../windows/assets/app-icon.png" --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET_DIR" -o "$CONTENTS_DIR/Resources/AppIcon.icns"
-mkdir -p "$CONTENTS_DIR/Resources/Pets/yuexinmiao"
-cp "$ROOT_DIR/../windows/assets/pet-libraries/yuexinmiao/"*.gif \
-    "$CONTENTS_DIR/Resources/Pets/yuexinmiao/"
+mkdir -p "$CONTENTS_DIR/Resources/Pets/default"
+cp "$ROOT_DIR/../assets/default-pets/"*.gif \
+    "$CONTENTS_DIR/Resources/Pets/default/"
 chmod +x "$CONTENTS_DIR/MacOS/ZhuoDazi"
 
 codesign --force --deep --sign - --timestamp=none "$APP_DIR"

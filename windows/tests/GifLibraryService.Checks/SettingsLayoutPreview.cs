@@ -47,7 +47,7 @@ internal static class SettingsLayoutPreview
             list.ItemsSource = people;
             list.SelectedIndex = 0;
             ((TextBlock)root.FindName("HallSendTargetText")).Text = "发送给 小鱼同学";
-            ((TextBlock)root.FindName("HallPetNameText")).Text = "月薪喵 017 · 来自月薪喵图鉴";
+            ((TextBlock)root.FindName("HallPetNameText")).Text = "Kitty1 · 来自默认桌宠图鉴";
             ((TextBox)root.FindName("CompanionHallMessageText")).Text = "工作间隙，给你送来一点好心情。";
             ((Image)root.FindName("HallPreviewImage")).Source = BitmapFrame.Create(new Uri(Path.Combine(AppContext.BaseDirectory, "assets", "partial-frame.gif")));
             var height = width == 900 ? 650d : 720d;

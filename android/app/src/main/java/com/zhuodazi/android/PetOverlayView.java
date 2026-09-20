@@ -351,6 +351,25 @@ final class PetOverlayView extends FrameLayout {
         bubble.setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE);
     }
 
+    int configureVisitor(int preferredPetSize, int width, int availableHeight) {
+        // Measure the greeting before placing the pet, including larger system fonts.
+        LayoutParams text = (LayoutParams) bubble.getLayoutParams();
+        text.width = Math.max(1, Math.min(width - dp(12), dp(168)));
+        text.topMargin = dp(4);
+        bubble.setLayoutParams(text);
+        bubble.setMaxLines(4);
+        int gap = Math.min(dp(8), Math.max(0, availableHeight / 12));
+        int minimumPetSize = Math.min(dp(48), Math.max(1, availableHeight / 3));
+        int textRoom = Math.max(1, availableHeight - minimumPetSize - gap - text.topMargin);
+        bubble.measure(MeasureSpec.makeMeasureSpec(text.width, MeasureSpec.EXACTLY),
+            MeasureSpec.makeMeasureSpec(textRoom, MeasureSpec.AT_MOST));
+        bubble.setMaxHeight(bubble.getMeasuredHeight());
+        int greetingHeight = text.topMargin + bubble.getMeasuredHeight() + gap;
+        int petSize = Math.max(1, Math.min(preferredPetSize, Math.min(width, availableHeight - greetingHeight)));
+        setPetSize(petSize);
+        return Math.min(availableHeight, greetingHeight + petSize);
+    }
+
     List<String> theaterPages(String message) {
         LayoutParams params = (LayoutParams) bubble.getLayoutParams();
         int width = Math.max(1, params.width - bubble.getPaddingLeft() - bubble.getPaddingRight());

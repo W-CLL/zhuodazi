@@ -26,7 +26,7 @@
       <Link>assets\contact-author-wechat.png</Link>
       <LogicalName>assets/contact-author-wechat.png</LogicalName>
     </Resource>
-    <Content Include="..\assets\pet-libraries\**\*" Link="resources\pet-libraries\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\default-pets\*.gif" Link="resources\pet-libraries\default\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="..\assets\templates\**\*" Link="resources\templates\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

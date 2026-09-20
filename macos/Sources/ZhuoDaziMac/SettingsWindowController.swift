@@ -324,7 +324,7 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(petsDetail)
         let add = NSButton(title: "接一只回家", target: self, action: #selector(addPet))
         let use = NSButton(title: "让它陪我", target: self, action: #selector(useSelectedPet))
-        let useDefault = NSButton(title: "返回内置图鉴", target: self, action: #selector(useDefaultPet))
+        let useDefault = NSButton(title: "使用默认桌宠", target: self, action: #selector(useDefaultPet))
         let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedPet))
         stack.addArrangedSubview(buttonRow([add, use, useDefault, delete]))
         return page
@@ -663,7 +663,7 @@ final class SettingsWindowController: NSWindowController {
 
     private func refreshLibraries(_ settings: AppSettings) {
         librariesPopup.removeAllItems()
-        librariesPopup.addItem(withTitle: "内置桌宠图鉴")
+        librariesPopup.addItem(withTitle: "默认桌宠")
         for library in settings.libraries {
             librariesPopup.addItem(withTitle: library.name)
             librariesPopup.lastItem?.representedObject = library.id

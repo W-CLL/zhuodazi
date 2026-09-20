@@ -24,6 +24,7 @@ final class PetRepository {
     static final long MAX_GIF_BYTES = 8L * 1024 * 1024;
     private static final String CUSTOM_PREFIX = "@custom:";
     private static final String LIBRARY_PREFIX = "library:";
+    private static final String BUNDLED_DIRECTORY = "default-pets";
     private final Context context;
     private final SettingsStore settings;
     private final PetLibraryStore libraries;
@@ -53,12 +54,20 @@ final class PetRepository {
             for (PetLibraryStore.LibraryGif gif : cachedLibraryGifs) result.add(gif.id);
             return result;
         }
+        result.addAll(bundledPets());
+        return result;
+    }
+
+    List<String> bundledPets() {
+        List<String> result = new ArrayList<>();
         try {
-            String[] names = context.getAssets().list("");
+            String[] names = context.getAssets().list(BUNDLED_DIRECTORY);
             if (names != null) {
                 Arrays.sort(names);
                 for (String name : names) {
-                    if (name.matches("\\d{3}-[0-9a-f]{8}\\.gif")) result.add(name);
+                    if (name.endsWith(".gif") && !name.contains("/") && !name.contains("\\")) {
+                        result.add(BUNDLED_DIRECTORY + "/" + name);
+                    }
                 }
             }
         } catch (IOException ignored) { }
@@ -69,7 +78,10 @@ final class PetRepository {
         List<String> available = pets();
         if (available.isEmpty()) return "";
         String selected = settings.activePet();
-        return available.contains(selected) ? selected : available.get(0);
+        if (available.contains(selected)) return selected;
+        String replacement = available.get(0);
+        settings.putString(SettingsStore.ACTIVE_PET, replacement);
+        return replacement;
     }
 
     String nextPet(String current) {
@@ -90,9 +102,9 @@ final class PetRepository {
         if (isCustom(petId)) return "我的 GIF " + customSlot(petId);
         PetLibraryStore.LibraryGif libraryGif = libraryGif(petId);
         if (libraryGif != null) return libraryGif.name;
-        int dash = petId.indexOf('-');
-        String number = dash > 0 ? petId.substring(0, dash) : petId.replace(".gif", "");
-        return "月薪喵 " + number;
+        if (petId == null || petId.isEmpty()) return "默认桌宠";
+        String fileName = petId.substring(petId.lastIndexOf('/') + 1);
+        return fileName.endsWith(".gif") ? fileName.substring(0, fileName.length() - 4) : fileName;
     }
 
     Drawable load(String petId) throws IOException {

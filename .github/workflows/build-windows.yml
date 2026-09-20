@@ -24,7 +24,11 @@ jobs:
 
       - name: Run Windows checks
         shell: pwsh
-        run: dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
+        run: |
+          dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Windows checks failed" }
+          dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --library-check
+          if ($LASTEXITCODE -ne 0) { throw "Default pet upgrade checks failed" }
 
       - name: Read application version
         shell: pwsh
@@ -39,6 +43,15 @@ jobs:
       - name: Build installer
         shell: pwsh
         run: ./windows/scripts/build-native.ps1 -Version $env:APP_VERSION
+
+      - name: Verify bundled default pets
+        shell: pwsh
+        run: |
+          python scripts/check-default-pets.py --root windows/publish/win-x64/resources/pet-libraries/default
+          if ($LASTEXITCODE -ne 0) { throw "Default pet verification failed" }
+          if (Test-Path windows/publish/win-x64/resources/pet-libraries/yuexinmiao) {
+            throw "Legacy default pets must not be packaged"
+          }
 
       - name: Smoke test installed application
         shell: pwsh
