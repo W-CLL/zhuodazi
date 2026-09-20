@@ -8,7 +8,7 @@
   const isNotFound = String(page.path || '').includes('404');
   const isArchive = Boolean(page.archive) || page.layout === 'archive';
   const seoTitle = isHome
-    ? '桌搭子｜对象回「在开会」，你回一只熊'
+    ? '桌搭子｜住在屏幕上的小伙伴'
     : isArchive
       ? '桌搭子手记｜桌角发生过的事'
       : ((page.title || config.title) + '｜桌搭子');
@@ -19,7 +19,7 @@
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 180);
-  const seoImage = siteUrl + url_for(page.cover || '/images/screenshots/visit-showcase.gif');
+  const seoImage = siteUrl + url_for(page.cover || '/images/promo/hello.webp');
   const ogType = isPost ? 'article' : 'website';
   const softwareLd = {
     '@context': 'https://schema.org',
@@ -31,13 +31,13 @@
     url: siteUrl + '/',
     downloadUrl: siteUrl + '/download/',
     description: config.description,
-    image: siteUrl + url_for('/images/screenshots/visit-showcase.gif'),
+    image: siteUrl + url_for('/images/promo/hello.webp'),
     offers: {
       '@type': 'Offer',
       url: siteUrl + '/download/',
       price: '0',
       priceCurrency: 'CNY',
-      description: '先下载试用。一组激活码填两台。'
+      description: '基础陪伴免费，首次可体验七天进阶功能。私人搭子需正式激活。'
     }
   };
   const webpageLd = {
@@ -62,7 +62,7 @@
     <meta name="description" content="<%= seoDescription %>">
     <meta name="keywords" content="<%= config.keywords %>">
     <link rel="canonical" href="<%= canonicalUrl %>">
-    <meta name="theme-color" content="#f3eadc">
+    <meta name="theme-color" content="#faf9f3">
     <meta name="color-scheme" content="light dark">
     <meta name="robots" content="<%= isNotFound ? 'noindex,follow' : 'index,follow' %>">
     <meta property="og:type" content="<%= ogType %>">
@@ -78,6 +78,7 @@
     <meta name="twitter:image" content="<%= seoImage %>">
     <link rel="icon" href="<%= url_for('/images/app-icon.png') %>" type="image/png">
     <link rel="stylesheet" href="<%= url_for('/css/site.css') %>?v=<%= theme.asset_version %>">
+    <link rel="stylesheet" href="<%= url_for('/css/product.css') %>?v=<%= theme.asset_version %>">
     <script type="application/ld+json"><%- JSON.stringify(isHome ? softwareLd : webpageLd) %></script>
     <% if (isHome) { %><script type="application/ld+json"><%- JSON.stringify(webpageLd) %></script><% } %>
   </head>
@@ -92,11 +93,10 @@
         <nav class="site-nav" id="site-navigation" aria-label="主导航" data-site-nav>
           <a href="<%= url_for('/') %>">首页</a>
           <a href="<%= url_for('/#play') %>">怎么玩</a>
-          <a href="<%= url_for('/#moyu') %>">摸鱼</a>
-          <a href="<%= url_for('/download/') %>">下载</a>
+          <a href="<%= url_for('/#platforms') %>">三端对比</a>
           <a href="<%= url_for('/resources/') %>">资源包</a>
           <a href="<%= url_for('/archives/') %>">手记</a>
-          <a href="<%= url_for('/about/') %>">关于</a>
+          <a class="nav-download" href="<%= url_for('/download/') %>">免费下载 ↓</a>
         </nav>
         <div class="header-actions">
           <button class="icon-button theme-button" type="button" data-theme-toggle aria-label="切换深色模式" title="切换深色模式">
@@ -118,7 +118,7 @@
             <img src="<%= url_for('/images/app-icon.png') %>" width="34" height="34" alt="" loading="lazy" decoding="async">
             <span>桌搭子</span>
           </a>
-          <p>对象回「在开会」，你回一只熊。</p>
+          <p>给日常添一点小热闹，给屏幕留一个小搭子。</p>
         </div>
         <div class="footer-links">
           <a href="<%= url_for('/download/') %>">下载</a>
@@ -135,5 +135,6 @@
       <div class="site-shell footer-disclaimer">GIF 资源均来自网络公开，如有侵权请联系删除</div>
     </footer>
     <script src="<%= url_for('/js/site.js') %>?v=<%= theme.asset_version %>" defer></script>
+    <script src="<%= url_for('/js/product.js') %>?v=<%= theme.asset_version %>" defer></script>
   </body>
 </html>

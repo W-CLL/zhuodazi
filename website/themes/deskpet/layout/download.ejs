@@ -1,29 +1,10 @@
-<section class="download-hero">
-  <div class="site-shell download-hero-inner">
-    <div class="download-hero-copy reveal">
-      <p class="section-kicker">Windows / macOS / Android</p>
-      <h1>下载桌搭子</h1>
-      <p>电脑和手机都能先养一只。想说话了，打开设置里的「搭子」，换一对码，派一张 GIF 过去。</p>
-      <div class="download-version-line">
-        <span data-release-version="windows/x64">Windows 最新版</span>
-        <span data-release-version="macos/arm64">macOS 最新版</span>
-        <span data-release-version="android/arm64-v8a">Android 最新版</span>
-      </div>
-      <p><a href="<%= url_for('/posts/deskpet-3-3-update/') %>">看看这次更新了什么 →</a></p>
-    </div>
-    <div class="hero-stage download-hero-stage reveal" aria-label="电脑上两只自己演一小段，手机上也能发给搭子">
-      <figure class="hero-desk">
-        <img src="<%= url_for('/images/screenshots/together-showcase.gif') %>?v=<%= theme.asset_version %>" width="1200" height="760" alt="两只熊在小剧场里对白，约对方坐一会儿" decoding="async" fetchpriority="high">
-      </figure>
-      <figure class="hero-phone">
-        <img src="<%= url_for('/images/screenshots/android-send-phone.gif') %>?v=<%= theme.asset_version %>" width="384" height="744" alt="手机上点一下，把这张 GIF 发给搭子" decoding="async">
-        <figcaption>手机也能发</figcaption>
-      </figure>
-      <p class="hero-stage-caption">打开后大概是这样。两只自己演，你点一下发出去。</p>
-    </div>
-  </div>
-</section>
-
+<section class="download-new-hero"><div class="site-shell">
+  <p class="overline">给屏幕，添一位新朋友</p><h1>你的桌搭子，准备好报到了。</h1>
+  <p>先选设备，再挑一只喜欢的。基础陪伴免费，首次可体验 7 天互动、小剧场、提醒和大厅。</p>
+  <div class="download-version-line"><span data-release-version="windows/x64">Windows 最新版</span><span data-release-version="macos/arm64">macOS 最新版</span><span data-release-version="android/arm64-v8a">Android 最新版</span></div>
+  <p><a class="text-link" href="<%= url_for('/#platforms') %>">比较三端玩法 →</a> &nbsp; <a class="text-link" href="<%= url_for('/posts/deskpet-3-3-update/') %>">看看这次更新 →</a></p>
+  <p class="download-current" data-release-status role="status">正在读取官方版本与文件大小…</p>
+</div></section>
 <section class="download-options" aria-labelledby="download-options-title">
   <div class="site-shell">
     <div class="download-section-heading reveal">
@@ -39,10 +20,10 @@
             <h3 data-release-version="windows/x64">桌搭子 最新版</h3>
           </div>
         </div>
-        <p class="download-card-copy">Windows 10 22H2 和 Windows 11 x64。EXE 里带运行环境，不用另装一堆东西。</p>
+        <p class="download-card-copy">适用于 Windows 10 22H2 / Windows 11（x64）。安装包自带运行环境，安装后即可叫出桌宠。</p>
         <dl class="download-meta">
           <div><dt>架构</dt><dd>x64</dd></div>
-          <div><dt>大小</dt><dd data-release-size="windows/x64">约 54 MB</dd></div>
+          <div><dt>大小</dt><dd data-release-size="windows/x64">读取中</dd></div>
           <div><dt>格式</dt><dd>EXE</dd></div>
         </dl>
         <a class="button button-primary download-button" data-analytics-download data-platform="windows" data-architecture="x64" href="https://in.desktoppet.online/downloads/latest/windows/x64">下载安装包 (.exe) <span aria-hidden="true">↓</span></a>
@@ -56,14 +37,14 @@
             <h3 data-release-version="macos/arm64">桌搭子 最新版</h3>
           </div>
         </div>
-        <p class="download-card-copy">Apple 芯片和 Intel 分开下。解压后把桌搭子拖进「应用程序」，别丢在下载文件夹里忘了。</p>
+        <p class="download-card-copy">按芯片选择版本：在苹果菜单「关于本机」查看。下载 ZIP，解压后将桌搭子拖入「应用程序」。</p>
         <div class="mac-downloads">
           <a data-analytics-download data-platform="macos" data-architecture="arm64" href="https://in.desktoppet.online/downloads/latest/macos/arm64">
-            <span><strong>Apple 芯片</strong><small>M1 / M2 / M3 / M4 · <span data-release-size="macos/arm64">5.2 MB</span></small></span>
+            <span><strong>Apple 芯片</strong><small>M 系列 · <span data-release-size="macos/arm64">读取中</span></small></span>
             <b aria-hidden="true">↓</b>
           </a>
           <a data-analytics-download data-platform="macos" data-architecture="x86_64" href="https://in.desktoppet.online/downloads/latest/macos/x86_64">
-            <span><strong>Intel 芯片</strong><small>x86_64 · <span data-release-size="macos/x86_64">5.2 MB</span></small></span>
+            <span><strong>Intel 芯片</strong><small>x86_64 · <span data-release-size="macos/x86_64">读取中</span></small></span>
             <b aria-hidden="true">↓</b>
           </a>
         </div>
@@ -77,94 +58,31 @@
             <h3 data-release-version="android/arm64-v8a">桌搭子 最新版</h3>
           </div>
         </div>
-        <p class="download-card-copy">浮在别的 App 上面，锁屏前也能待在桌角。打开后允许悬浮窗，再点一次启动，不然它出不来。</p>
+        <p class="download-card-copy">大多数手机选 ARM64。打开后允许「显示在其他应用上层」，再按首页提示启动。后台表现受系统省电策略影响。</p>
         <dl class="download-meta">
           <div><dt>架构</dt><dd>ARM64</dd></div>
-          <div><dt>大小</dt><dd data-release-size="android/arm64-v8a">约 46 MB</dd></div>
+          <div><dt>大小</dt><dd data-release-size="android/arm64-v8a">读取中</dd></div>
           <div><dt>格式</dt><dd>APK</dd></div>
         </dl>
         <a class="button button-primary download-button" data-analytics-download data-platform="android" data-architecture="arm64-v8a" href="https://in.desktoppet.online/downloads/latest/android/arm64-v8a">下载安装包 (.apk) <span aria-hidden="true">↓</span></a>
+        <a class="download-alt" data-analytics-download data-platform="android" data-architecture="armeabi-v7a" href="https://in.desktoppet.online/downloads/latest/android/armeabi-v7a">较旧的 32 位设备：下载 ARMv7（<span data-release-size="android/armeabi-v7a">读取中</span>）</a>
       </article>
     </div>
   </div>
 </section>
 
-<section class="download-faq" aria-labelledby="download-faq-title">
-  <div class="site-shell">
-    <div class="download-section-heading reveal">
-      <p class="section-kicker">卡住了再看这里</p>
-      <h2 id="download-faq-title">系统拦你的时候，点两下就过去了。</h2>
-    </div>
-    <div class="download-faq-grid">
-      <article class="reveal">
-        <h3>Windows 提示无法验证发布者？</h3>
-        <p>点「更多信息」，再选「仍要运行」。SmartScreen 看见生人就会叫一声，不是病毒。</p>
-      </article>
-      <article class="reveal">
-        <h3>macOS 打不开？</h3>
-        <p>到「系统设置 → 隐私与安全性」允许打开，或按住 Control 再点一次。它只是没见过这只熊。</p>
-      </article>
-      <article class="reveal">
-        <h3>Android 装完看不见？</h3>
-        <p>到系统设置允许「显示在其他应用上层」，回到桌搭子再启动一次。提示未知来源就允许。它不是躲着你，是没权限出门。</p>
-      </article>
-      <article class="reveal">
-        <h3>怎么给对方发 GIF？</h3>
-        <p>打开设置里的「搭子」，换一对码。它会自己去对方桌面或手机上坐一会儿。原来那只还在，不用回消息。</p>
-      </article>
-      <article class="reveal">
-        <h3>需要找作者的时候？</h3>
-        <p>装好就能先玩。一组激活码填两台，电脑和手机都能收。对象那边还是要自己买一次——共用同一组，你会发现配对的是自己。想定制角色或拿激活码，闲鱼上聊。</p>
-      </article>
-    </div>
-  </div>
-</section>
 
-<section class="download-xianyu" aria-labelledby="download-xianyu-title">
-  <div class="site-shell download-xianyu-inner reveal">
-    <div>
-      <p class="section-kicker">也可以从这里联系</p>
-      <h2 id="download-xianyu-title">闲鱼上看看。</h2>
-      <p>下载还是走本站。想定制角色、动作，或拿激活码，打开闲鱼交易页再聊。别在评论区问下载。</p>
-    </div>
-    <a class="button button-secondary" data-xianyu-link hidden href="https://www.goofish.com/" target="_blank" rel="noopener">在闲鱼看看 <span aria-hidden="true">→</span></a>
+<section class="download-safety"><div class="site-shell">
+  <h2>装好以后，跟着引导玩一遍。</h2>
+  <p class="small-note">叫出桌宠 → 互动一次 → 看段小剧场 → 学会暂停和找回。可以跳过，也能在设置中重看。</p>
+  <div class="home-faq">
+    <details><summary>体验期能玩什么？什么时候需要激活？</summary><p>首次 7 天有效体验内可使用互动、小剧场、提醒、桌宠大厅等进阶功能，到期保留基础陪伴。私人搭子绑定需要双方正式激活；Android 导入自己的 GIF 也需正式激活，电脑端基础陪伴即可导入。</p></details>
+    <details><summary>Windows 提示无法验证发布者怎么办？</summary><p>先确认安装包来自本站的官方下载入口。Windows 可能对未签名或信誉尚未建立的应用提示 SmartScreen。确认来源并决定继续后，可在系统提示中选择「更多信息 → 仍要运行」；若设备由学校或公司管理，请遵循管理员的安装要求。</p></details>
+    <details><summary>macOS 下载后打不开？</summary><p>先将解压后的桌搭子移到「应用程序」。若系统阻止打开，确认来自本站后，到「系统设置 → 隐私与安全性」查看对应提示并选择允许打开。摸鱼功能还需要辅助功能权限。</p></details>
+    <details><summary>Android 装好了，桌宠怎么没出现？</summary><p>安装本站 APK 后，在系统设置允许桌搭子「显示在其他应用上层」，返回首页按提示启动。安装 APK 可能需要为下载所用应用允许安装；只在确认来源后操作。若后台容易消失，检查系统对桌搭子的省电与后台限制。当前没有 iOS 版。</p></details>
+    <details><summary>怎么给别人送桌宠？</summary><p>有效体验内可以进入「桌宠大厅」，主动公开在线后选择在线用户，发送当前桌宠和留言。想与熟人长期配对，双方正式激活后使用 8 位搭子码绑定。来访会临时出现，不替换原桌宠；「设备已接收」不表示对方已读。</p></details>
+    <details><summary>一组激活码能用几台？</summary><p>一组激活码最多授权两台设备，它们属于同一账号。私人搭子需要另一位使用独立账号的已激活用户。激活码授权设备，搭子码用于配对，两种码不要混用。</p></details>
   </div>
-</section>
-
-<script type="application/ld+json"><%- JSON.stringify({
-  '@context': 'https://schema.org',
-  '@type': 'FAQPage',
-  mainEntity: [
-    {
-      '@type': 'Question',
-      name: 'Windows 提示无法验证发布者怎么办？',
-      acceptedAnswer: { '@type': 'Answer', text: '点「更多信息」，再选「仍要运行」。这是 SmartScreen 的常见提示，不是病毒。' }
-    },
-    {
-      '@type': 'Question',
-      name: 'macOS 打不开桌搭子怎么办？',
-      acceptedAnswer: { '@type': 'Answer', text: '到「系统设置 → 隐私与安全性」允许打开，或按住 Control 再点一次。' }
-    },
-    {
-      '@type': 'Question',
-      name: 'Android 装完看不见桌搭子怎么办？',
-      acceptedAnswer: { '@type': 'Answer', text: '到系统设置允许「显示在其他应用上层」，回到桌搭子再启动一次。安装时若提示未知来源，选允许即可。' }
-    },
-    {
-      '@type': 'Question',
-      name: '怎么给对方发 GIF？',
-      acceptedAnswer: { '@type': 'Answer', text: '打开设置里的「搭子」，换一对码。它会自己去对方桌面或手机上坐一会儿，不顶掉原来的桌宠。' }
-    },
-    {
-      '@type': 'Question',
-      name: '一组激活码能填几台？',
-      acceptedAnswer: { '@type': 'Answer', text: '一组激活码可以填两台，电脑和手机都能收。对象那边仍要自己买一次。' }
-    }
-  ]
-}) %></script>
-<section class="download-note">
-  <div class="site-shell download-note-inner reveal">
-    <img src="<%= url_for('/images/app-icon.png') %>" width="58" height="58" alt="" loading="lazy" decoding="async">
-    <div><strong>只从本站下载</strong><p>认准 desktoppet.online。Windows 用 EXE，Android 用 APK。别处下到的包，我自己都不敢装。</p></div>
-  </div>
-</section>
+  <div class="start-cta"><div><h3>先体验，再决定要不要常住。</h3><p>需要激活码或联系作者，可从闲鱼入口了解。</p></div><a class="button button-secondary" data-xianyu-link hidden href="https://www.goofish.com/" target="_blank" rel="noopener">联系作者 / 了解激活 →</a></div>
+  <p class="small-note">官方下载域名：desktoppet.online；安装包通过 in.desktoppet.online 提供。</p>
+</div></section>

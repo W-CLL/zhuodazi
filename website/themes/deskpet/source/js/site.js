@@ -4,11 +4,12 @@
   const header = document.querySelector('[data-site-header]');
   const navToggle = document.querySelector('[data-nav-toggle]');
   const themeToggle = document.querySelector('[data-theme-toggle]');
-  const storedTheme = window.localStorage.getItem('deskpet-theme');
+  let storedTheme;
+  try { storedTheme = window.localStorage.getItem('deskpet-theme'); } catch {}
 
   const setTheme = (theme) => {
     root.dataset.theme = theme;
-    window.localStorage.setItem('deskpet-theme', theme);
+    try { window.localStorage.setItem('deskpet-theme', theme); } catch {}
   };
 
   if (storedTheme) {
@@ -233,8 +234,9 @@
   }
 
   fetch('https://in.desktoppet.online/api/public/downloads', { mode: 'cors' })
-    .then((response) => response.ok ? response.json() : null)
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error('downloads unavailable')))
     .then((payload) => {
+      if (!Array.isArray(payload?.downloads) || !payload.downloads.length) throw new Error('downloads empty');
       for (const release of payload?.downloads || []) {
         const target = `${release.platform}/${release.architecture}`;
         document.querySelectorAll(`[data-release-version="${target}"]`).forEach((element) => {
@@ -244,9 +246,26 @@
         if (size) document.querySelectorAll(`[data-release-size="${target}"]`).forEach((element) => {
           element.textContent = size;
         });
+        // Keep the official latest URL as a fallback if the API returns an unexpected address.
+        try {
+          const address = new URL(release.url);
+          if (address.origin === 'https://in.desktoppet.online' && address.pathname.startsWith('/downloads/')) {
+            document.querySelectorAll('[data-analytics-download]').forEach((link) => {
+              if (`${link.dataset.platform}/${link.dataset.architecture}` === target) link.href = address.href;
+            });
+          }
+        } catch {}
       }
+      document.querySelectorAll('[data-release-status]').forEach((element) => {
+        element.textContent = '版本与文件大小已与官方下载服务同步。';
+      });
     })
-    .catch(() => {});
+    .catch(() => {
+      document.querySelectorAll('[data-release-size]').forEach((element) => { element.textContent = '下载时查看'; });
+      document.querySelectorAll('[data-release-status]').forEach((element) => {
+        element.textContent = '暂时无法读取版本信息，以下官方入口仍指向最新安装包，可稍后刷新重试。';
+      });
+    });
 
   const xianyuLinks = document.querySelectorAll('[data-xianyu-link]');
   if (xianyuLinks.length) {
