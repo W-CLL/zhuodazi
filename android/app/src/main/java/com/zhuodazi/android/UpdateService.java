@@ -13,6 +13,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Arrays;
@@ -107,6 +108,20 @@ final class UpdateService {
         connection.setRequestProperty("Accept", "application/vnd.android.package-archive,application/octet-stream,*/*");
         try {
             int status = connection.getResponseCode();
+            if (isRedirect(status)) {
+                String redirect = connection.getHeaderField("Location");
+                connection.disconnect();
+                if (!isTrustedDownloadRedirect(redirect)) {
+                    throw new IOException("更新下载地址跳转到不受信任的域名");
+                }
+                // The OSS URL is signed in its query string. Do not forward the
+                // backend license Authorization header to the storage service.
+                connection = NetworkClient.open(context, "GET", redirect, licenses, NetworkClient.Auth.NONE);
+                connection.setConnectTimeout(20_000);
+                connection.setReadTimeout(10 * 60 * 1000);
+                connection.setRequestProperty("Accept", "application/vnd.android.package-archive,application/octet-stream,*/*");
+                status = connection.getResponseCode();
+            }
             if (status == 401 || status == 403) {
                 throw new IOException(authMessage(readErrorBody(connection), status));
             }
@@ -233,6 +248,28 @@ final class UpdateService {
             new Ed25519Verify(rawPublicKey).verify(signature, signedPayload(manifest));
         } catch (Exception error) {
             throw new IOException("更新清单签名验证失败", error);
+        }
+    }
+
+    static boolean isRedirect(int status) {
+        return status == HttpURLConnection.HTTP_MOVED_PERM
+            || status == HttpURLConnection.HTTP_MOVED_TEMP
+            || status == HttpURLConnection.HTTP_SEE_OTHER
+            || status == 307 || status == 308;
+    }
+
+    static boolean isTrustedDownloadRedirect(String value) {
+        if (value == null || value.isEmpty()) return false;
+        try {
+            URI uri = URI.create(value);
+            return "https".equalsIgnoreCase(uri.getScheme())
+                && DeskPetApi.OSS_DOWNLOAD_HOST.equalsIgnoreCase(uri.getHost())
+                && uri.getPath() != null
+                && uri.getPath().startsWith("/releases/")
+                && uri.getQuery() != null
+                && !uri.getQuery().isEmpty();
+        } catch (IllegalArgumentException error) {
+            return false;
         }
     }
 

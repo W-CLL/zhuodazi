@@ -3,6 +3,7 @@ package com.zhuodazi.android;
 final class DeskPetApi {
     static final String HOST = "in.desktoppet.online";
     static final String BASE_URL = "https://" + HOST;
+    static final String OSS_DOWNLOAD_HOST = "oss-download.desktoppet.online";
     static final String SIGNING_PUBLIC_KEY_SPKI =
         "MCowBQYDK2VwAyEANjBEMMQ5TY+0ECNoRqQy9780eoVOzkKpzFDq2TwLytU=";
 
