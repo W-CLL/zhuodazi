@@ -1,6 +1,6 @@
 # 桌搭子 macOS 版
 
-这是使用 Swift 与 AppKit 实现的原生 macOS 版，最低支持 macOS 13。本轮目标版本为 3.4.1，用户变化见 [更新说明](RELEASE_NOTES.md)。
+这是使用 Swift 与 AppKit 实现的原生 macOS 版，最低支持 macOS 13。本轮目标版本为 3.4.1，优化桌宠启动、电脑唤醒后的恢复体验及长时间运行时的连接稳定性；已有设置和日常数据保留，详见 [更新说明](RELEASE_NOTES.md)。
 
 ## 当前功能
 
