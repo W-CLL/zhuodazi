@@ -61,4 +61,19 @@ public class SettingsStoreTest {
         settings.applyRemoteConfig(remote());
         assertEquals("", settings.xianyuUrl());
     }
+
+    @Test public void newDailyPresetsDoNotSilentlySpeedUpExistingInstallations() throws Exception {
+        SettingsStore fresh = new SettingsStore(preferences(new HashMap<>()));
+        assertEquals("relaxed", fresh.dailyFrequencyPreset());
+        assertArrayEquals(new int[]{15, 40}, fresh.interactionMinutes());
+        Map<String,Object> old = new HashMap<>(); old.put(SettingsStore.INTERACTION_MODE, "quiet");
+        SettingsStore upgraded = new SettingsStore(preferences(old));
+        assertEquals("legacy-quiet", upgraded.dailyFrequencyPreset());
+        assertArrayEquals(new int[]{60, 120}, upgraded.interactionMinutes());
+        upgraded.putString(SettingsStore.DAILY_FREQUENCY, "eager");
+        upgraded.applyRemoteConfig(remote());
+        assertArrayEquals(new int[]{5, 15}, upgraded.interactionMinutes());
+        upgraded.putString(SettingsStore.DAILY_FREQUENCY, "frequent");
+        assertArrayEquals(new int[]{10, 30}, upgraded.interactionMinutes());
+    }
 }

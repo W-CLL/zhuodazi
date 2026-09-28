@@ -58,6 +58,9 @@ struct AppSettings: Codable {
     var dailySpeechEnabled = true
     var quietUntilUtc: Date?
     var interactionMode = "standard"
+    var dailyFrequency = "frequent"
+    var dailyRoutine = DailyRoutine()
+    var dailyRoutineScope = ""
     var theaterEnabled = false
     var theaterIntervalSeconds = 300
     var theaterScripts: [TheaterScriptDefinition] = []
@@ -102,6 +105,9 @@ struct AppSettings: Codable {
         dailySpeechEnabled = try values.decodeIfPresent(Bool.self, forKey: .dailySpeechEnabled) ?? true
         quietUntilUtc = try values.decodeIfPresent(Date.self, forKey: .quietUntilUtc)
         interactionMode = try values.decodeIfPresent(String.self, forKey: .interactionMode) ?? "standard"
+        dailyFrequency = try values.decodeIfPresent(String.self, forKey: .dailyFrequency) ?? DailyFrequency.migrated(interactionMode)
+        dailyRoutine = try values.decodeIfPresent(DailyRoutine.self, forKey: .dailyRoutine) ?? DailyRoutine()
+        dailyRoutineScope = try values.decodeIfPresent(String.self, forKey: .dailyRoutineScope) ?? ""
         theaterEnabled = try values.decodeIfPresent(Bool.self, forKey: .theaterEnabled) ?? false
         theaterIntervalSeconds = try values.decodeIfPresent(Int.self, forKey: .theaterIntervalSeconds) ?? 300
         theaterScripts = try values.decodeIfPresent([TheaterScriptDefinition].self, forKey: .theaterScripts) ?? []
@@ -148,6 +154,11 @@ struct AppSettings: Codable {
         opacity = min(100, max(20, opacity))
         if !["lively", "shy", "clingy", "chaotic"].contains(personality) { personality = "lively" }
         if !["quiet", "standard", "lively"].contains(interactionMode) { interactionMode = "standard" }
+        if !DailyFrequency.presets.contains(dailyFrequency) { dailyFrequency = "frequent" }
+        if DailyClock.time(dailyRoutine.time) == nil { dailyRoutine.time = "17:00" }
+        dailyRoutine.weekdays = Array(Set(dailyRoutine.weekdays.filter { (0...6).contains($0) })).sorted()
+        dailyRoutine.promptCount = min(2, max(0, dailyRoutine.promptCount))
+        dailyRoutine.moodPromptCount = min(2, max(0, dailyRoutine.moodPromptCount))
         if ![60, 180, 300, 600, 1800].contains(theaterIntervalSeconds) { theaterIntervalSeconds = 300 }
         if ![30, 60, 300, 600, 1800].contains(randomPetIntervalSeconds) { randomPetIntervalSeconds = 30 }
         if !pets.contains(where: { $0.id == activePetId }) { activePetId = nil }

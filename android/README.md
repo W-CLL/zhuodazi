@@ -1,6 +1,6 @@
 # 桌搭子 Android 版
 
-Android 版使用原生 Java 实现，通过系统“显示在其他应用上层”权限提供悬浮桌宠。它直接打包仓库 assets/default-pets 中的默认桌宠 GIF 和互动词包，不复制素材文件。
+Android 版使用 Flutter 设置界面和原生 Java 悬浮服务，通过系统“显示在其他应用上层”权限提供悬浮桌宠。它直接打包仓库 assets/default-pets 中的默认桌宠 GIF，互动题目自动从线上获取并校验签名。
 
 ## 已实现
 
@@ -11,6 +11,8 @@ Android 版使用原生 Java 实现，通过系统“显示在其他应用上层
 - 10 个内置桌宠、随机/手动换宠、最多 3 个自定义 GIF
 - 图鉴目录：体验或正式激活后可用系统文件选择器绑定最多 3 个 GIF 文件夹，递归扫描最多 500 张并作为轮换池
 - 大小、透明度、镜像、性格、互动频率、词包和换宠间隔
+- 「我们的日常」：八种心情、累计/本周/按月统计、心情月历、后台配置的周/月总结，不展示逐条记录
+- 5–15 / 10–30 / 15–40 分钟互动频率，保留旧用户原频率；可设置工作日与下班时间，明确选择稍后提醒时最多追加一次
 - Android Keystore 加密的独立设备身份、7 天体验与正式激活
 - 搭子昵称、配对码、配对/解除配对、当前 GIF 互发与来访展示
 - 开机后恢复桌宠
@@ -27,17 +29,19 @@ Android 不支持 Windows 托盘、全局鼠标追逐和 WPF 窗口模型。提�
 
 ### GitHub Actions
 
-向 `main` 推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.4.0-arm64.apk` 和 `ZhuoDazi-Android-1.4.0-armv7.apk` 上传到 `android-v1.4.0` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
+向 `main` 推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.5.0-arm64.apk` 和 `ZhuoDazi-Android-1.5.0-armv7.apk` 上传到 `android-v1.5.0` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
 
 Android 版本号统一从 `android/app/build.gradle.kts` 读取，打包名称和 Release 标签自动同步，Flutter 的 `pubspec.yaml` 必须同步版本与安装编号。Android 与桌面分别递增：修复加末位，新增功能加中间位并清零末位，大版本升级加首位并清零后两位。详见 [版本规则](../docs/releases/versioning.md)。工作流在构建前检查元数据及用户更新说明，并拒绝覆盖已发布的 Release。创建发布标签不会再次触发构建。
 
-工作流会执行 Android Lint、APK 编译和 v2 签名验证。仓库当前的 Actions Artifact 存储额度已满，因此和 Windows/macOS 构建一样直接使用 GitHub Release 保存安装包。
+工作流会执行 Android Lint、APK 编译和 v2 签名验证，并使用 GitHub Release 保存安装包。
 
-v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。当前待验收版本为 v1.4.0（versionCode 22）。远程构建使用稳定发布签名并上传到草稿 Release，待人工确认后再公开；本地调试包使用独立包名和 `-debug` 后缀。覆盖安装要求包名和签名一致；正式签名包不会覆盖本地调试应用。
+v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。本轮目标版本为 v1.5.0（versionCode 24），用户变化见 [更新说明](../docs/releases/android-1.5.0.md)。远程构建使用稳定发布签名并上传到草稿 Release，完成验收后再公开；本地调试包使用独立包名和 `-debug` 后缀。覆盖安装要求包名和签名一致；正式签名包不会覆盖本地调试应用。
 
 ### 本地构建
 
 要求 JDK 17 或更高版本，以及包含 Android SDK Platform 36 和 Build Tools 36 的 Android SDK。
+
+周/月总结需要后端 `/api/public/site-settings` 返回 `dailySummaries` 配置。未配置时展示等待设置的提示，不用客户端固定文案替代；正式交付需同步部署支持总结配置的后台。
 
 ```powershell
 cd .\android

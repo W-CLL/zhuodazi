@@ -9,7 +9,6 @@ import com.google.crypto.tink.subtle.Ed25519Verify;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -53,6 +52,7 @@ final class InteractionContentService {
     private final Context context;
     private final LicenseService licenses;
     private final SharedPreferences store;
+    private final DailyJournalStore journal;
     private final Random random = new Random();
     private final List<Item> items = new ArrayList<>();
     private final List<String> shown = new ArrayList<>();
@@ -64,8 +64,8 @@ final class InteractionContentService {
         this.context = context.getApplicationContext();
         this.licenses = licenses;
         store = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        journal = new DailyJournalStore(this.context);
         load();
-        if (items.isEmpty()) resetFallback();
     }
 
     synchronized int cachedCount() { return items.size(); }
@@ -87,22 +87,30 @@ final class InteractionContentService {
     synchronized boolean shouldFlush() { return events.size() >= 10; }
 
     synchronized boolean isMoodPromptDue() {
-        return System.currentTimeMillis() >= store.getLong(NEXT_MOOD_AT, 0L);
+        String today = java.time.LocalDate.now().toString();
+        return (!today.equals(store.getString("mood_prompt_date", "")) || store.getInt("mood_prompt_count", 0) < 2)
+            && System.currentTimeMillis() >= store.getLong(NEXT_MOOD_AT, 0L);
     }
 
-    synchronized void markMoodPrompted() {
-        long minutes = 180L + random.nextInt(181);
-        store.edit().putLong(NEXT_MOOD_AT, System.currentTimeMillis() + minutes * 60_000L)
+    synchronized void markMoodPrompted(boolean automatic) {
+        String today = java.time.LocalDate.now().toString();
+        int count = today.equals(store.getString("mood_prompt_date", "")) ? store.getInt("mood_prompt_count", 0) : 0;
+        store.edit().putLong(NEXT_MOOD_AT, System.currentTimeMillis() + 180 * 60_000L)
+            .putString("mood_prompt_date", today).putInt("mood_prompt_count", count + (automatic ? 1 : 0))
             .putString(LAST_TYPE, "mood").apply();
         lastType = "mood";
     }
 
     synchronized Item takeNextContent() {
-        if (items.isEmpty()) resetFallback();
+        return takeNextContent(false);
+    }
+
+    synchronized Item takeNextContent(boolean quizOnly) {
         if (items.isEmpty()) return null;
         List<Item> candidates = new ArrayList<>();
-        for (Item item : items) if (!item.type.equals(lastType)) candidates.add(item);
-        if (candidates.isEmpty()) candidates.addAll(items);
+        for (Item item : items) if ((!quizOnly || Arrays.asList("math", "trivia", "riddle").contains(item.type)) && !item.type.equals(lastType)) candidates.add(item);
+        if (candidates.isEmpty()) for (Item item : items) if (!quizOnly || Arrays.asList("math", "trivia", "riddle").contains(item.type)) candidates.add(item);
+        if (candidates.isEmpty()) return null;
         Item selected = candidates.get(random.nextInt(candidates.size()));
         items.remove(selected);
         shown.remove(selected.id);
@@ -115,19 +123,25 @@ final class InteractionContentService {
     }
 
     synchronized void recordMood(String mood) {
-        if (!("happy".equals(mood) || "okay".equals(mood) || "low".equals(mood))) return;
-        addEvent("mood_response", mood, null, null);
+        journal.recordMood(mood);
+        store.edit().putLong(NEXT_MOOD_AT, System.currentTimeMillis() + 180 * 60_000L).apply();
+        if (Arrays.asList("bad", "cry", "tired", "annoyed").contains(mood))
+            new SettingsStore(context).putLong(SettingsStore.DAILY_GENTLE_UNTIL, System.currentTimeMillis() + 30 * 60_000L);
+        // The legacy analytics API accepts only three values. Never infer or relabel a person's mood.
+        if ("happy".equals(mood) || "okay".equals(mood)) addEvent("mood_response", mood, null, null);
         save();
     }
 
-    synchronized void recordJoke(Item item) {
+    synchronized void recordJoke(Item item, String occurrenceId) {
+        if (item == null || !journal.recordDaily(occurrenceId, "joke", item.id, java.time.OffsetDateTime.now())) return;
         if (item != null && item.online()) {
             addEvent("joke_revealed", null, item.id, null);
             save();
         }
     }
 
-    synchronized void recordQuiz(Item item, boolean correct) {
+    synchronized void recordQuiz(Item item, boolean correct, String occurrenceId) {
+        if (item == null || !journal.recordQuiz(occurrenceId, item.id, correct, java.time.OffsetDateTime.now())) return;
         if (item != null && item.online()) {
             addEvent("quiz_answered", null, item.id, correct);
             save();
@@ -147,6 +161,11 @@ final class InteractionContentService {
                 message == null || message.trim().isEmpty() ? "线上内容同步失败" : message.trim()).apply();
             throw error;
         }
+    }
+
+    synchronized void recordAcknowledgment(Item item, String occurrenceId) {
+        if (item != null && ("tip".equals(item.type) || "care".equals(item.type)))
+            journal.recordDaily(occurrenceId, item.type, item.id, java.time.OffsetDateTime.now());
     }
 
     void markProfileEdited() {
@@ -311,24 +330,12 @@ final class InteractionContentService {
         return added;
     }
 
-    private synchronized void resetFallback() {
-        try (InputStream input = context.getAssets().open("interaction_fallback.json")) {
-            byte[] data = NetworkClient.readLimited(input, 256 * 1024);
-            JSONArray fallback = new JSONObject(new String(data, StandardCharsets.UTF_8)).getJSONArray("items");
-            for (int i = 0; i < fallback.length(); i++) {
-                Item item = Item.fromJson(fallback.getJSONObject(i));
-                if (item.valid() && items.stream().noneMatch(current -> current.id.equals(item.id))) items.add(item);
-            }
-            save();
-        } catch (Exception ignored) { }
-    }
-
     private synchronized void load() {
         try {
             JSONArray storedItems = new JSONArray(store.getString(ITEMS, "[]"));
             for (int i = 0; i < storedItems.length(); i++) {
                 Item item = Item.fromJson(storedItems.getJSONObject(i));
-                if (item.valid()) items.add(item);
+                if (item.valid() && item.online()) items.add(item);
             }
             JSONArray storedShown = new JSONArray(store.getString(SHOWN, "[]"));
             for (int i = 0; i < storedShown.length() && shown.size() < MAX_SHOWN; i++)

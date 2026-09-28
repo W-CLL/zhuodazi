@@ -117,6 +117,16 @@ jobs:
     needs: [metadata, prepare-release, build-windows, build-macos]
     runs-on: ubuntu-latest
     steps:
+      - name: Require successful builds for unpublished platforms
+        env:
+          WINDOWS_PUBLISHED: ${{ needs.prepare-release.outputs.windows_published }}
+          MACOS_PUBLISHED: ${{ needs.prepare-release.outputs.macos_published }}
+          WINDOWS_BUILD: ${{ needs.build-windows.result }}
+          MACOS_BUILD: ${{ needs.build-macos.result }}
+        run: |
+          test "$WINDOWS_PUBLISHED" = "true" || test "$WINDOWS_BUILD" = "success"
+          test "$MACOS_PUBLISHED" = "true" || test "$MACOS_BUILD" = "success"
+
       - name: Check Windows packages
         if: needs.prepare-release.outputs.windows_published != 'true'
         env:

@@ -59,6 +59,12 @@ public sealed class AppSettings
     [JsonPropertyName("interactionMode")]
     public string InteractionMode { get; set; } = "standard";
 
+    [JsonPropertyName("dailyFrequencyPreset")]
+    public string DailyFrequencyPreset { get; set; } = "relaxed";
+
+    [JsonPropertyName("dailyRoutine")]
+    public DailyRoutineSettings DailyRoutine { get; set; } = new();
+
     [JsonPropertyName("theaterEnabled")]
     public bool TheaterEnabled { get; set; }
 
@@ -135,6 +141,10 @@ public sealed class AppSettings
             ? Personality : "lively";
         InteractionMode = InteractionMode is "quiet" or "standard" or "lively"
             ? InteractionMode : "standard";
+        DailyFrequencyPreset = DailyFrequencyPreset is "eager" or "frequent" or "relaxed"
+            or "legacy-quiet" or "legacy-standard" or "legacy-lively" ? DailyFrequencyPreset : "relaxed";
+        DailyRoutine ??= new();
+        DailyRoutine.Normalize();
         TheaterIntervalSeconds = TheaterIntervalSeconds is 60 or 180 or 300 or 600 or 1800
             ? TheaterIntervalSeconds : 300;
         NormalizeTheaterScripts();
@@ -293,6 +303,31 @@ public sealed class AppSettings
     {
         var clean = string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
         return clean.Length <= 60 ? clean : clean[..60];
+    }
+}
+
+public sealed class DailyRoutineSettings
+{
+    public bool Enabled { get; set; }
+    public string OffWorkTime { get; set; } = "18:00";
+    public List<int> WorkDays { get; set; } = [1, 2, 3, 4, 5];
+    public string? ScopeId { get; set; }
+    public DateOnly? StateDate { get; set; }
+    public bool FinishedToday { get; set; }
+    public DateTimeOffset? NextReminderAt { get; set; }
+    public int PromptCount { get; set; }
+    public DateOnly? LastWorkCheckInDate { get; set; }
+    public DateOnly? MoodPromptDate { get; set; }
+    public int MoodPromptCount { get; set; }
+    public DateTimeOffset? NextMoodPromptAt { get; set; }
+
+    public void Normalize()
+    {
+        if (!TimeOnly.TryParseExact(OffWorkTime, "HH:mm", System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.None, out _)) OffWorkTime = "18:00";
+        WorkDays = (WorkDays ?? [1, 2, 3, 4, 5]).Where(day => day is >= 0 and <= 6).Distinct().Order().ToList();
+        PromptCount = Math.Clamp(PromptCount, 0, 2);
+        MoodPromptCount = Math.Clamp(MoodPromptCount, 0, 2);
     }
 }
 

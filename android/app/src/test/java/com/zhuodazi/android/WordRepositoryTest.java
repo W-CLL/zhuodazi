@@ -151,7 +151,7 @@ public class WordRepositoryTest {
         verify(assets, times(1)).open("word-packs/" + DEFAULT_PACK);
     }
 
-    @Test public void allShippedPacksAreDiscoverableAndInteractionFallbackRemainsAtRoot() throws Exception {
+    @Test public void allShippedWordPacksAreDiscoverableWithoutAnOfflineQuizPack() throws Exception {
         Context app = RuntimeEnvironment.getApplication();
         String[] packagedNames = app.getAssets().list("word-packs");
         assertEquals(Arrays.asList("互联网嘴替.json", "抽象大师.json", "精神状态.jpg.json", "纯爱战士（已黑化）.json"),
@@ -169,8 +169,6 @@ public class WordRepositoryTest {
         for (String pack : repository.packs()) {
             assertNotEquals("备用台词", repository.reaction(pack, "idle", "备用台词"));
         }
-        try (InputStream fallback = app.getAssets().open("interaction_fallback.json")) {
-            assertTrue(fallback.read() >= 0);
-        }
+        assertFalse(Arrays.asList(app.getAssets().list("")).contains("interaction_fallback.json"));
     }
 }

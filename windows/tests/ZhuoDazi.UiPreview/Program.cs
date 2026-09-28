@@ -1,4 +1,5 @@
 using System.IO;
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http;
 using System.Reflection;
@@ -21,7 +22,7 @@ internal static class Program
         var directory = Path.Combine(Path.GetTempPath(), "ZhuoDazi-OfflinePreview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
-        if (args.Contains("--guide-check"))
+        if (args.Contains("--guide-check") || args.Contains("--daily-smoke"))
         {
             // Automated checks raise their own routed events. Ignore real mouse/keyboard input
             // in this test process so a click on an overlapping test pet cannot answer early.
@@ -40,7 +41,7 @@ internal static class Program
         using var license = new LicenseService(directory);
         license.CheckTrialAsync().GetAwaiter().GetResult();
         System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
-        using var controller = new AppController(license, new SettingsStore(directory));
+        using var controller = new AppController(license, new SettingsStore(directory), localPreview: args.Contains("--daily-smoke"));
         controller.Settings.RemoteDefaultsApplied = true;
         if (args.Contains("--library-check"))
         {
@@ -57,6 +58,37 @@ internal static class Program
         };
         controller.Settings.Pets.Add(pet);
         controller.Settings.ActivePetId = pet.Id;
+        if (args.Contains("--daily-smoke"))
+        {
+            var output = args.SkipWhile(a => a != "--daily-smoke").Skip(1).FirstOrDefault() ?? directory;
+            output = Path.GetFullPath(output);
+            Directory.CreateDirectory(output);
+            controller.Settings.Onboarding.Step = 5;
+            controller.Settings.RandomMovementEnabled = false;
+            controller.Settings.TheaterEnabled = false;
+            controller.Settings.DailySpeechEnabled = false;
+            controller.Settings.AutoCheckUpdates = false;
+            controller.Start(synchronizeStartupRegistration: false);
+            app.Dispatcher.BeginInvoke(async () =>
+            {
+                try
+                {
+                    var petWindow = app.Windows.OfType<PetWindow>().Single();
+                    await DailyFlowChecks.Run(controller, petWindow, output, () => OfflineHandler.Requests.ToArray(),
+                        configuration => OfflineHandler.DailySummaries = configuration);
+                    File.WriteAllLines(Path.Combine(output, "mock-http-requests.txt"), OfflineHandler.Requests);
+                    app.Shutdown(0);
+                }
+                catch (Exception error)
+                {
+                    File.WriteAllText(Path.Combine(output, "daily-failure.txt"), error.ToString());
+                    Console.Error.WriteLine(error);
+                    app.Shutdown(1);
+                }
+            });
+            app.Run();
+            return;
+        }
         if (args.Contains("--guide-check") || args.Contains("--guide-preview"))
         {
             var petWindow = new PetWindow(controller);
@@ -167,15 +199,24 @@ internal static class Program
 
     private sealed class OfflineHandler : HttpMessageHandler
     {
+        internal static ConcurrentQueue<string> Requests { get; } = new();
+        internal static DailySummaryConfig? DailySummaries { get; set; }
         private static bool _joined;
         private static string _name = "桌角的朋友";
 
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
+            Requests.Enqueue($"MOCK {request.Method} {request.RequestUri!.AbsolutePath}");
             await Task.Delay(250, cancellationToken);
             var path = request.RequestUri!.AbsolutePath;
             if (path == "/api/trial")
                 return Json(new { allowed = true, remainingSeconds = 604800, expiresAt = DateTimeOffset.UtcNow.AddDays(7).ToString("O") });
+            if (path == "/api/public/site-settings") return Json(new
+            {
+                dailySummaries = DailySummaries,
+                features = new { autoUpdates = false },
+                defaults = new { interactionMode = "standard", theaterIntervalSeconds = 300 }
+            });
             if (path == "/api/companion" && request.Method == HttpMethod.Patch)
             {
                 using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
@@ -201,11 +242,14 @@ internal static class Program
                 items = new[] { new { id = "preview", type = "suggestion", title = "希望可以暂时安静一下", content = "工作时希望暂停主动消息，提醒仍然保留。", status = "resolved", adminNote = string.Concat(Enumerable.Repeat("已经加入暂停 1 小时功能，时间到后恢复原来的节奏。提醒不受影响，来访会排队保留。", 12)), createdAt = "2026-09-18T08:00:00Z", updatedAt = "2026-09-18T10:00:00Z" } }
             });
             if (path == "/api/update/latest") return Json(new { error = "No release available" }, HttpStatusCode.NotFound);
+            if (path == "/api/interactions/profile") return Json(new { profile = new { mode = "lively", promptsEnabled = true } });
+            if (path == "/api/interactions/events" || path == "/api/analytics/events") return Json(new { accepted = true });
             return Json(new { error = "离线界面验收中，此操作不会连接服务器。" }, HttpStatusCode.ServiceUnavailable);
         }
 
         private static HttpResponseMessage Profile() => Json(new { displayName = _name, pairingCode = "", partner = (object?)null, hallEnabled = _joined, online = _joined });
         private static HttpResponseMessage Json(object value, HttpStatusCode status = HttpStatusCode.OK)
-            => new(status) { Content = new StringContent(JsonSerializer.Serialize(value), Encoding.UTF8, "application/json") };
+            => new(status) { Content = new StringContent(JsonSerializer.Serialize(value,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }), Encoding.UTF8, "application/json") };
     }
 }

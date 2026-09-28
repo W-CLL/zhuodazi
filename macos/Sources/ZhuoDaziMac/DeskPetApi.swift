@@ -12,7 +12,6 @@ enum DeskPetApi {
     static let interactionProfile = baseURL.appendingPathComponent("api/interactions/profile")
     static let interactionEvents = baseURL.appendingPathComponent("api/interactions/events")
     static let contentBatch = baseURL.appendingPathComponent("api/content/batch")
-    static let contentOfflinePack = baseURL.appendingPathComponent("api/content/offline-pack")
     static let companion = baseURL.appendingPathComponent("api/companion")
     static let companionPair = companion.appendingPathComponent("pair")
     static let companionDeliveries = companion.appendingPathComponent("deliveries")

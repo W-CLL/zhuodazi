@@ -7,6 +7,7 @@ import 'app_controller.dart';
 import 'host_api.dart';
 part 'hall_page.dart';
 part 'onboarding_card.dart';
+part 'daily_page.dart';
 
 const _ink = Color(0xff17201e);
 const _muted = Color(0xff5d6b67);
@@ -886,6 +887,21 @@ class InteractionPage extends StatelessWidget {
       onRefresh: controller.refresh,
       children: [
         const PageIntro(title: '互动', subtitle: '聊心情、听笑话、看小剧场。'),
+        Panel(
+          color: _mint,
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.calendar_month_outlined, color: _brand),
+            title: const Text('我们的日常'),
+            subtitle: const Text('记心情、聊下班，看看这一周和这个月。'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DailyPage(controller: controller),
+              ),
+            ),
+          ),
+        ),
         if (snapshot.interactionBusy || snapshot.theaterActive) ...[
           const SizedBox(height: 10),
           OutlinedButton.icon(
@@ -984,22 +1000,6 @@ class InteractionPage extends StatelessWidget {
                   ),
                 ],
               ),
-              if (snapshot.interactionSyncError.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                const Text('暂时无法更新，已有内容仍可使用。'),
-              ],
-              const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: snapshot.premium
-                    ? () => runAction(
-                        context,
-                        controller.syncInteractions(),
-                        (_) => '已更新',
-                      )
-                    : null,
-                icon: const Icon(Icons.sync),
-                label: const Text('换一批内容'),
-              ),
             ],
           ),
         ),
@@ -1028,15 +1028,22 @@ class InteractionPage extends StatelessWidget {
               const Divider(height: 10),
               ChoiceRow(
                 label: '互动频率',
-                value: snapshot.interactionMode,
-                options: const {
-                  'quiet': '安静 · 60-120 分钟',
-                  'standard': '标准 · 30-60 分钟',
-                  'lively': '热闹 · 10-30 分钟',
+                value: snapshot.dailyFrequencyPreset,
+                options: {
+                  'eager': '常来聊聊 · 5–15 分钟',
+                  'frequent': '时常见面 · 10–30 分钟',
+                  'relaxed': '轻松陪伴 · 15–40 分钟',
+                  if (snapshot.dailyFrequencyPreset.startsWith('legacy-'))
+                    snapshot.dailyFrequencyPreset:
+                        switch (snapshot.dailyFrequencyPreset) {
+                          'legacy-quiet' => '原设置 · 60–120 分钟',
+                          'legacy-lively' => '原设置 · 10–30 分钟',
+                          _ => '原设置 · 30–60 分钟',
+                        },
                 },
                 enabled: snapshot.premium,
                 onChanged: (value) =>
-                    controller.setSetting(settingInteractionMode, value),
+                    controller.setSetting(settingDailyFrequency, value),
               ),
             ],
           ),

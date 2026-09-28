@@ -158,11 +158,48 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  Future<void> syncInteractions() async {
-    await _guard(() async {
-      snapshot = await _api.syncInteractions();
-      _rememberTrial(snapshot);
-    });
+  Future<Map<String, dynamic>> dailySnapshot({
+    required String period,
+    required String month,
+    int weeklyOffset = 0,
+    int monthlyOffset = 0,
+  }) => _api.dailySnapshot(
+    period: period,
+    month: month,
+    weeklyOffset: weeklyOffset,
+    monthlyOffset: monthlyOffset,
+  );
+
+  Future<void> _dailyAction(Future<HostSnapshot> Function() action) =>
+      _guard(() async {
+        snapshot = await action();
+        _rememberTrial(snapshot);
+      });
+
+  Future<void> recordDailyMood(String mood) =>
+      _dailyAction(() => _api.dailyMood(mood));
+  Future<void> recordDailyWorkday(String choice, {int snoozeMinutes = 0}) =>
+      _dailyAction(
+        () => _api.dailyWorkday(choice, snoozeMinutes: snoozeMinutes),
+      );
+  Future<void> refreshDailyConfig() => _dailyAction(_api.dailyRefreshConfig);
+  Future<void> saveDailyRoutine({
+    required bool enabled,
+    required List<int> workdays,
+    required String time,
+  }) => _dailyAction(
+    () =>
+        _api.dailySaveRoutine(enabled: enabled, workdays: workdays, time: time),
+  );
+
+  Future<void> startDailyQuiz() async {
+    if (!snapshot.overlayAllowed) {
+      _pendingPetAction = 'dailyQuiz';
+      await requestOverlayPermission();
+      if (snapshot.overlayAllowed) return;
+      throw const HostFailure('允许悬浮窗后返回，桌宠会继续出题');
+    }
+    await _dailyAction(_api.dailyQuiz);
   }
 
   Future<void> setSetting(String key, Object value) async {
@@ -198,7 +235,9 @@ class AppController extends ChangeNotifier {
     final pending = _pendingPetAction;
     _pendingPetAction = null;
     if (pending != null) {
-      if (pending.startsWith('guide:')) {
+      if (pending == 'dailyQuiz') {
+        await startDailyQuiz();
+      } else if (pending.startsWith('guide:')) {
         await guide(pending.substring(6));
       } else {
         await service(pending);

@@ -33,8 +33,11 @@ final class PetWindowController {
     var isQuiet: Bool { AttentionPolicy.isQuiet(until: settings.quietUntilUtc) }
     var canRandomizePet: Bool { petURLs.count > 1 }
     var currentSettings: AppSettings { settings }
-    var interactionStatus: String {
-        (settings.randomInteractionsEnabled ? "主动互动已开启" : "主动互动已关闭，仍可手动体验") + " · " + interactions.statusSummary
+    var dailyEntries: [DailyEntry] { interactions.journalEntries }
+    var dailyStorageError: String? { interactions.journal?.persistenceError }
+    var dailyChanged: (() -> Void)? {
+        get { interactions.dailyChanged }
+        set { interactions.dailyChanged = newValue }
     }
     var hasPremiumAccess: Bool { premiumAccess() }
     var currentGIFURL: URL? { currentPetURL }
@@ -64,6 +67,7 @@ final class PetWindowController {
     private var theaterTimer: Timer?
     private var interactionTimer: Timer?
     private var interactionSyncTimer: Timer?
+    private var dailyTimer: Timer?
     private var velocity = CGVector.zero
     private var dragging = false
     private var dragOffset = NSPoint.zero
@@ -79,6 +83,12 @@ final class PetWindowController {
     private var reminderExpressionTask: Task<Void, Never>?
     private let interactionPanel: PetInteractionPanelController
     private var interactionActive = false
+    private var interactionWasManual = true
+    private var interactionStartEntryCount = 0
+    private var unansweredInteractions = 0
+    private var nextInteractionAllowedAt: Date?
+    private var gentleUntil: Date?
+    private var isGentle: Bool { gentleUntil.map { $0 > Date() } ?? false }
     private var interactionSyncTask: Task<Void, Never>?
     private var interactionSyncRequested = false
     private var interactionServicesStarted = false
@@ -146,6 +156,7 @@ final class PetWindowController {
         theaterTimer?.invalidate()
         interactionTimer?.invalidate()
         interactionSyncTimer?.invalidate()
+        dailyTimer?.invalidate()
         theaterTask?.cancel()
         guideTheaterTask?.cancel()
         reminderExpressionTask?.cancel()
@@ -352,6 +363,13 @@ final class PetWindowController {
 
     func startInteractionServices() {
         interactionServicesStarted = true
+        if dailyTimer == nil {
+            let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.checkDailyRoutine() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            dailyTimer = timer
+        }
         guard hasPremiumAccess else { return }
         restartInteractionTimer()
         scheduleInteractionSync(after: 1)
@@ -375,6 +393,7 @@ final class PetWindowController {
             || settings.libraries != normalized.libraries
         let interactionChanged = settings.randomInteractionsEnabled != normalized.randomInteractionsEnabled
             || settings.interactionMode != normalized.interactionMode
+            || settings.dailyFrequency != normalized.dailyFrequency
         if userInitiated && (interactionChanged || settings.personality != normalized.personality
             || settings.theaterIntervalSeconds != normalized.theaterIntervalSeconds) {
             normalized.remoteDefaultsApplied = true
@@ -417,24 +436,7 @@ final class PetWindowController {
         Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: true) }
     }
 
-    func syncInteractionContent() async throws -> Int {
-        guard hasPremiumAccess else { throw LicenseError.inactive }
-        guard interactionServicesStarted else { throw InteractionError.server("正在加载首次设置，请稍后重试。") }
-        let profile = try await interactions.syncProfile(
-            localMode: settings.interactionMode,
-            localPromptsEnabled: settings.randomInteractionsEnabled
-        )
-        applyInteractionProfile(profile)
-        try await interactions.flushEvents()
-        return try await interactions.refill()
-    }
-
-    func downloadInteractionPack() async throws -> Int {
-        guard hasPremiumAccess else { throw LicenseError.inactive }
-        return try await interactions.downloadOfflinePack()
-    }
-
-    private func presentRandomInteraction(manual: Bool) async {
+    private func presentRandomInteraction(manual: Bool, quizOnly: Bool = false) async {
         interactionTimer?.invalidate()
         interactionTimer = nil
         guard hasPremiumAccess else { return }
@@ -442,31 +444,38 @@ final class PetWindowController {
             restartInteractionTimer()
             return
         }
-        guard !isTeaching, manual || (settings.randomInteractionsEnabled && !settings.clickThrough && !isQuiet) else {
+        guard !isTeaching, manual || (settings.randomInteractionsEnabled && !settings.clickThrough && !isQuiet && !isGentle
+            && CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!) < 5 * 60) else {
             restartInteractionTimer()
             return
         }
         if manual, settings.clickThrough { update { $0.clickThrough = false } }
 
         interactionActive = true
+        interactionWasManual = manual
+        interactionStartEntryCount = interactions.journalEntries.count
         interactionGeneration += 1
         let generation = interactionGeneration
+        ensureDailyScope()
         do {
-            let moodDue = interactions.isMoodPromptDue()
+            if !manual, !quizOnly, tryShowWorkCheckIn() { return }
+            let moodDue = !quizOnly && dailyMoodDue(manual: manual)
             if moodDue, interactions.cachedContentCount == 0 || Int.random(in: 0..<4) == 0 {
-                showMoodInteraction()
+                showMoodInteraction(manual: manual)
                 return
             }
-            if interactions.cachedContentCount == 0 { _ = try await interactions.refill() }
+            if quizOnly ? interactions.cachedQuizCount == 0 : interactions.cachedContentCount == 0 {
+                _ = try await interactions.refill(quizOnly: quizOnly)
+            }
             guard generation == interactionGeneration else { return }
             guard window.isVisible, theaterTask == nil, interactionActive,
                   !isTeaching, manual || (!isQuiet && !settings.clickThrough && settings.randomInteractionsEnabled) else {
                 finishInteraction()
                 return
             }
-            guard let item = interactions.takeNextContent() else {
+            guard let item = interactions.takeNextContent(quizOnly: quizOnly) else {
                 if moodDue {
-                    showMoodInteraction()
+                    showMoodInteraction(manual: manual)
                 } else {
                     if manual { showBubble("这会儿还没找到合适的小乐趣，稍后再来找我吧。") }
                     finishInteraction()
@@ -481,25 +490,35 @@ final class PetWindowController {
         }
     }
 
-    private func showMoodInteraction() {
+    private func showMoodInteraction(manual: Bool = false) {
+        ensureDailyScope()
+        let now = Date()
+        settings.dailyRoutine.beginDay(now)
+        if !manual { settings.dailyRoutine.moodPromptCount += 1 }
+        settings.dailyRoutine.nextMoodAt = now.addingTimeInterval(3 * 3600)
+        saveSettings()
         interactions.markMoodPrompted()
         showInteraction(
-            title: "随手问候",
-            message: "今天心情怎么样？",
-            choices: [
-                PetInteractionChoice("开心", "happy"),
-                PetInteractionChoice("还可以", "okay"),
-                PetInteractionChoice("不咋地", "low")
-            ]
+            title: "聊聊现在的心情",
+            message: settings.dailyRoutine.isWorkday(now) && now < DailyClock.atTime(settings.dailyRoutine.time, on: now, calendar: .current)
+                ? "今天工作到现在，心情怎么样？" : "现在的心情怎么样？",
+            choices: DailyMood.allCases.map { PetInteractionChoice($0.label, $0.rawValue) }
         ) { [weak self] choice in
             guard let self else { return }
             if let mood = choice?.value {
-                interactions.recordMood(mood)
-                let response: String
-                switch mood {
-                case "happy": response = "那就把这份开心多留一会儿。"
-                case "low": response = "先不用硬撑，我在这儿陪你一会儿。"
-                default: response = "平平稳稳也很好，慢慢来。"
+                guard interactions.recordMood(mood) else {
+                    showBubble("这次没能保存心情，请稍后再试。"); finishInteraction(); return
+                }
+                let response = DailyMood(rawValue: mood)?.reply ?? "我在这里。"
+                if ["bad", "cry", "tired", "annoyed"].contains(mood) {
+                    gentleUntil = Date().addingTimeInterval(30 * 60)
+                    showInteraction(title: "我在这里", message: response,
+                        choices: [PetInteractionChoice("安静陪我", "quiet"), PetInteractionChoice("谢谢你", "done")]) { [weak self] reply in
+                        guard let self else { return }
+                        finishInteraction()
+                        if reply?.value == "quiet" { update { $0.quietUntilUtc = Date().addingTimeInterval(3600) } }
+                    }
+                    return
                 }
                 showBubble(response)
             }
@@ -549,7 +568,9 @@ final class PetWindowController {
                     return
                 }
                 let correct = answersMatch(item.choices[index], item.answer)
-                interactions.recordQuiz(contentId: item.id, correct: correct)
+                guard interactions.recordQuiz(contentId: item.id, correct: correct) else {
+                    showBubble("这次没能保存答题，请稍后再试。"); finishInteraction(); return
+                }
                 showAnswer(
                     title: correct ? "答对了" : "答案揭晓",
                     message: formatAnswer(item),
@@ -575,7 +596,9 @@ final class PetWindowController {
                 ]
             ) { [weak self] result in
                 guard let self else { return }
-                if let result { interactions.recordQuiz(contentId: item.id, correct: result.value == "correct") }
+                if let result, !interactions.recordQuiz(contentId: item.id, correct: result.value == "correct") {
+                    showBubble("这次没能保存答题，请稍后再试。")
+                }
                 finishInteraction()
             }
         }
@@ -595,12 +618,20 @@ final class PetWindowController {
         choices: [PetInteractionChoice],
         completion: @escaping (PetInteractionChoice?) -> Void
     ) {
+        let scope = interactions.dailyScope
+        let generation = interactionGeneration
         interactionPanel.present(
             title: title,
             message: message,
             choices: choices,
             relativeTo: window,
-            completion: completion
+            completion: { [weak self] choice in
+                guard let self, generation == self.interactionGeneration else { return }
+                guard scope == self.interactions.dailyScope, self.hasPremiumAccess else {
+                    self.finishInteraction(); return
+                }
+                completion(choice)
+            }
         )
     }
 
@@ -610,14 +641,150 @@ final class PetWindowController {
         return explanation.isEmpty || explanation == answer ? answer : "\(answer)\n\(explanation)"
     }
 
+    private func ensureDailyScope() {
+        guard settings.dailyRoutineScope != interactions.dailyScope else { return }
+        var routine = DailyRoutine()
+        routine.enabled = settings.dailyRoutine.enabled
+        routine.time = settings.dailyRoutine.time
+        routine.weekdays = settings.dailyRoutine.weekdays
+        settings.dailyRoutine = routine
+        settings.dailyRoutineScope = interactions.dailyScope
+        unansweredInteractions = 0
+        nextInteractionAllowedAt = nil
+        gentleUntil = nil
+        saveSettings()
+    }
+
+    private func dailyMoodDue(manual: Bool) -> Bool {
+        settings.dailyRoutine.beginDay(Date())
+        return manual || (settings.dailyRoutine.moodPromptCount < 2
+            && (settings.dailyRoutine.nextMoodAt.map { Date() >= $0 } ?? true))
+    }
+
+    func startDailyMood() {
+        guard beginManualDaily() else { return }
+        showMoodInteraction(manual: true)
+    }
+
+    func startDailyOffWork() {
+        guard beginManualDaily() else { return }
+        presentOffWork(manual: true)
+    }
+
+    func startDailyQuiz() {
+        guard hasPremiumAccess, interactionServicesStarted else { return }
+        guard prepareManualActivity("答题") else { return }
+        Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: true, quizOnly: true) }
+    }
+
+    private func beginManualDaily() -> Bool {
+        guard hasPremiumAccess, prepareManualActivity("日常互动") else { return false }
+        if settings.clickThrough { update { $0.clickThrough = false } }
+        ensureDailyScope()
+        interactionTimer?.invalidate(); interactionTimer = nil
+        interactionGeneration += 1; interactionActive = true
+        interactionWasManual = true
+        interactionStartEntryCount = interactions.journalEntries.count
+        return true
+    }
+
+    private func tryShowWorkCheckIn() -> Bool {
+        let now = Date(), calendar = Calendar.current
+        settings.dailyRoutine.beginDay(now)
+        let routine = settings.dailyRoutine
+        guard routine.isWorkday(now), !routine.finished, routine.lastWorkDay != routine.stateDay,
+              calendar.component(.hour, from: now) >= 10,
+              now < DailyClock.atTime(routine.time, on: now, calendar: calendar).addingTimeInterval(-15 * 60) else { return false }
+        settings.dailyRoutine.lastWorkDay = routine.stateDay
+        saveSettings()
+        showInteraction(title: "工作间隙", message: "今天工作进展怎么样？", choices: [
+            PetInteractionChoice("挺顺利", "smooth"), PetInteractionChoice("忙但还行", "busy"),
+            PetInteractionChoice("有点卡住", "stuck"), PetInteractionChoice("先不聊", "skip")
+        ]) { [weak self] choice in
+            guard let self else { return }
+            if let value = choice?.value, value != "skip" {
+                if interactions.recordDailyEntry(DailyEntry(kind: "daily", scenario: "work", choice: value)) {
+                    showBubble(value == "smooth" ? "给今天加一颗小星星。" : value == "busy" ? "你慢慢忙，我在旁边陪着。" : "先喘口气，再从一小步开始。")
+                } else { showBubble("这次没能保存，请稍后再试。") }
+            }
+            finishInteraction()
+        }
+        return true
+    }
+
+    private func checkDailyRoutine() {
+        guard hasPremiumAccess, interactionServicesStarted, window.isVisible, !isTeaching,
+              !isBusyWithScene, !isQuiet, !settings.clickThrough,
+              CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: UInt32.max)!) < 5 * 60 else { return }
+        ensureDailyScope()
+        guard settings.dailyRoutine.isDue(Date()) else { return }
+        interactionTimer?.invalidate(); interactionTimer = nil
+        interactionActive = true; interactionGeneration += 1
+        interactionWasManual = false
+        interactionStartEntryCount = interactions.journalEntries.count
+        presentOffWork(manual: false)
+    }
+
+    private func presentOffWork(manual: Bool) {
+        let now = Date()
+        settings.dailyRoutine.markShown(now)
+        saveSettings()
+        var choices = [PetInteractionChoice("下班啦", "done"), PetInteractionChoice("还得加会班", "overtime")]
+        if Calendar.current.component(.hour, from: now) < 18 && settings.dailyRoutine.promptCount < 2 {
+            choices.append(PetInteractionChoice("今天六点下班", "six"))
+        }
+        choices.append(PetInteractionChoice("今天休息", "rest"))
+        showInteraction(title: "收工时刻", message: manual ? "今天可以收工了吗？" : "到了约好的时间，今天可以收工了吗？", choices: choices) { [weak self] choice in
+            guard let self else { return }
+            guard let value = choice?.value else { finishInteraction(); return }
+            guard Calendar.current.isDate(now, inSameDayAs: Date()) else { finishInteraction(); return }
+            guard interactions.recordDailyEntry(DailyEntry(kind: "daily", scenario: "offwork", choice: value)) else {
+                showBubble("这次没能保存，请稍后再试。"); finishInteraction(); return
+            }
+            if value == "done" || value == "rest" {
+                settings.dailyRoutine.finished = true; settings.dailyRoutine.snoozedUntil = nil
+                saveSettings()
+                showBubble(value == "done" ? "收工啦！接下来是属于你的时间。" : "那今天好好休息，不催你上班啦。")
+            } else if value == "six" {
+                let target = DailyClock.atTime("18:00", on: now, calendar: .current)
+                if settings.dailyRoutine.snooze(target, now: Date()) {
+                    saveSettings(); showBubble("今天 18:00 再来找你，平时的下班时间保持不变。")
+                }
+            } else if settings.dailyRoutine.promptCount < 2 {
+                showInteraction(title: "陪你加会班", message: "那我多久后再来看看？", choices: [
+                    PetInteractionChoice("30 分钟后", "30"), PetInteractionChoice("1 小时后", "60"),
+                    PetInteractionChoice("今天不用提醒", "quiet")
+                ]) { [weak self] reply in
+                    guard let self else { return }
+                    if let value = reply?.value, let minutes = Int(value), Calendar.current.isDate(now, inSameDayAs: Date()) {
+                        let selectedAt = Date()
+                        if settings.dailyRoutine.snooze(selectedAt.addingTimeInterval(TimeInterval(minutes * 60)), now: selectedAt) {
+                            saveSettings(); showBubble("好的，稍后再轻轻提醒一次。")
+                        }
+                    }
+                    finishInteraction()
+                }
+                return
+            } else { showBubble("辛苦啦，今天不再催你。忙完了可以主动告诉我。") }
+            finishInteraction()
+        }
+    }
+
     private func answersMatch(_ selected: String, _ answer: String) -> Bool {
         selected.trimmingCharacters(in: .whitespacesAndNewlines)
             .caseInsensitiveCompare(answer.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
     private func finishInteraction() {
+        guard interactionActive else { return }
         interactionGeneration += 1
         interactionActive = false
+        if interactions.journalEntries.count > interactionStartEntryCount { unansweredInteractions = 0 }
+        else if !interactionWasManual { unansweredInteractions += 1 }
+        if unansweredInteractions >= 2 {
+            nextInteractionAllowedAt = Date().addingTimeInterval(30 * 60)
+            unansweredInteractions = 0
+        }
         restartInteractionTimer()
         drainReminderQueue()
         if interactions.shouldFlush {
@@ -641,7 +808,7 @@ final class PetWindowController {
     func startTheater(manual: Bool = true) -> Bool {
         guard hasPremiumAccess else { return false }
         if manual, !prepareManualActivity("小剧场") { return false }
-        guard !isTeaching, manual || !isQuiet else { return false }
+        guard !isTeaching, manual || (!isQuiet && !isGentle) else { return false }
         guard window.isVisible, !isBusyWithScene else { return false }
         let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
@@ -773,7 +940,7 @@ final class PetWindowController {
 
     private func showReaction(_ action: String, proactive: Bool = false) {
         guard !isTeaching, theaterTask == nil, guideTheaterTask == nil, reminderExpressionTask == nil else { return }
-        if proactive && (!settings.dailySpeechEnabled || isQuiet) { return }
+        if proactive && (!settings.dailySpeechEnabled || isQuiet || isGentle) { return }
         let imported = hasPremiumAccess
             ? settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId })?.words[action]
             : nil
@@ -826,7 +993,8 @@ final class PetWindowController {
         interactionTimer = nil
         guard hasPremiumAccess, interactionServicesStarted, settings.randomInteractionsEnabled, !isTeaching else { return }
         let timer = Timer(
-            timeInterval: InteractionRules.nextDelay(for: settings.interactionMode),
+            timeInterval: max(TimeInterval(Int.random(in: DailyFrequency.bounds(settings.dailyFrequency)) * 60),
+                max(nextInteractionAllowedAt?.timeIntervalSinceNow ?? 0, gentleUntil?.timeIntervalSinceNow ?? 0)),
             repeats: false
         ) { [weak self] _ in
             Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: false) }
@@ -882,8 +1050,7 @@ final class PetWindowController {
             || settings.randomInteractionsEnabled != profile.promptsEnabled
         settings.interactionMode = mode
         settings.randomInteractionsEnabled = profile.promptsEnabled
-        restartInteractionTimer()
-        if changed { saveSettings() }
+        if changed { restartInteractionTimer(); saveSettings() }
     }
 
     private func beginDrag(at point: NSPoint) {

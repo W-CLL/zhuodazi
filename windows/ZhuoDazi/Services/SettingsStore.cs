@@ -35,6 +35,8 @@ public sealed class SettingsStore
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? CreateDefault();
             settings.Normalize();
             using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("dailyFrequencyPreset", out _))
+                settings.DailyFrequencyPreset = "legacy-" + settings.InteractionMode;
             if (!document.RootElement.TryGetProperty("onboarding", out _))
                 settings.Onboarding = OnboardingProgress.ForExistingInstallation();
             if (!document.RootElement.TryGetProperty("remoteDefaultsApplied", out _))

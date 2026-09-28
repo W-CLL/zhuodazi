@@ -8,6 +8,7 @@ const settingInteractions = 'random_interactions';
 const settingDailySpeech = 'dailySpeechEnabled';
 const settingQuietUntil = 'quietUntilUtc';
 const settingInteractionMode = 'interaction_mode';
+const settingDailyFrequency = 'daily_frequency_preset';
 const settingPersonality = 'personality';
 const settingRandomPet = 'random_pet';
 const settingRandomPetInterval = 'random_pet_interval';
@@ -168,6 +169,8 @@ class HostSnapshot {
   int get trialSeconds => _int('trialSeconds', 0);
   String get personality => _string('personality', 'lively');
   String get interactionMode => _string('interactionMode', 'standard');
+  String get dailyFrequencyPreset =>
+      _string('dailyFrequencyPreset', 'legacy-$interactionMode');
   String get interactionSyncError => _string('interactionSyncError', '');
   String get activePet => _string('activePet', '');
   String get activeLibrary => _string('activeLibrary', '');
@@ -336,7 +339,37 @@ class HostApi {
   Future<HostSnapshot> react(String reaction) =>
       _snapshotCall('react', {'reaction': reaction});
 
-  Future<HostSnapshot> syncInteractions() => _snapshotCall('syncInteractions');
+  Future<Map<String, dynamic>> dailySnapshot({
+    required String period,
+    required String month,
+    int weeklyOffset = 0,
+    int monthlyOffset = 0,
+  }) => _mapCall('dailySnapshot', {
+    'period': period,
+    'month': month,
+    'weeklyOffset': weeklyOffset,
+    'monthlyOffset': monthlyOffset,
+  });
+
+  Future<HostSnapshot> dailyMood(String mood) =>
+      _snapshotCall('dailyMood', {'mood': mood});
+  Future<HostSnapshot> dailyWorkday(String choice, {int snoozeMinutes = 0}) =>
+      _snapshotCall('dailyWorkday', {
+        'choice': choice,
+        'snoozeMinutes': snoozeMinutes,
+      });
+  Future<HostSnapshot> dailyQuiz() => _snapshotCall('dailyQuiz');
+  Future<HostSnapshot> dailyRefreshConfig() =>
+      _snapshotCall('dailyRefreshConfig');
+  Future<HostSnapshot> dailySaveRoutine({
+    required bool enabled,
+    required List<int> workdays,
+    required String time,
+  }) => _snapshotCall('dailySaveRoutine', {
+    'enabled': enabled,
+    'workdays': workdays,
+    'time': time,
+  });
 
   Future<void> requestOverlayPermission() =>
       _channel.invokeMethod<void>('requestOverlayPermission');

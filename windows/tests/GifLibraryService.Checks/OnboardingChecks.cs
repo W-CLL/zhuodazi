@@ -12,6 +12,18 @@ internal static class OnboardingChecks
         {
             var store = new SettingsStore(directory);
             var fresh = store.Load();
+            Require(fresh.DailyFrequencyPreset == "relaxed", "New users use the 15–40 minute daily preset.");
+            foreach (var mode in new[] { "quiet", "standard", "lively" })
+            {
+                File.WriteAllText(store.SettingsPath, "{\"interactionMode\":\"" + mode + "\"}");
+                var legacy = store.Load();
+                Require(legacy.DailyFrequencyPreset == "legacy-" + mode, "Upgrades must preserve the old frequency range.");
+                store.Save(legacy);
+                Require(store.Load().DailyFrequencyPreset == legacy.DailyFrequencyPreset, "Migrated frequencies survive restart.");
+            }
+            fresh.DailyFrequencyPreset = "eager";
+            store.Save(fresh);
+            Require(store.Load().DailyFrequencyPreset == "eager", "Explicit daily frequency survives restart.");
             Require(!fresh.Onboarding.Dismissed && fresh.Onboarding.Step == 0 && !fresh.Onboarding.UpgradeNoticePending,
                 "A new installation must receive the welcome card.");
             File.WriteAllText(store.SettingsPath, "{\"dailySpeechEnabled\":false,\"theaterEnabled\":true,\"onboardingHintSeen\":false}");

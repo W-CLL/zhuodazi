@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Net.Http;
+using ZhuoDazi.Models;
 
 namespace ZhuoDazi.Services;
 
@@ -14,10 +16,25 @@ public sealed class RemoteConfig
     public string Personality { get; init; } = "lively";
     public string InteractionMode { get; init; } = "standard";
     public int TheaterIntervalSeconds { get; init; } = 300;
+    public DailySummaryConfig? DailySummaries { get; init; }
 }
 
 internal sealed class RemoteConfigService
 {
+    private const int MaximumConfigBytes = 1024 * 1024;
+    private static Uri? _previewSiteSettingsUri;
+    internal static Uri? PreviewSiteSettingsUri
+    {
+        get => _previewSiteSettingsUri;
+        set
+        {
+            if (value is not null && (!value.IsAbsoluteUri || !value.IsLoopback
+                || (value.Scheme != Uri.UriSchemeHttp && value.Scheme != Uri.UriSchemeHttps)
+                || !string.IsNullOrEmpty(value.UserInfo)))
+                throw new ArgumentException("本地预览配置地址必须使用 loopback HTTP 或 HTTPS 地址。", nameof(value));
+            _previewSiteSettingsUri = value;
+        }
+    }
     private readonly SettingsStore _store;
     private readonly object _gate = new();
     private RemoteConfig _current = new();
@@ -40,10 +57,23 @@ internal sealed class RemoteConfigService
         try
         {
             using var client = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(8));
-            using var response = await client.GetAsync(DeskPetApi.SiteSettings, cancellationToken);
+            using var response = await client.GetAsync(PreviewSiteSettingsUri ?? new Uri(DeskPetApi.SiteSettings),
+                HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!response.IsSuccessStatusCode) return false;
+            if (response.Content.Headers.ContentLength > MaximumConfigBytes) return false;
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            using var body = new MemoryStream();
+            var buffer = new byte[8192];
+            using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            readTimeout.CancelAfter(TimeSpan.FromSeconds(8));
+            int count;
+            while ((count = await stream.ReadAsync(buffer, readTimeout.Token)) != 0)
+            {
+                if (body.Length + count > MaximumConfigBytes) return false;
+                body.Write(buffer, 0, count);
+            }
+            body.Position = 0;
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
             var next = Parse(document.RootElement);
             SaveCache(document.RootElement);
             lock (_gate) _current = next;
@@ -61,7 +91,7 @@ internal sealed class RemoteConfigService
         try
         {
             var path = CachePath();
-            if (!File.Exists(path)) return new RemoteConfig();
+            if (!File.Exists(path) || new FileInfo(path).Length > MaximumConfigBytes) return new RemoteConfig();
             using var document = JsonDocument.Parse(File.ReadAllText(path));
             return Parse(document.RootElement);
         }
@@ -85,10 +115,13 @@ internal sealed class RemoteConfigService
         }
     }
 
-    private string CachePath() => Path.Combine(_store.DataDirectory, "remote-config.json");
+    private string CachePath() => Path.Combine(_store.DataDirectory,
+        PreviewSiteSettingsUri is null ? "remote-config.json" : $"remote-config-preview-{PreviewSiteSettingsUri.Port}.json");
 
     private static RemoteConfig Parse(JsonElement root)
     {
+        if (root.ValueKind != JsonValueKind.Object) return new RemoteConfig();
+        if (root.TryGetProperty("publicSiteSettings", out var nested) && nested.ValueKind == JsonValueKind.Object) root = nested;
         var features = root.TryGetProperty("features", out var featuresElement) ? featuresElement : default;
         var defaults = root.TryGetProperty("defaults", out var defaultsElement) ? defaultsElement : default;
         var personality = ReadString(defaults, "personality", "lively");
@@ -106,7 +139,9 @@ internal sealed class RemoteConfigService
             AutoUpdates = ReadBool(features, "autoUpdates", true),
             Personality = personality is "lively" or "shy" or "clingy" or "chaotic" ? personality : "lively",
             InteractionMode = interactionMode is "quiet" or "standard" or "lively" ? interactionMode : "standard",
-            TheaterIntervalSeconds = theaterInterval is 60 or 180 or 300 or 600 or 1800 ? theaterInterval : 300
+            TheaterIntervalSeconds = theaterInterval is 60 or 180 or 300 or 600 or 1800 ? theaterInterval : 300,
+            DailySummaries = root.TryGetProperty("dailySummaries", out var summaries)
+                ? DailySummaryService.ParseConfiguration(summaries) : null
         };
     }
 

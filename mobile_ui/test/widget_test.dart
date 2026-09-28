@@ -139,15 +139,10 @@ void main() {
     await tester.tap(find.text('互动').last);
     await tester.pumpAndSettle();
     expect(find.text('随机来一个'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('换一批内容'),
-      200,
-      scrollable: find.descendant(
-        of: find.byType(InteractionPage),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    expect(find.text('换一批内容'), findsOneWidget);
+    expect(find.text('我们的日常'), findsOneWidget);
+    expect(find.text('换一批内容'), findsNothing);
+    expect(find.text('新鲜小趣事'), findsNothing);
+    expect(find.text('下载离线包'), findsNothing);
     expect(find.text('线上趣味内容'), findsNothing);
     expect(find.text('18 条可用内容'), findsNothing);
     await tester.scrollUntilVisible(

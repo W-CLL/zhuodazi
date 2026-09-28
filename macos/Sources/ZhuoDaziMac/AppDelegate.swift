@@ -56,6 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var reminderTimer: Timer?
     private var trialTimer: Timer?
     private var companionTimer: Timer?
+    private var remoteConfigTimer: Timer?
+    private var refreshingRemoteConfig = false
     private var companionPolling = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -127,6 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        remoteConfigTimer?.invalidate()
         fakeAdWindow?.close()
     }
 
@@ -135,6 +138,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         presentGuideIfNeeded()
         startReminderChecks()
         analytics.trackStartup()
+        if remoteConfigTimer == nil {
+            remoteConfigTimer = Timer.scheduledTimer(withTimeInterval: 15 * 60, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in await self?.refreshRemoteConfig() }
+            }
+        }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await refreshRemoteConfig()
@@ -149,13 +157,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func refreshRemoteConfig() async {
-        if await remoteConfig.refresh() {
+    @discardableResult private func refreshRemoteConfig() async -> Bool {
+        guard !refreshingRemoteConfig else { return false }
+        refreshingRemoteConfig = true
+        defer { refreshingRemoteConfig = false }
+        let success = await remoteConfig.refresh()
+        if success {
             applyRemoteDefaultsIfNeeded()
         }
         refreshMenuState()
         settingsWindow?.refreshAccessState()
         hallWindow?.refreshAccessState()
+        return success
     }
 
     private func applyRemoteDefaultsIfNeeded() {
@@ -338,6 +351,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 licenses: licenses,
                 updates: updates,
                 remoteConfig: { [weak self] in self?.remoteConfig.current ?? RemoteConfig() },
+                refreshDailyConfig: { [weak self] in await self?.refreshRemoteConfig() ?? false },
                 dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) },
                 openCompanion: { [weak self] in self?.openCompanion() },
                 openHall: { [weak self] in self?.openHall() },

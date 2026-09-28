@@ -14,6 +14,8 @@ final class SettingsStore {
     static final String QUIET_UNTIL = "quietUntilUtc";
     static final String USER_EDITED_DEFAULTS = "user_edited_defaults";
     static final String INTERACTION_MODE = "interaction_mode";
+    static final String DAILY_FREQUENCY = "daily_frequency_preset";
+    static final String DAILY_GENTLE_UNTIL = "daily_gentle_until";
     static final String PERSONALITY = "personality";
     static final String RANDOM_PET = "random_pet";
     static final String RANDOM_PET_INTERVAL = "random_pet_interval";
@@ -54,7 +56,17 @@ final class SettingsStore {
         this(context.getSharedPreferences(PREFS, Context.MODE_PRIVATE));
     }
 
-    SettingsStore(SharedPreferences preferences) { values = preferences; new GuideStore(values); }
+    SettingsStore(SharedPreferences preferences) {
+        values = preferences;
+        synchronized (SettingsStore.class) {
+            if (!values.contains(DAILY_FREQUENCY)) {
+                // Older installations retain their selected cadence until the user chooses a new preset.
+                boolean existing = !values.getAll().isEmpty();
+                values.edit().putString(DAILY_FREQUENCY, existing ? "legacy-" + interactionMode() : "relaxed").apply();
+            }
+        }
+        new GuideStore(values);
+    }
     GuideStore guide() { return new GuideStore(values); }
 
     int sizeDp() { return clamp(values.getInt(SIZE, 96), 96, 280); }
@@ -74,6 +86,18 @@ final class SettingsStore {
     boolean trialActive() { return trialExpiresAt() > System.currentTimeMillis(); }
     String personality() { return values.getString(PERSONALITY, "lively"); }
     String interactionMode() { return values.getString(INTERACTION_MODE, "standard"); }
+    String dailyFrequencyPreset() { return values.getString(DAILY_FREQUENCY, "relaxed"); }
+    long dailyGentleUntil() { return values.getLong(DAILY_GENTLE_UNTIL, 0L); }
+    boolean isGentleTime() { return dailyGentleUntil() > System.currentTimeMillis(); }
+    int[] interactionMinutes() {
+        return switch (dailyFrequencyPreset()) {
+            case "eager" -> new int[]{5, 15};
+            case "frequent", "legacy-lively" -> new int[]{10, 30};
+            case "legacy-quiet" -> new int[]{60, 120};
+            case "legacy-standard" -> new int[]{30, 60};
+            default -> new int[]{15, 40};
+        };
+    }
     String activePet() { return values.getString(ACTIVE_PET, ""); }
     String wordPack() { return values.getString(WORD_PACK, "互联网嘴替.json"); }
     int randomPetInterval() { return clamp(values.getInt(RANDOM_PET_INTERVAL, 300), 30, 3600); }

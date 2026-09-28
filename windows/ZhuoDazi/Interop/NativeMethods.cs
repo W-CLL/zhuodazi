@@ -7,6 +7,22 @@ namespace ZhuoDazi.Interop;
 
 internal static class NativeMethods
 {
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LastInputInfo { public uint Size; public uint Tick; }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetLastInputInfo(ref LastInputInfo info);
+
+    internal static bool IsUserIdle
+    {
+        get
+        {
+            var info = new LastInputInfo { Size = (uint)Marshal.SizeOf<LastInputInfo>() };
+            return GetLastInputInfo(ref info) && unchecked((uint)Environment.TickCount - info.Tick) > 5 * 60 * 1000;
+        }
+    }
+
     private const int GwlStyle = -16;
     private const int GwlExStyle = -20;
     private const long WsCaption = 0x00C00000;

@@ -12,7 +12,6 @@ internal static class DeskPetApi
     public const string InteractionProfile = BaseUrl + "/api/interactions/profile";
     public const string InteractionEvents = BaseUrl + "/api/interactions/events";
     public const string ContentBatch = BaseUrl + "/api/content/batch";
-    public const string ContentOfflinePack = BaseUrl + "/api/content/offline-pack";
     public const string Companion = BaseUrl + "/api/companion";
     public const string CompanionPair = Companion + "/pair";
     public const string CompanionDeliveries = Companion + "/deliveries";

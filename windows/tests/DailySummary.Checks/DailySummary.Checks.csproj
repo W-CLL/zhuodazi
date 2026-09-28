@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\ZhuoDazi\Models\DailyJournalModels.cs" Link="DailyJournalModels.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\DailySummaryModels.cs" Link="DailySummaryModels.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DailyJournalStore.cs" Link="DailyJournalStore.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DailySummaryService.cs" Link="DailySummaryService.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\RemoteConfigService.cs" Link="RemoteConfigService.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DeskPetHttp.cs" Link="DeskPetHttp.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DeskPetApi.cs" Link="DeskPetApi.cs" />
+  </ItemGroup>
+</Project>

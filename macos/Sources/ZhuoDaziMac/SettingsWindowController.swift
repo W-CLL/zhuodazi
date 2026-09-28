@@ -1,4 +1,5 @@
 import AppKit
+import ZhuoDaziCore
 
 @MainActor
 enum ActivationPrompts {
@@ -33,6 +34,7 @@ final class SettingsWindowController: NSWindowController {
     private let licenses: LicenseService
     private let updates: UpdateService
     private let remoteConfig: () -> RemoteConfig
+    private let refreshDailyConfig: () async -> Bool
     private let feedbackService: FeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private let openCompanion: () -> Void
@@ -47,7 +49,6 @@ final class SettingsWindowController: NSWindowController {
     private var refreshing = false
     private var editingReminderId: String?
     private var feedbackLoading = false
-    private var interactionLoading = false
     private var feedbackItems: [FeedbackItem] = []
 
     private let sizeSlider = NSSlider(value: 140, minValue: 140, maxValue: 300, target: nil, action: nil)
@@ -81,9 +82,6 @@ final class SettingsWindowController: NSWindowController {
     private let wordPackDetail = NSTextField(labelWithString: "")
     private let scriptsPopup = NSPopUpButton()
     private let scriptDetail = NSTextField(labelWithString: "")
-    private let interactionStatusLabel = NSTextField(wrappingLabelWithString: "")
-    private let syncInteractionButton = NSButton(title: "找点新乐趣", target: nil, action: nil)
-    private let downloadInteractionButton = NSButton(title: "留些乐趣离线玩", target: nil, action: nil)
     private let companionButton = NSButton(title: "", target: nil, action: nil)
     private let companionStatusIcon = NSImageView()
     private let companionStatusLabel = NSTextField(labelWithString: "")
@@ -119,7 +117,8 @@ final class SettingsWindowController: NSWindowController {
     private let ignoreUpdateButton = NSButton(title: "忽略该版本", target: nil, action: nil)
 
     private let personalityValues = ["lively", "shy", "clingy", "chaotic"]
-    private let interactionModes = ["quiet", "standard", "lively"]
+    private let interactionModes = DailyFrequency.presets
+    private var dailyPage: DailyPageController?
     private let theaterIntervals = [60, 180, 300, 600, 1800]
     private let randomIntervals = [30, 60, 300, 600, 1800]
     init(
@@ -127,6 +126,7 @@ final class SettingsWindowController: NSWindowController {
         licenses: LicenseService,
         updates: UpdateService,
         remoteConfig: @escaping () -> RemoteConfig,
+        refreshDailyConfig: @escaping () async -> Bool,
         dockVisibilityChanged: @escaping (Bool) -> Void,
         openCompanion: @escaping () -> Void,
         openHall: @escaping () -> Void,
@@ -138,6 +138,7 @@ final class SettingsWindowController: NSWindowController {
         self.licenses = licenses
         self.updates = updates
         self.remoteConfig = remoteConfig
+        self.refreshDailyConfig = refreshDailyConfig
         self.feedbackService = FeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
@@ -179,6 +180,10 @@ final class SettingsWindowController: NSWindowController {
         let tabs = NSTabViewController()
         tabs.tabStyle = .toolbar
         tabs.addChild(buildBehaviorPage())
+        let daily = DailyPageController(pet: petController, config: remoteConfig, refreshConfig: refreshDailyConfig)
+        dailyPage = daily
+        tabs.addChild(daily)
+        petController.dailyChanged = { [weak daily] in daily?.refresh() }
         tabs.addChild(buildPetsPage())
         tabs.addChild(buildLibrariesPage())
         tabs.addChild(buildContentPage())
@@ -258,7 +263,7 @@ final class SettingsWindowController: NSWindowController {
 
         randomInteractionCheckbox.target = self
         randomInteractionCheckbox.action = #selector(behaviorChanged(_:))
-        interactionModePopup.addItems(withTitles: ["安静（60–120 分钟）", "标准（30–60 分钟）", "活跃（10–30 分钟）"])
+        interactionModePopup.addItems(withTitles: interactionModes.map(DailyFrequency.label))
         interactionModePopup.target = self
         interactionModePopup.action = #selector(behaviorChanged(_:))
         let interactNow = NSButton(title: "陪我玩一会", target: self, action: #selector(startRandomInteraction))
@@ -360,14 +365,6 @@ final class SettingsWindowController: NSWindowController {
         let (page, stack) = makePage("灵感口袋")
         addTitle("灵感口袋", to: stack)
         stack.addArrangedSubview(hint("听个笑话、猜个小问题，或收到一句关心。用“悄悄话”换一套日常台词，还能给两只桌宠写小故事。互动偏好随账号同步，自己导入的台词和剧本保存在这台设备。"))
-        interactionStatusLabel.textColor = .secondaryLabelColor
-        interactionStatusLabel.maximumNumberOfLines = 0
-        interactionStatusLabel.widthAnchor.constraint(equalToConstant: 430).isActive = true
-        syncInteractionButton.target = self
-        syncInteractionButton.action = #selector(syncInteractionContent)
-        downloadInteractionButton.target = self
-        downloadInteractionButton.action = #selector(downloadInteractionPack)
-        stack.addArrangedSubview(buttonRow([interactionStatusLabel, syncInteractionButton, downloadInteractionButton]))
         stack.addArrangedSubview(separator())
         addSection("悄悄话", to: stack)
         wordPacksPopup.target = self
@@ -613,7 +610,7 @@ final class SettingsWindowController: NSWindowController {
         quietLabel.stringValue = petController.isQuiet && settings.quietUntilUtc != nil
             ? "暂停至 \(DateFormatter.localizedString(from: settings.quietUntilUtc!, dateStyle: .none, timeStyle: .short))" : "主动陪伴正常"
         interactionModePopup.isEnabled = settings.randomInteractionsEnabled
-        interactionModePopup.selectItem(at: interactionModes.firstIndex(of: settings.interactionMode) ?? 1)
+        interactionModePopup.selectItem(at: interactionModes.firstIndex(of: settings.dailyFrequency) ?? 1)
         theaterCheckbox.state = settings.theaterEnabled ? .on : .off
         theaterIntervalPopup.selectItem(at: theaterIntervals.firstIndex(of: settings.theaterIntervalSeconds) ?? 2)
         alwaysOnTopCheckbox.state = settings.alwaysOnTop ? .on : .off
@@ -636,8 +633,8 @@ final class SettingsWindowController: NSWindowController {
         refreshContent(settings)
         refreshReminders(settings)
         refreshUpdateState()
+        dailyPage?.refresh()
         if !premium {
-            interactionStatusLabel.stringValue = "激活后可继续玩趣味互动、听悄悄话"
             libraryDetail.stringValue = "基础陪伴可使用内置图鉴；激活后可添加自己的 GIF 文件夹"
         }
     }
@@ -681,9 +678,6 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func refreshContent(_ settings: AppSettings) {
-        interactionStatusLabel.stringValue = petController.interactionStatus
-        syncInteractionButton.isEnabled = !interactionLoading
-        downloadInteractionButton.isEnabled = !interactionLoading
         wordPacksPopup.removeAllItems()
         wordPacksPopup.addItem(withTitle: "内置悄悄话")
         for pack in settings.interactionWordPacks {
@@ -883,7 +877,7 @@ final class SettingsWindowController: NSWindowController {
             $0.mouseInteractionEnabled = mouseCheckbox.state == .on
             $0.randomMovementEnabled = movementCheckbox.state == .on
             $0.randomInteractionsEnabled = randomInteractionCheckbox.state == .on
-            $0.interactionMode = interactionModes[interactionModePopup.indexOfSelectedItem]
+            $0.dailyFrequency = interactionModes[interactionModePopup.indexOfSelectedItem]
             $0.theaterEnabled = theaterCheckbox.state == .on
             $0.theaterIntervalSeconds = theaterIntervals[theaterIntervalPopup.indexOfSelectedItem]
             $0.alwaysOnTop = alwaysOnTopCheckbox.state == .on
@@ -903,49 +897,6 @@ final class SettingsWindowController: NSWindowController {
     @objc private func startRandomInteraction() {
         guard requirePremium("互动内容", continuation: { [weak self] in self?.petController.startRandomInteraction() }) else { return }
         petController.startRandomInteraction()
-    }
-
-    @objc private func syncInteractionContent() {
-        guard requirePremium("在线互动内容") else { return }
-        guard !interactionLoading else { return }
-        setInteractionLoading(true, status: "正在找新的小乐趣…")
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let added = try await petController.syncInteractionContent()
-                interactionLoading = false
-                refresh()
-                setInteractionLoading(false, status: "\(petController.interactionStatus) · 本次新增 \(added) 条")
-            } catch {
-                setInteractionLoading(false, status: petController.interactionStatus)
-                show(error)
-            }
-        }
-    }
-
-    @objc private func downloadInteractionPack() {
-        guard requirePremium("互动内容包") else { return }
-        guard !interactionLoading else { return }
-        setInteractionLoading(true, status: "正在准备离线也能玩的内容…")
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                let count = try await petController.downloadInteractionPack()
-                interactionLoading = false
-                refresh()
-                setInteractionLoading(false, status: "已准备好 \(count) 条离线小乐趣。")
-            } catch {
-                setInteractionLoading(false, status: petController.interactionStatus)
-                show(error)
-            }
-        }
-    }
-
-    private func setInteractionLoading(_ loading: Bool, status: String) {
-        interactionLoading = loading
-        interactionStatusLabel.stringValue = status
-        syncInteractionButton.isEnabled = !loading
-        downloadInteractionButton.isEnabled = !loading
     }
 
     @objc private func addPet() {

@@ -16,6 +16,7 @@ public partial class App : System.Windows.Application
     private LicenseService? _licenseService;
     private DispatcherTimer? _trialTimer;
     private volatile bool _stopping;
+    private string _instanceSuffix = string.Empty;
     internal AppController? Controller { get; private set; }
 
     public App()
@@ -35,7 +36,9 @@ public partial class App : System.Windows.Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _singleInstanceMutex = new Mutex(true, "Local\\ZhuoDazi.Native.Singleton", out var ownsMutex);
+        var dailyPreview = e.Args.Contains("--daily-preview", StringComparer.OrdinalIgnoreCase);
+        _instanceSuffix = dailyPreview ? ".DailyPreview" : string.Empty;
+        _singleInstanceMutex = new Mutex(true, "Local\\ZhuoDazi.Native.Singleton" + _instanceSuffix, out var ownsMutex);
         if (!ownsMutex)
         {
             try
@@ -43,7 +46,7 @@ public partial class App : System.Windows.Application
                 var signal = e.Args.Any(arg => arg.Equals("--fake-ad", StringComparison.OrdinalIgnoreCase))
                     ? ShowFakeAdSignalName
                     : ShowSettingsSignalName;
-                EventWaitHandle.OpenExisting(signal).Set();
+                EventWaitHandle.OpenExisting(signal + _instanceSuffix).Set();
             }
             catch { }
             Shutdown();
@@ -52,14 +55,23 @@ public partial class App : System.Windows.Application
 
         try
         {
+            var configArgument = Array.FindIndex(e.Args, argument => argument.Equals("--daily-config-url", StringComparison.OrdinalIgnoreCase));
+            if (dailyPreview && configArgument >= 0)
+            {
+                if (configArgument + 1 >= e.Args.Length || !Uri.TryCreate(e.Args[configArgument + 1], UriKind.Absolute, out var configUri))
+                    throw new ArgumentException("本地预览配置地址无效。");
+                RemoteConfigService.PreviewSiteSettingsUri = configUri;
+            }
             StartSettingsSignalListener();
-            _licenseService = new LicenseService();
-            Controller = new AppController(_licenseService);
+            var store = dailyPreview ? CreateDailyPreviewStore() : new SettingsStore();
+            _licenseService = new LicenseService(store.DataDirectory);
+            Controller = new AppController(_licenseService, store, dailyPreview);
             Controller.TrialVerificationRequested += async () => await VerifyTrialAsync();
-            Controller.Start();
+            Controller.Start(synchronizeStartupRegistration: !dailyPreview);
             var verification = VerifyTrialAsync();
             if (e.Args.Any(arg => arg.Equals("--settings", StringComparison.OrdinalIgnoreCase)))
                 Controller.ShowSettings();
+            if (dailyPreview) Controller.ShowDailyJournal();
             await verification;
             if (!_stopping && e.Args.Any(arg => arg.Equals("--fake-ad", StringComparison.OrdinalIgnoreCase)))
                 Controller.ShowFakeAdWindow();
@@ -178,8 +190,8 @@ public partial class App : System.Windows.Application
 
     private void StartSettingsSignalListener()
     {
-        _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsSignalName);
-        _showFakeAdSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowFakeAdSignalName);
+        _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsSignalName + _instanceSuffix);
+        _showFakeAdSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowFakeAdSignalName + _instanceSuffix);
         _signalThread = new Thread(() =>
         {
             var handles = new WaitHandle[] { _showSettingsSignal, _showFakeAdSignal };
@@ -215,5 +227,27 @@ public partial class App : System.Windows.Application
             File.AppendAllText(Path.Combine(directory, "native-crash.log"), $"[{DateTimeOffset.Now:O}]\n{error}\n\n");
         }
         catch { }
+    }
+
+    private static SettingsStore CreateDailyPreviewStore()
+    {
+        var installed = new SettingsStore();
+        var preview = new SettingsStore(Path.Combine(installed.DataDirectory, "windows-daily-preview"));
+        Directory.CreateDirectory(preview.DataDirectory);
+        var licensePath = Path.Combine(preview.DataDirectory, "license.dat");
+        var installedLicensePath = Path.Combine(installed.DataDirectory, "license.dat");
+        if (!File.Exists(licensePath) && File.Exists(installedLicensePath))
+            File.Copy(installedLicensePath, licensePath);
+        if (!File.Exists(preview.SettingsPath))
+        {
+            var settings = installed.Load();
+            settings.DailyFrequencyPreset = "relaxed";
+            settings.StartWithWindows = false;
+            settings.AutoCheckUpdates = false;
+            settings.Onboarding.Dismissed = true;
+            settings.Onboarding.UpgradeNoticePending = false;
+            preview.Save(settings);
+        }
+        return preview;
     }
 }

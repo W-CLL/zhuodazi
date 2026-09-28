@@ -1,4 +1,5 @@
 import Foundation
+import ZhuoDaziCore
 
 struct RemoteConfig: Equatable {
     var wechatId = "wcl_lcw627"
@@ -11,6 +12,7 @@ struct RemoteConfig: Equatable {
     var personality = "lively"
     var interactionMode = "standard"
     var theaterIntervalSeconds = 300
+    var dailySummaries: DailySummaryConfig?
 }
 
 final class RemoteConfigService {
@@ -50,6 +52,8 @@ final class RemoteConfigService {
         let interactionMode = string(defaults["interactionMode"], fallback: "standard")
         let theaterInterval = int(defaults["theaterIntervalSeconds"], fallback: 300)
         let wechatId = string(root["wechatId"], fallback: "wcl_lcw627")
+        let summaryObject = root["dailySummaries"] as? [String: Any]
+        let summaryData = summaryObject.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
         return RemoteConfig(
             wechatId: isWechatId(wechatId) ? wechatId : "wcl_lcw627",
             announcement: string(root["announcement"], fallback: "").replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines),
@@ -60,7 +64,8 @@ final class RemoteConfigService {
             autoUpdates: bool(features["autoUpdates"], fallback: true),
             personality: ["lively", "shy", "clingy", "chaotic"].contains(personality) ? personality : "lively",
             interactionMode: ["quiet", "standard", "lively"].contains(interactionMode) ? interactionMode : "standard",
-            theaterIntervalSeconds: [60, 180, 300, 600, 1800].contains(theaterInterval) ? theaterInterval : 300
+            theaterIntervalSeconds: [60, 180, 300, 600, 1800].contains(theaterInterval) ? theaterInterval : 300,
+            dailySummaries: summaryData.flatMap(DailySummary.parse)
         )
     }
 

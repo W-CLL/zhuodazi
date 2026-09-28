@@ -90,6 +90,9 @@ public final class PetOverlayService extends Service {
     private WordRepository words;
     private LicenseService licenses;
     private InteractionContentService interactionContent;
+    private DailyJournalStore dailyJournal;
+    private long nextDailyConfigRefresh;
+    private boolean dailyConfigBusy;
     private CompanionService companions;
     private TheaterScriptStore theaterScripts;
     private ReminderStore reminderStore;
@@ -113,6 +116,11 @@ public final class PetOverlayService extends Service {
     private int theaterVersion;
     private int reminderExpressionVersion;
     private boolean interactionBusy;
+    private boolean trackedDailyInteraction;
+    private boolean interactionWasManual;
+    private boolean currentInteractionAnswered;
+    private int unansweredInteractions;
+    private long interactionBackoffUntil;
     private boolean interactionSyncBusy;
     private boolean interactionExpanded;
     private boolean menuExpanded;
@@ -223,6 +231,7 @@ public final class PetOverlayService extends Service {
     };
 
     private final Runnable reminderTask = this::checkReminders;
+    private final Runnable dailyRoutineTask = this::checkDailyRoutine;
     private final Runnable trialCheckTask = this::refreshTrialInBackground;
 
     @Override public void onCreate() {
@@ -233,6 +242,7 @@ public final class PetOverlayService extends Service {
         words = new WordRepository(this, settings);
         licenses = new LicenseService(this);
         interactionContent = new InteractionContentService(this, licenses);
+        dailyJournal = new DailyJournalStore(this);
         companions = new CompanionService(this, licenses, pets);
         visitOwner = licenses.visitOwner();
         theaterScripts = new TheaterScriptStore(settings);
@@ -317,7 +327,7 @@ public final class PetOverlayService extends Service {
                     pendingRequestDeadline = deadline;
                     ResultReceiver waiting = receiver;
                     receiver = null;
-                    startRandomInteraction(true);
+                    startRandomInteraction(true, intent.getBooleanExtra("quiz_only", false));
                     handler.postDelayed(() -> {
                         if (waiting == null || pendingInteractionResult != waiting) return;
                         interactionGeneration++;
@@ -357,6 +367,7 @@ public final class PetOverlayService extends Service {
         scheduleTrialCheck();
         warmInteractionContent();
         scheduleQuietResume();
+        scheduleDailyRoutine();
         return START_STICKY;
     }
 
@@ -573,9 +584,13 @@ public final class PetOverlayService extends Service {
     }
 
     private void startRandomInteraction(boolean manual) {
+        startRandomInteraction(manual, false);
+    }
+
+    private void startRandomInteraction(boolean manual, boolean quizOnly) {
         if (settings.guide().holdsAttention()) { if (manual) sayText("请在首页继续新手体验，或选择稍后继续。", 4200); return; }
         handler.removeCallbacks(interactionTask);
-        if (!manual && settings.isQuiet()) { scheduleInteraction(); return; }
+        if (!manual && (settings.isQuiet() || settings.isGentleTime() || System.currentTimeMillis() < interactionBackoffUntil)) { scheduleInteraction(); return; }
         if (!licenses.hasPremiumAccess()) {
             if (manual) sayText("体验或正式激活后可以使用随机趣味互动。", 5200);
             scheduleInteraction();
@@ -594,14 +609,18 @@ public final class PetOverlayService extends Service {
             return;
         }
         interactionBusy = true;
+        trackedDailyInteraction = true;
+        interactionWasManual = manual;
+        currentInteractionAnswered = false;
         int requestedGeneration = ++interactionGeneration;
         cancelMovement();
-        boolean moodDue = interactionContent.isMoodPromptDue();
+        if (!manual && !quizOnly && showWorkCheckInIfDue()) return;
+        boolean moodDue = !quizOnly && interactionContent.isMoodPromptDue();
         if (moodDue && (interactionContent.cachedCount() == 0 || random.nextInt(4) == 0)) {
             showMoodInteraction();
             return;
         }
-        InteractionContentService.Item item = interactionContent.takeNextContent();
+        InteractionContentService.Item item = interactionContent.takeNextContent(quizOnly);
         if (item != null) {
             showContentInteraction(item);
             warmInteractionContent();
@@ -612,7 +631,7 @@ public final class PetOverlayService extends Service {
             Exception failure = null;
             try { interactionContent.refillOnline(); }
             catch (Exception error) { failure = error; }
-            InteractionContentService.Item loaded = interactionContent.takeNextContent();
+            InteractionContentService.Item loaded = interactionContent.takeNextContent(quizOnly);
             Exception finalFailure = failure;
             handler.post(() -> {
                 if (requestedGeneration != interactionGeneration) return;
@@ -635,20 +654,22 @@ public final class PetOverlayService extends Service {
     }
 
     private void showMoodInteraction() {
-        interactionContent.markMoodPrompted();
-        showOverlayInteraction("随手问候", "今天心情怎么样？", Arrays.asList(
-            new PetOverlayView.InteractionChoice("开心", "happy"),
-            new PetOverlayView.InteractionChoice("还可以", "okay"),
-            new PetOverlayView.InteractionChoice("不咋地", "low")
-        ), mood -> {
+        interactionContent.markMoodPrompted(!interactionWasManual);
+        List<PetOverlayView.InteractionChoice> choices = new ArrayList<>();
+        for (int i = 0; i < DailyJournalStore.MOODS.size(); i++)
+            choices.add(new PetOverlayView.InteractionChoice(DailyJournalStore.MOOD_LABELS.get(i), DailyJournalStore.MOODS.get(i)));
+        String prompt = dailyJournal.workContext(java.time.OffsetDateTime.now()) ? "今天工作到现在，心情怎么样？" : "今天心情怎么样？";
+        showOverlayInteraction("我们的日常", prompt, choices, mood -> {
             if (mood == null) {
                 finishInteraction();
                 return;
             }
             interactionContent.recordMood(mood);
+            currentInteractionAnswered = true;
             String response = switch (mood) {
                 case "happy" -> "那就把这份开心多留一会儿。";
-                case "low" -> "先不用硬撑，我在这儿陪你一会儿。";
+                case "bad", "cry", "tired", "annoyed" -> "先不用硬撑，我在这儿陪你一会儿。";
+                case "hopeful" -> "把这份期待收好，我们慢慢向前。";
                 default -> "平平稳稳也很好，慢慢来。";
             };
             finishInteraction();
@@ -657,6 +678,7 @@ public final class PetOverlayService extends Service {
     }
 
     private void showContentInteraction(InteractionContentService.Item item) {
+        String occurrenceId = java.util.UUID.randomUUID().toString();
         if ("joke".equals(item.type)) {
             showOverlayInteraction("冷笑话时间", item.prompt,
                 Arrays.asList(new PetOverlayView.InteractionChoice("看答案", "reveal", true)), choice -> {
@@ -664,7 +686,8 @@ public final class PetOverlayService extends Service {
                         finishInteraction();
                         return;
                     }
-                    interactionContent.recordJoke(item);
+                    interactionContent.recordJoke(item, occurrenceId);
+                    currentInteractionAnswered = true;
                     showAnswerInteraction("答案", formatContentAnswer(item), null);
                 });
             return;
@@ -674,7 +697,10 @@ public final class PetOverlayService extends Service {
             String button = "tip".equals(item.type) ? "记下了" : "我知道了";
             showOverlayInteraction(title, item.prompt + "\n\n" + formatContentAnswer(item),
                 Arrays.asList(new PetOverlayView.InteractionChoice(button, "done", true)),
-                choice -> finishInteraction());
+                choice -> {
+                    if (choice != null) { interactionContent.recordAcknowledgment(item, occurrenceId); currentInteractionAnswered = true; }
+                    finishInteraction();
+                });
             return;
         }
         String title = switch (item.type) {
@@ -692,7 +718,8 @@ public final class PetOverlayService extends Service {
                     return;
                 }
                 boolean correct = answersMatch(selected, item.answer);
-                interactionContent.recordQuiz(item, correct);
+                interactionContent.recordQuiz(item, correct, occurrenceId);
+                currentInteractionAnswered = true;
                 showAnswerInteraction(correct ? "答对了" : "答案揭晓",
                     formatContentAnswer(item), correct);
             });
@@ -708,7 +735,7 @@ public final class PetOverlayService extends Service {
                     new PetOverlayView.InteractionChoice("答对了", "correct", true),
                     new PetOverlayView.InteractionChoice("没答对", "wrong")
                 ), result -> {
-                    if (result != null) interactionContent.recordQuiz(item, "correct".equals(result));
+                    if (result != null) { interactionContent.recordQuiz(item, "correct".equals(result), occurrenceId); currentInteractionAnswered = true; }
                     finishInteraction();
                 });
             });
@@ -736,12 +763,29 @@ public final class PetOverlayService extends Service {
             return;
         }
         expandInteractionWindow();
-        overlay.showInteraction(title, message, choices, callback::accept);
+        boolean[] answered = { false };
+        overlay.showInteraction(title, message, choices, choice -> {
+            if (answered[0]) return;
+            answered[0] = true;
+            try { callback.accept(choice); }
+            catch (RuntimeException error) {
+                finishInteraction();
+                sayText(safeMessage(error), 5600);
+            }
+        });
         answerInteraction(null);
         overlay.post(this::fitInteractionWindowToContent);
     }
 
     private void finishInteraction() {
+        if (trackedDailyInteraction) {
+            if (currentInteractionAnswered) unansweredInteractions = 0;
+            else if (!interactionWasManual && ++unansweredInteractions >= 2) {
+                interactionBackoffUntil = System.currentTimeMillis() + 30 * 60_000L;
+                unansweredInteractions = 0;
+            }
+            trackedDailyInteraction = false;
+        }
         if (overlay != null) overlay.hideInteraction();
         collapseInteractionWindow();
         interactionBusy = false;
@@ -1209,7 +1253,7 @@ public final class PetOverlayService extends Service {
     }
 
     private void say(String action, String fallback, long duration) {
-        if (settings.guide().holdsAttention() || settings.isQuiet() || !settings.dailySpeechEnabled()) return;
+        if (settings.guide().holdsAttention() || settings.isQuiet() || settings.isGentleTime() || !settings.dailySpeechEnabled()) return;
         sayText(licenses.hasPremiumAccess() ? words.reaction(action, fallback) : fallback, duration);
     }
 
@@ -1225,7 +1269,7 @@ public final class PetOverlayService extends Service {
     private void startTheater(boolean manual) {
         if (settings.guide().holdsAttention()) { if (manual) sayText("请在首页继续新手体验，或选择稍后继续。", 4200); return; }
         handler.removeCallbacks(theaterTask);
-        if (!manual && settings.isQuiet()) { scheduleTheater(); return; }
+        if (!manual && (settings.isQuiet() || settings.isGentleTime())) { scheduleTheater(); return; }
         if (!licenses.hasPremiumAccess()) {
             if (manual) sayText("体验或正式激活后可以上演小剧场。", 5200);
             scheduleTheater();
@@ -1662,6 +1706,7 @@ public final class PetOverlayService extends Service {
         schedulePetSwitch();
         scheduleTheater();
         scheduleReminders();
+        scheduleDailyRoutine();
     }
 
     private void scheduleWander() {
@@ -1680,15 +1725,94 @@ public final class PetOverlayService extends Service {
         handler.removeCallbacks(interactionTask);
         if (settings.guide().holdsAttention() || settings.isQuiet()) return;
         if (!settings.interactions() || overlay == null || !licenses.hasPremiumAccess() || theaterActive) return;
-        int minimumMinutes;
-        int additionalMinutes;
-        switch (settings.interactionMode()) {
-            case "quiet" -> { minimumMinutes = 60; additionalMinutes = 60; }
-            case "lively" -> { minimumMinutes = 10; additionalMinutes = 20; }
-            default -> { minimumMinutes = 30; additionalMinutes = 30; }
-        }
-        long delay = (minimumMinutes + random.nextInt(additionalMinutes + 1)) * 60_000L;
+        int[] range = settings.interactionMinutes();
+        long delay = (range[0] + random.nextInt(range[1] - range[0] + 1)) * 60_000L;
+        delay = Math.max(delay, Math.max(interactionBackoffUntil, settings.dailyGentleUntil()) - System.currentTimeMillis());
         handler.postDelayed(interactionTask, delay);
+    }
+
+    private void scheduleDailyRoutine() {
+        handler.removeCallbacks(dailyRoutineTask);
+        if (!destroyed) handler.postDelayed(dailyRoutineTask, 20_000L);
+    }
+
+    private boolean showWorkCheckInIfDue() {
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        if (!dailyJournal.workCheckInDue(now)) return false;
+        dailyJournal.markWorkCheckInPrompted(now);
+        String occurrenceId = java.util.UUID.randomUUID().toString();
+        showOverlayInteraction("工作间隙", "今天工作进展怎么样？", Arrays.asList(
+            new PetOverlayView.InteractionChoice("挺顺利", "smooth"),
+            new PetOverlayView.InteractionChoice("忙但还行", "busy"),
+            new PetOverlayView.InteractionChoice("有点卡住", "stuck"),
+            new PetOverlayView.InteractionChoice("先不聊", "skip")
+        ), choice -> {
+            if (choice != null && !"skip".equals(choice)) {
+                dailyJournal.recordDaily(occurrenceId, "work", choice, java.time.OffsetDateTime.now());
+                currentInteractionAnswered = true;
+            }
+            finishInteraction();
+            if (choice != null && !"skip".equals(choice)) sayText("stuck".equals(choice) ? "先喘口气，再从一小步开始。" : "你慢慢忙，我在旁边陪着。", 5600);
+        });
+        return true;
+    }
+
+    private void checkDailyRoutine() {
+        scheduleDailyRoutine();
+        long nowMillis = System.currentTimeMillis();
+        if (!dailyConfigBusy && nowMillis >= nextDailyConfigRefresh) {
+            dailyConfigBusy = true;
+            nextDailyConfigRefresh = nowMillis + 15 * 60_000L;
+            networkExecutor.execute(() -> {
+                try {
+                    org.json.JSONObject remote = NetworkClient.json(this, "GET", DeskPetApi.SITE_SETTINGS, null, licenses, NetworkClient.Auth.NONE);
+                    settings.applyRemoteConfig(remote);
+                } catch (Exception ignored) { /* Keep the last valid online configuration. */ }
+                finally { dailyConfigBusy = false; }
+            });
+        }
+        if (overlay == null || !lastPetLoadSucceeded || !overlay.isAttachedToWindow() || !settings.running() || settings.petHidden() || settings.clickThrough() || settings.isQuiet()
+            || settings.guide().holdsAttention() || dragging || interactionBusy || theaterActive || visitorOverlay != null || !licenses.hasPremiumAccess()) return;
+        java.time.OffsetDateTime now = java.time.OffsetDateTime.now();
+        if (!dailyJournal.workPromptDue(now)) return;
+        dailyJournal.markWorkPrompted(now);
+        interactionBusy = true;
+        trackedDailyInteraction = true;
+        interactionWasManual = false;
+        currentInteractionAnswered = false;
+        ++interactionGeneration;
+        cancelMovement();
+        String occurrenceId = java.util.UUID.randomUUID().toString();
+        showOverlayInteraction("到了收工时间", "今天工作怎么样？现在准备下班吗？", Arrays.asList(
+            new PetOverlayView.InteractionChoice("下班啦", "done", true),
+            new PetOverlayView.InteractionChoice("还得加会班", "overtime"),
+            new PetOverlayView.InteractionChoice("今天六点下班", "six"),
+            new PetOverlayView.InteractionChoice("今天休息", "rest")
+        ), choice -> {
+            if (choice == null) { finishInteraction(); return; }
+            if (!java.time.OffsetDateTime.now().toLocalDate().equals(now.toLocalDate())) {
+                finishInteraction(); sayText("已经是新的一天啦，可以重新聊聊今天。", 5600); return;
+            }
+            if ("overtime".equals(choice)) {
+                dailyJournal.recordWork(occurrenceId, "overtime", 0, java.time.OffsetDateTime.now());
+                currentInteractionAnswered = true;
+                showOverlayInteraction("我陪你一会儿", "还要忙一会儿的话，需要稍后提醒一次吗？", Arrays.asList(
+                    new PetOverlayView.InteractionChoice("30 分钟后", "30"),
+                    new PetOverlayView.InteractionChoice("60 分钟后", "60"),
+                    new PetOverlayView.InteractionChoice("不用提醒", "0")
+                ), minutes -> {
+                    java.time.OffsetDateTime selectedAt = java.time.OffsetDateTime.now();
+                    if (minutes != null && !"0".equals(minutes) && selectedAt.toLocalDate().equals(now.toLocalDate()))
+                        dailyJournal.snoozeWork(Integer.parseInt(minutes), selectedAt);
+                    finishInteraction(); sayText("辛苦啦，记得给自己一点休息时间。", 5600);
+                });
+            } else {
+                dailyJournal.recordWork(occurrenceId, choice, 0, java.time.OffsetDateTime.now());
+                currentInteractionAnswered = true;
+                finishInteraction();
+                sayText("six".equals(choice) ? "记下啦，如果还没到六点，我到时提醒你一次。" : "收好今天的片段，也照顾好自己。", 5600);
+            }
+        });
     }
 
     private void schedulePetSwitch() {

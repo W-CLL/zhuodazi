@@ -241,7 +241,14 @@ final class PetOverlayView extends FrameLayout {
         interactionTitle.setText(title);
         interactionMessage.setText(message);
         interactionChoices.removeAllViews();
+        LinearLayout choiceRow = null;
+        int choiceIndex = 0;
         for (InteractionChoice choice : choices) {
+            if (choices.size() > 4 && choiceIndex % 2 == 0) {
+                choiceRow = new LinearLayout(getContext());
+                choiceRow.setOrientation(LinearLayout.HORIZONTAL);
+                interactionChoices.addView(choiceRow, new LinearLayout.LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            }
             TextView button = new TextView(getContext());
             button.setText(choice.label);
             button.setTextSize(13);
@@ -256,13 +263,16 @@ final class PetOverlayView extends FrameLayout {
             background.setStroke(dp(1), choice.primary ? 0xff147d6b : 0x28167d6c);
             button.setBackground(background);
             LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
-                LayoutParams.MATCH_PARENT, dp(44));
+                choices.size() > 4 ? 0 : LayoutParams.MATCH_PARENT, dp(44), choices.size() > 4 ? 1f : 0f);
             params.bottomMargin = dp(6);
+            if (choices.size() > 4 && choiceIndex % 2 == 0) params.rightMargin = dp(6);
             button.setLayoutParams(params);
             button.setOnClickListener(view -> {
                 if (generation == interactionGeneration) completeInteraction(choice.value);
             });
-            interactionChoices.addView(button);
+            if (choiceRow != null) choiceRow.addView(button);
+            else interactionChoices.addView(button);
+            choiceIndex++;
         }
         interactionCard.bringToFront();
         interactionCard.setVisibility(View.VISIBLE);

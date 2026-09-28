@@ -17,7 +17,6 @@ public partial class SettingsWindow : Window
     private readonly AppController _controller;
     private bool _refreshing;
     private bool _feedbackLoading;
-    private bool _interactionContentLoading;
     private bool _companionLoading;
     private bool _hallLoading;
     private DateTimeOffset _hallSendAllowedAt;
@@ -38,7 +37,7 @@ public partial class SettingsWindow : Window
             RefreshAll();
         };
         Closing += OnClosing;
-        _hallClock.Tick += (_, _) => RefreshHallSendButton();
+        _hallClock.Tick += (_, _) => { RefreshHallSendButton(); RefreshDailySummaryClock(); };
         _hallClock.Start();
         Closed += (_, _) => _hallClock.Stop();
         var nextReminder = ReminderSchedule.DefaultTime(DateTime.Now);
@@ -149,6 +148,7 @@ public partial class SettingsWindow : Window
         TodayActivateButton.Content = _controller.IsTrialActive ? "体验中，也可现在激活" : "继续完整体验";
         TopmostCheck.IsChecked = settings.AlwaysOnTop;
         StartWithWindowsCheck.IsChecked = settings.StartWithWindows;
+        StartWithWindowsCheck.IsEnabled = !_controller.IsLocalPreview;
         MirrorCheck.IsChecked = settings.Mirrored;
         ClickThroughButton.Content = settings.ClickThrough ? "关闭鼠标穿透" : "开启鼠标穿透";
         foreach (var item in PersonalityCombo.Items.OfType<ComboBoxItem>())
@@ -161,7 +161,7 @@ public partial class SettingsWindow : Window
         TheaterEnabledCheck.IsEnabled = premium;
         TheaterIntervalCombo.IsEnabled = premium;
         foreach (var item in InteractionModeCombo.Items.OfType<ComboBoxItem>())
-            if (item.Tag?.ToString() == settings.InteractionMode) item.IsSelected = true;
+            if (item.Tag?.ToString() == _controller.DailyFrequencyPreset) item.IsSelected = true;
         TheaterEnabledCheck.IsChecked = settings.TheaterEnabled;
         foreach (var item in TheaterIntervalCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == settings.TheaterIntervalSeconds.ToString(CultureInfo.InvariantCulture)) item.IsSelected = true;
@@ -204,11 +204,6 @@ public partial class SettingsWindow : Window
             : wordPackItems[0];
         WordPackSummary.Text = $"已收藏 {settings.InteractionWordPacks.Count}/5 套 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "日常悄悄话")}";
         DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
-        InteractionContentStatusText.Text = premium
-            ? _controller.InteractionStatus
-            : "完整体验里可以补充线上内容和导入词包";
-        SyncInteractionContentButton.IsEnabled = !_interactionContentLoading;
-        DownloadInteractionPackButton.IsEnabled = !_interactionContentLoading;
 
         var selectedTheaterScriptId = (TheaterScriptList.SelectedItem as TheaterScriptListItem)?.Id;
         var theaterScriptItems = settings.TheaterScripts.Select(item => new TheaterScriptListItem(
@@ -235,7 +230,9 @@ public partial class SettingsWindow : Window
         if (!_companionLoading && !CompanionNameText.IsKeyboardFocusWithin)
             CompanionNameText.Text = companionProfile?.DisplayName ?? string.Empty;
         CompanionCodeText.Text = companionProfile?.PairingCode ?? string.Empty;
-        CompanionStatusText.Text = !_controller.HasActivatedLicense
+        CompanionStatusText.Text = _controller.IsLocalPreview
+            ? "本地预览用于体验日常互动，搭子与大厅请在正式版中使用。"
+            : !_controller.HasActivatedLicense
             ? "绑定一位熟人后，可以把当前 GIF 发到对方桌角。"
             : companionProfile is null
                 ? "正在连接搭子服务…"
@@ -250,7 +247,7 @@ public partial class SettingsWindow : Window
         CompanionPreviewImage.FilePath = sendPreviewPath;
         CompanionSendPreview.Visibility = companionProfile?.Partner is not null && File.Exists(sendPreviewPath)
             ? Visibility.Visible : Visibility.Collapsed;
-        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading;
+        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading && !_controller.IsLocalPreview;
         CompanionNameText.IsEnabled = companionEnabled;
         SaveCompanionNameButton.IsEnabled = companionEnabled;
         CompanionCodeText.IsEnabled = companionEnabled;
@@ -259,15 +256,17 @@ public partial class SettingsWindow : Window
         PairCompanionPanel.Visibility = companionProfile?.Partner is null && _controller.HasActivatedLicense
             ? Visibility.Visible : Visibility.Collapsed;
         PairCompanionButton.IsEnabled = companionEnabled;
+        PairCodeText.IsEnabled = companionEnabled;
         PairedCompanionActions.Visibility = companionProfile?.Partner is not null
             ? Visibility.Visible : Visibility.Collapsed;
         SendCompanionGifButton.IsEnabled = companionEnabled && File.Exists(_controller.CurrentPetPath());
         UnpairCompanionButton.IsEnabled = companionEnabled;
+        CopyCompanionShareButton.IsEnabled = companionEnabled;
         CompanionActivateButton.Visibility = _controller.HasActivatedLicense
             ? Visibility.Collapsed : Visibility.Visible;
         CompanionActivateButton.Content = _controller.IsTrialActive ? "体验结束后继续使用" : "继续完整体验后使用";
 
-        var hallAllowed = premium && _controller.RemoteConfig.CompanionHall;
+        var hallAllowed = premium && _controller.RemoteConfig.CompanionHall && !_controller.IsLocalPreview;
         var hallEnabled = hallAllowed && companionProfile?.HallEnabled == true;
         if (!_hallLoading && !HallNicknameText.IsKeyboardFocusWithin)
             HallNicknameText.Text = companionProfile?.DisplayName ?? string.Empty;
@@ -277,7 +276,9 @@ public partial class SettingsWindow : Window
         CompanionHallEnabledCheck.IsEnabled = hallAllowed && !_hallLoading && companionProfile is not null;
         RefreshHallButton.IsEnabled = hallAllowed && !_hallLoading;
         RefreshHallButton.Content = _hallLoading ? "正在连接…" : "刷新大厅";
-        CompanionHallStatusText.Text = !hallAllowed
+        CompanionHallStatusText.Text = _controller.IsLocalPreview
+            ? "本地预览用于体验日常互动，搭子与大厅请在正式版中使用。"
+            : !hallAllowed
             ? "试用已结束。正式激活后可以继续加入大厅并发送表情。"
             : _hallLoading ? "正在连接大厅…"
             : hallEnabled ? "已加入大厅 · 昵称与在线状态对大厅用户可见"
@@ -289,7 +290,8 @@ public partial class SettingsWindow : Window
         CompanionHallList.SelectedItem = hallItems.FirstOrDefault(item => item.Id == selectedHallId);
         CompanionHallList.IsEnabled = hallEnabled && !_hallLoading;
         CompanionHallEmptyText.Visibility = hallItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        CompanionHallEmptyText.Text = _hallLoading ? "正在寻找此刻在线的朋友…"
+        CompanionHallEmptyText.Text = _controller.IsLocalPreview ? "请在正式版中使用搭子与大厅。"
+            : _hallLoading ? "正在寻找此刻在线的朋友…"
             : !hallAllowed ? "大厅支持有效试用与正式激活设备。"
             : !hallEnabled ? "先加入大厅，再看看谁在这里。"
             : "暂时没有其他人在场。保持加入状态，稍后刷新看看。";
@@ -301,10 +303,12 @@ public partial class SettingsWindow : Window
         RefreshHallSendButton();
 
         AutoUpdateCheck.IsChecked = settings.AutoCheckUpdates;
+        AutoUpdateCheck.IsEnabled = !_controller.IsLocalPreview;
         AutoUpdateCheck.Visibility = _controller.RemoteConfig.AutoUpdates ? Visibility.Visible : Visibility.Collapsed;
         CurrentVersionText.Text = $"当前版本 v{UpdateService.CurrentVersion}";
         LicenseStatusText.Text = _controller.LicenseSummary;
         RenderUpdateState(_controller.Updates.State);
+        RefreshDailyJournal();
     }
 
     private void RenderUpdateState(UpdateState state)
@@ -398,65 +402,13 @@ public partial class SettingsWindow : Window
     private void ApplyInteractionSettings()
     {
         if (_refreshing || InteractionModeCombo.SelectedItem is not ComboBoxItem item) return;
-        _controller.SetInteractionConfig(
+        _controller.SetDailyInteractionSettings(
             RandomInteractionCheck.IsChecked == true,
-            item.Tag?.ToString() ?? "standard");
+            item.Tag?.ToString() ?? "relaxed");
     }
 
     private void TryInteraction_Click(object sender, RoutedEventArgs e)
         => _controller.StartRandomInteraction();
-
-    private async void SyncInteractionContent_Click(object sender, RoutedEventArgs e)
-    {
-        if (!_controller.RequestPremiumAccess("在线互动内容", this)) return;
-        if (_interactionContentLoading) return;
-        SetInteractionContentLoading(true, "正在找新趣事…");
-        try
-        {
-            var added = await _controller.SyncInteractionContentAsync();
-            RefreshAll();
-            InteractionContentStatusText.Text = $"{_controller.InteractionStatus} · 本次新增 {added} 条";
-        }
-        catch (Exception error)
-        {
-            InteractionContentStatusText.Text = _controller.InteractionStatus;
-            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时没找到新趣事，稍后再试。"), "稍后再试", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        finally
-        {
-            SetInteractionContentLoading(false);
-        }
-    }
-
-    private async void DownloadInteractionPack_Click(object sender, RoutedEventArgs e)
-    {
-        if (!_controller.RequestPremiumAccess("互动内容包", this)) return;
-        if (_interactionContentLoading) return;
-        SetInteractionContentLoading(true, "正在下载离线内容包…");
-        try
-        {
-            var count = await _controller.DownloadInteractionPackAsync();
-            RefreshAll();
-            InteractionContentStatusText.Text = $"{_controller.InteractionStatus} · 离线包共 {count} 条";
-        }
-        catch (Exception error)
-        {
-            InteractionContentStatusText.Text = _controller.InteractionStatus;
-            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "暂时无法下载离线内容，请稍后重试。"), "下载离线内容失败", MessageBoxButton.OK, MessageBoxImage.Warning);
-        }
-        finally
-        {
-            SetInteractionContentLoading(false);
-        }
-    }
-
-    private void SetInteractionContentLoading(bool loading, string? status = null)
-    {
-        _interactionContentLoading = loading;
-        SyncInteractionContentButton.IsEnabled = !loading;
-        DownloadInteractionPackButton.IsEnabled = !loading;
-        if (status is not null) InteractionContentStatusText.Text = status;
-    }
 
     private void TheaterEnabledCheck_Changed(object sender, RoutedEventArgs e) => ApplyTheaterSettings();
 
@@ -717,11 +669,12 @@ public partial class SettingsWindow : Window
         if (MainTabs.SelectedItem == FeedbackTab) await LoadFeedbackAsync();
         else if (MainTabs.SelectedItem == CompanionTab) await LoadCompanionAsync();
         else if (MainTabs.SelectedItem == HallTab) await LoadHallAsync();
+        else if (MainTabs.SelectedItem == DailyJournalTab) RefreshDailyJournal();
     }
 
     private async Task LoadCompanionAsync()
     {
-        if (_companionLoading || !_controller.HasActivatedLicense) return;
+        if (_companionLoading || !_controller.HasActivatedLicense || _controller.IsLocalPreview) return;
         _companionLoading = true;
         CompanionErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
@@ -747,7 +700,7 @@ public partial class SettingsWindow : Window
 
     private async Task LoadHallAsync()
     {
-        if (_hallLoading || !_controller.HasPremiumAccess) return;
+        if (_hallLoading || !_controller.HasPremiumAccess || _controller.IsLocalPreview) return;
         _hallLoading = true;
         HallErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
@@ -768,7 +721,7 @@ public partial class SettingsWindow : Window
     {
         var seconds = Math.Max(0, (int)Math.Ceiling((_hallSendAllowedAt - DateTimeOffset.UtcNow).TotalSeconds));
         SendHallButton.Content = _hallLoading ? "处理中…" : seconds > 0 ? $"{seconds} 秒后可再发送" : "发送这只 GIF";
-        SendHallButton.IsEnabled = _controller.HasPremiumAccess && _controller.Companions.Profile?.HallEnabled == true
+        SendHallButton.IsEnabled = !_controller.IsLocalPreview && _controller.HasPremiumAccess && _controller.Companions.Profile?.HallEnabled == true
             && CompanionHallList.SelectedItem is HallListItem && File.Exists(_controller.CurrentPetPath()) && !_hallLoading && seconds == 0;
     }
 

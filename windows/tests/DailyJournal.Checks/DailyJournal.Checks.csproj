@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\ZhuoDazi\Models\DailyJournalModels.cs" Link="DailyJournalModels.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DailyJournalStore.cs" Link="DailyJournalStore.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\OnboardingProgress.cs" Link="OnboardingProgress.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\DailyRoutineSchedule.cs" Link="DailyRoutineSchedule.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\InteractionScheduler.cs" Link="InteractionScheduler.cs" />
+  </ItemGroup>
+</Project>

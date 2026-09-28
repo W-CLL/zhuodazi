@@ -55,6 +55,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private WordRepository words;
     private LicenseService licenses;
     private InteractionContentService interactionContent;
+    private DailyJournalStore dailyJournal;
     private CompanionService companions;
     private TheaterScriptStore theaterScripts;
     private ReminderStore reminders;
@@ -72,6 +73,7 @@ public final class FlutterMainActivity extends FlutterActivity {
         words = new WordRepository(this, settings);
         licenses = new LicenseService(this);
         interactionContent = new InteractionContentService(this, licenses);
+        dailyJournal = new DailyJournalStore(this);
         companions = new CompanionService(this, licenses, pets);
         theaterScripts = new TheaterScriptStore(settings);
         reminders = new ReminderStore(settings);
@@ -89,7 +91,23 @@ public final class FlutterMainActivity extends FlutterActivity {
                 case "guideAction" -> guideAction((String) call.argument("action"), result);
                 case "serviceAction" -> serviceAction((String) call.argument("action"), result);
                 case "react" -> react((String) call.argument("reaction"), result);
-                case "syncInteractions" -> syncInteractions(result);
+                case "dailySnapshot" -> result.success(dailySnapshot(call));
+                case "dailyMood" -> dailyMood(call, result);
+                case "dailyWorkday" -> dailyWorkday(call, result);
+                case "dailyQuiz" -> {
+                    requireDailyAccess();
+                    sendCheckedService(new Intent(this, PetOverlayService.class).setAction(PetOverlayService.ACTION_INTERACT)
+                        .putExtra("quiz_only", true), result);
+                }
+                case "dailySaveRoutine" -> {
+                    requireDailyAccess();
+                    dailyJournal.saveRoutine(Boolean.TRUE.equals(call.argument("enabled")), call.argument("workdays"), call.argument("time"));
+                    sendService(PetOverlayService.ACTION_REFRESH); result.success(snapshot());
+                }
+                case "dailyRefreshConfig" -> runAsync(result, () -> {
+                    settings.applyRemoteConfig(NetworkClient.json(this, "GET", DeskPetApi.SITE_SETTINGS, null, licenses, NetworkClient.Auth.NONE));
+                    return snapshot();
+                });
                 case "requestOverlayPermission" -> requestOverlayPermission(result);
                 case "requestNotificationPermission" -> requestNotificationPermission(result);
                 case "openAppSettings" -> openAppSettings(result);
@@ -151,11 +169,8 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("startOnBoot", settings.startOnBoot());
         value.put("personality", settings.personality());
         value.put("interactionMode", settings.interactionMode());
-        value.put("interactionCachedCount", interactionContent.cachedCount());
-        value.put("interactionOnlineCount", interactionContent.onlineCount());
-        value.put("interactionCatalogVersion", interactionContent.catalogVersion());
-        value.put("interactionSyncError", interactionContent.lastSyncError());
-        value.put("interactionLastSyncAt", interactionContent.lastSyncAt());
+        value.put("dailyFrequencyPreset", settings.dailyFrequencyPreset());
+        value.put("daily", dailyJournal.snapshot("month", "", 0, 0, settings.remoteConfigJson(), java.time.OffsetDateTime.now()));
         value.put("randomPetInterval", settings.randomPetInterval());
         value.put("activePet", pets.selectedPet());
         value.put("pets", petMaps());
@@ -232,8 +247,11 @@ public final class FlutterMainActivity extends FlutterActivity {
                 }
                 settings.putInt(key, number);
             } else if (SettingsStore.PERSONALITY.equals(key) || SettingsStore.INTERACTION_MODE.equals(key)
+                || SettingsStore.DAILY_FREQUENCY.equals(key)
                 || SettingsStore.WORD_PACK.equals(key)
                 || SettingsStore.IGNORED_UPDATE_VERSION.equals(key)) {
+                if (SettingsStore.DAILY_FREQUENCY.equals(key) && !java.util.Arrays.asList("eager", "frequent", "relaxed").contains(String.valueOf(value)))
+                    throw new IllegalArgumentException("请选择一种有效的互动频率");
                 settings.putString(key, String.valueOf(value));
             } else {
                 settings.putBoolean(key, Boolean.TRUE.equals(value));
@@ -369,12 +387,28 @@ public final class FlutterMainActivity extends FlutterActivity {
         }
     }
 
-    private void syncInteractions(MethodChannel.Result result) {
-        runAsync(result, () -> {
-            interactionContent.refillOnline();
-            sendService(PetOverlayService.ACTION_REFRESH);
-            return snapshot();
-        });
+    private void requireDailyAccess() {
+        if (!licenses.hasPremiumAccess()) throw new IllegalStateException("体验或正式激活后可以记录日常互动");
+    }
+
+    private Map<String, Object> dailySnapshot(MethodCall call) {
+        Number weekly = call.argument("weeklyOffset"); Number monthly = call.argument("monthlyOffset");
+        String period = call.argument("period"); String month = call.argument("month");
+        return dailyJournal.snapshot(period == null ? "month" : period, month == null ? "" : month,
+            weekly == null ? 0 : weekly.intValue(), monthly == null ? 0 : monthly.intValue(), settings.remoteConfigJson(), java.time.OffsetDateTime.now());
+    }
+
+    private void dailyMood(MethodCall call, MethodChannel.Result result) {
+        requireDailyAccess();
+        interactionContent.recordMood(call.argument("mood"));
+        result.success(snapshot());
+    }
+
+    private void dailyWorkday(MethodCall call, MethodChannel.Result result) {
+        requireDailyAccess();
+        Number snooze = call.argument("snoozeMinutes");
+        dailyJournal.recordWork(UUID.randomUUID().toString(), call.argument("choice"), snooze == null ? 0 : snooze.intValue(), java.time.OffsetDateTime.now());
+        result.success(snapshot());
     }
 
     private void requestOverlayPermission(MethodChannel.Result result) {

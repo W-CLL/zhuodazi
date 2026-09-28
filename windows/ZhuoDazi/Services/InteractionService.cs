@@ -11,7 +11,6 @@ public sealed class InteractionService : IDisposable
     private const string ProfileUrl = DeskPetApi.InteractionProfile;
     private const string EventsUrl = DeskPetApi.InteractionEvents;
     private const string BatchUrl = DeskPetApi.ContentBatch;
-    private const string OfflinePackUrl = DeskPetApi.ContentOfflinePack;
     private const int MaximumResponseBytes = 20 * 1024 * 1024;
     private const int TargetCacheSize = 60;
     private const int EventBatchSize = 50;
@@ -36,7 +35,7 @@ public sealed class InteractionService : IDisposable
     private bool _disposed;
 
     public InteractionService(SettingsStore store, LicenseService licenses)
-        : this(store, licenses, DeskPetHttp.CreateHandler())
+        : this(store, licenses, DeskPetHttp.HandlerFactory?.Invoke() ?? DeskPetHttp.CreateHandler())
     {
     }
 
@@ -65,17 +64,6 @@ public sealed class InteractionService : IDisposable
 
     public bool ShouldFlush => PendingEventCount >= 10;
 
-    public string StatusSummary
-    {
-        get
-        {
-            lock (_sync)
-            {
-                return _state.Items.Count == 0 ? "找点新趣事，陪你聊一会。" : $"口袋里有 {_state.Items.Count} 条小趣事";
-            }
-        }
-    }
-
     public bool IsMoodPromptDue(DateTimeOffset now)
     {
         lock (_sync)
@@ -94,15 +82,16 @@ public sealed class InteractionService : IDisposable
         }
     }
 
-    public InteractionContentItem? TakeNextContent()
+    public InteractionContentItem? TakeNextContent(IReadOnlyCollection<string>? types = null)
     {
         lock (_sync)
         {
-            if (_state.Items.Count == 0) return null;
-            var candidates = _state.Items
+            var eligible = _state.Items.Where(item => types is null || types.Contains(item.Type, StringComparer.Ordinal)).ToList();
+            if (eligible.Count == 0) return null;
+            var candidates = eligible
                 .Where(item => !item.Type.Equals(_state.LastPromptType, StringComparison.Ordinal))
                 .ToList();
-            if (candidates.Count == 0) candidates = [.. _state.Items];
+            if (candidates.Count == 0) candidates = eligible;
             var selected = candidates[RandomNumberGenerator.GetInt32(candidates.Count)];
             _state.Items.RemoveAll(item => item.Id.Equals(selected.Id, StringComparison.Ordinal));
             _state.Shown.RemoveAll(item => item.Id.Equals(selected.Id, StringComparison.Ordinal));
@@ -219,7 +208,8 @@ public sealed class InteractionService : IDisposable
         }
     }
 
-    public async Task<int> RefillAsync(CancellationToken cancellationToken = default)
+    public async Task<int> RefillAsync(CancellationToken cancellationToken = default, bool force = false,
+        IReadOnlyCollection<string>? types = null)
     {
         await _networkGate.WaitAsync(cancellationToken);
         try
@@ -234,22 +224,22 @@ public sealed class InteractionService : IDisposable
                     cachedCount = _state.Items.Count;
                     exclusions = BuildExclusionsLocked();
                 }
-                if (cachedCount >= TargetCacheSize) break;
+                if (!force && cachedCount >= TargetCacheSize) break;
 
                 try
                 {
                     using var request = JsonRequest(HttpMethod.Post, BatchUrl, new
                     {
-                        types = new[] { "joke", "math", "trivia", "riddle", "tip", "care" },
+                        types = types ?? new[] { "joke", "math", "trivia", "riddle", "tip", "care" },
                         limit = 30,
                         excludeIds = exclusions
                     });
                     Authorize(request);
                     var envelope = await SendAsync<SignedContentEnvelope>(request, cancellationToken);
                     var payload = ContentEnvelopeVerifier.Validate(envelope, "batch");
-                    var added = ApplyPayload(payload, replace: false);
+                    var added = ApplyPayload(payload);
                     totalAdded += added;
-                    if (added == 0) break;
+                    if (added == 0 || force) break;
                 }
                 catch (InvalidOperationException) when (attempt < MaxRetryAttempts - 1)
                 {
@@ -263,24 +253,6 @@ public sealed class InteractionService : IDisposable
                 }
             }
             return totalAdded;
-        }
-        finally
-        {
-            _networkGate.Release();
-        }
-    }
-
-    public async Task<int> DownloadOfflinePackAsync(CancellationToken cancellationToken = default)
-    {
-        await _networkGate.WaitAsync(cancellationToken);
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Get, OfflinePackUrl);
-            Authorize(request);
-            var envelope = await SendAsync<SignedContentEnvelope>(request, cancellationToken);
-            var payload = ContentEnvelopeVerifier.Validate(envelope, "offline-pack");
-            ApplyPayload(payload, replace: true);
-            return CachedContentCount;
         }
         finally
         {
@@ -315,17 +287,15 @@ public sealed class InteractionService : IDisposable
         }
     }
 
-    private int ApplyPayload(SignedContentPayload payload, bool replace)
+    private int ApplyPayload(SignedContentPayload payload)
     {
         lock (_sync)
         {
             if (payload.CatalogVersion < _state.CatalogVersion) return 0;
             var disabled = payload.DisabledIds.ToHashSet(StringComparer.Ordinal);
             var shown = _state.Shown.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-            var existing = replace
-                ? new Dictionary<string, InteractionContentItem>(StringComparer.Ordinal)
-                : _state.Items.Where(item => !disabled.Contains(item.Id))
-                    .ToDictionary(item => item.Id, StringComparer.Ordinal);
+            var existing = _state.Items.Where(item => !disabled.Contains(item.Id))
+                .ToDictionary(item => item.Id, StringComparer.Ordinal);
             var added = 0;
             foreach (var item in payload.Items)
             {

@@ -188,7 +188,7 @@ jobs:
                   for name, content in sources.items():
                       assert archive.read(entries[f"assets/word-packs/{name}"]) == content, name
                       assert f"assets/{name}" not in names, "Dialogue still present at asset root"
-                  assert archive.read(entries["assets/interaction_fallback.json"]), "Missing offline interaction content"
+                  assert "assets/interaction_fallback.json" not in names, "Retired offline question pack still bundled"
                   pet_entries = {name for name in names if name.startswith("assets/default-pets/") and not name.endswith("/")}
                   assert pet_entries == {f"assets/default-pets/{name}" for name in pets}, pet_entries
                   for name, content in pets.items():

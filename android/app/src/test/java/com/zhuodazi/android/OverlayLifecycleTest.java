@@ -78,6 +78,8 @@ public class OverlayLifecycleTest {
         field("pets", pets);
         field("words", mock(WordRepository.class));
         field("interactionContent", mock(InteractionContentService.class));
+        field("dailyJournal", new DailyJournalStore(app));
+        field("nextDailyConfigRefresh", Long.MAX_VALUE);
         CompanionService companions = mock(CompanionService.class);
         when(companions.pendingVisits()).thenReturn(List.of());
         field("companions", companions);
@@ -360,6 +362,57 @@ public class OverlayLifecycleTest {
         buttons.getChildAt(0).performClick();
         assertEquals(10, responses[0]);
         assertFalse(view.isInteractionVisible());
+    }
+
+    @Test public void allEightMoodChoicesFitFourRowsAndOnlyExplicitChoiceIsRecorded() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        invoke("showMoodInteraction");
+        PetOverlayView view = (PetOverlayView) field("overlay");
+        Field choicesField = PetOverlayView.class.getDeclaredField("interactionChoices"); choicesField.setAccessible(true);
+        LinearLayout rows = (LinearLayout) choicesField.get(view);
+        assertEquals(4, rows.getChildCount());
+        for (int row = 0; row < 4; row++) assertEquals(2, ((LinearLayout) rows.getChildAt(row)).getChildCount());
+        verify(content, never()).recordMood(anyString());
+        view.dismissInteraction();
+        verify(content, never()).recordMood(anyString());
+        invoke("showMoodInteraction");
+        View cry = ((LinearLayout) rows.getChildAt(1)).getChildAt(1);
+        cry.performClick(); cry.performClick();
+        verify(content, times(1)).recordMood("cry");
+    }
+
+    @Test public void quizRecordsOnlyAnExplicitAnswerAndIgnoresASecondClick() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        InteractionContentService.Item item = new InteractionContentService.Item("q1", "math", 1, "1 + 1 = ?", "2", "", List.of("2", "3"));
+        invoke("showContentInteraction", new Class<?>[]{InteractionContentService.Item.class}, item);
+        PetOverlayView view = (PetOverlayView) field("overlay");
+        verify(content, never()).recordQuiz(any(), anyBoolean(), anyString());
+        view.dismissInteraction();
+        verify(content, never()).recordQuiz(any(), anyBoolean(), anyString());
+        invoke("showContentInteraction", new Class<?>[]{InteractionContentService.Item.class}, item);
+        Field choicesField = PetOverlayView.class.getDeclaredField("interactionChoices"); choicesField.setAccessible(true);
+        View answer = ((LinearLayout) choicesField.get(view)).getChildAt(0);
+        answer.performClick(); answer.performClick();
+        verify(content, times(1)).recordQuiz(eq(item), eq(true), anyString());
+    }
+
+    @Test public void twoUnansweredAutomaticInteractionsBackOffButManualDismissalsDoNot() throws Exception {
+        settings.guide().dismiss();
+        for (int i = 0; i < 2; i++) {
+            field("trackedDailyInteraction", true); field("interactionWasManual", false); field("currentInteractionAnswered", false);
+            invoke("finishInteraction");
+        }
+        long until = (long) field("interactionBackoffUntil");
+        assertTrue(until >= System.currentTimeMillis() + 29 * 60_000L);
+        assertEquals(0, field("unansweredInteractions"));
+        field("interactionBackoffUntil", 0L);
+        for (int i = 0; i < 2; i++) {
+            field("trackedDailyInteraction", true); field("interactionWasManual", true);
+            invoke("finishInteraction");
+        }
+        assertEquals(0L, field("interactionBackoffUntil"));
     }
 
     @Test public void releasingOrCancelingDragAppliesPetSelectedDuringDrag() throws Exception {

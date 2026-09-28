@@ -440,7 +440,7 @@ void main() {
     },
   );
 
-  testWidgets('online cached content still shows last sync error', (
+  testWidgets('interaction page offers daily life without cache management', (
     tester,
   ) async {
     final host = ProductHost();
@@ -451,15 +451,11 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('暂时无法更新，已有内容仍可使用。'),
-      250,
-      scrollable: find.descendant(
-        of: find.byType(InteractionPage),
-        matching: find.byType(Scrollable),
-      ),
-    );
-    expect(find.text('暂时无法更新，已有内容仍可使用。'), findsOneWidget);
+    expect(find.text('我们的日常'), findsOneWidget);
+    expect(find.text('暂时无法更新，已有内容仍可使用。'), findsNothing);
+    expect(find.text('换一批内容'), findsNothing);
+    expect(find.text('新鲜小趣事'), findsNothing);
+    expect(find.text('下载离线包'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

@@ -31,7 +31,6 @@ final class InteractionService {
     private static let profileURL = DeskPetApi.interactionProfile
     private static let eventsURL = DeskPetApi.interactionEvents
     private static let batchURL = DeskPetApi.contentBatch
-    private static let offlinePackURL = DeskPetApi.contentOfflinePack
     private static let publicKeySPKI = DeskPetApi.signingPublicKeySPKI
     private static let maximumResponseBytes = 20 * 1024 * 1024
     private static let maximumSignedPayloadBytes = 16 * 1024 * 1024
@@ -45,6 +44,11 @@ final class InteractionService {
     private var state = InteractionCacheDocument()
     private var cacheStore: InteractionCacheStore?
     private var activeAccountKey = ""
+    private var activeJournal: DailyJournal?
+    var dailyChanged: (() -> Void)?
+    var dailyScope: String { licenses.interactionCacheKey }
+    var journal: DailyJournal? { switchAccountIfNeeded(); return activeJournal }
+    var journalEntries: [DailyEntry] { journal?.entries ?? [] }
     private var profileRevision = 0
     private var networkLocked = false
     private var networkWaiters: [CheckedContinuation<Void, Never>] = []
@@ -64,6 +68,10 @@ final class InteractionService {
         switchAccountIfNeeded()
         return state.items.count
     }
+    var cachedQuizCount: Int {
+        switchAccountIfNeeded()
+        return state.items.filter { ["math", "trivia", "riddle"].contains($0.type) }.count
+    }
 
     var pendingEventCount: Int {
         switchAccountIfNeeded()
@@ -71,13 +79,6 @@ final class InteractionService {
     }
 
     var shouldFlush: Bool { pendingEventCount >= 10 }
-
-    var statusSummary: String {
-        switchAccountIfNeeded()
-        return state.items.isEmpty
-            ? "还没有准备好的趣味内容，点“找点新乐趣”试试。"
-            : "准备了 \(state.items.count) 条小乐趣，随时可以玩。"
-    }
 
     func isMoodPromptDue(at now: Date = Date()) -> Bool {
         switchAccountIfNeeded()
@@ -95,11 +96,12 @@ final class InteractionService {
         save()
     }
 
-    func takeNextContent() -> InteractionContentItem? {
+    func takeNextContent(quizOnly: Bool = false) -> InteractionContentItem? {
         switchAccountIfNeeded()
         guard !state.items.isEmpty else { return nil }
-        var candidates = state.items.filter { $0.type != state.lastPromptType }
-        if candidates.isEmpty { candidates = state.items }
+        let eligible = state.items.filter { !quizOnly || ["math", "trivia", "riddle"].contains($0.type) }
+        var candidates = eligible.filter { $0.type != state.lastPromptType }
+        if candidates.isEmpty { candidates = eligible }
         guard let selected = candidates.randomElement() else { return nil }
         state.items.removeAll { $0.id == selected.id }
         state.shown.removeAll { $0.id == selected.id }
@@ -110,11 +112,11 @@ final class InteractionService {
         return selected
     }
 
-    func recordMood(_ mood: String) {
-        guard ["happy", "okay", "low"].contains(mood) else { return }
+    @discardableResult func recordMood(_ mood: String) -> Bool {
+        guard DailyMood(rawValue: mood) != nil else { return false }
         switchAccountIfNeeded()
-        addEvent(InteractionEventRecord(type: "mood_response", mood: mood))
-        save()
+        guard recordDailyEntry(DailyEntry(kind: "mood", mood: mood)) else { return false }
+        return true
     }
 
     func recordJoke(contentId: String) {
@@ -124,11 +126,13 @@ final class InteractionService {
         save()
     }
 
-    func recordQuiz(contentId: String, correct: Bool) {
-        guard InteractionRules.isValidItemId(contentId) else { return }
+    @discardableResult func recordQuiz(contentId: String, correct: Bool) -> Bool {
+        guard InteractionRules.isValidItemId(contentId) else { return false }
         switchAccountIfNeeded()
+        guard recordDailyEntry(DailyEntry(kind: "quiz", contentId: contentId, correct: correct)) else { return false }
         addEvent(InteractionEventRecord(type: "quiz_answered", contentId: contentId, correct: correct))
         save()
+        return true
     }
 
     func markProfileDirty(mode: String, promptsEnabled: Bool) {
@@ -175,7 +179,7 @@ final class InteractionService {
         }
     }
 
-    func refill() async throws -> Int {
+    func refill(quizOnly: Bool = false) async throws -> Int {
         await acquireNetwork()
         defer { releaseNetwork() }
         switchAccountIfNeeded()
@@ -183,14 +187,14 @@ final class InteractionService {
         var totalAdded = 0
 
         for _ in 0..<2 {
-            guard state.items.count < Self.targetCacheSize else { break }
+            guard quizOnly ? cachedQuizCount < 15 : state.items.count < Self.targetCacheSize else { break }
             let exclusions = Array(Set(state.items.map(\.id) + state.shown.map(\.id))).prefix(500).map { $0 }
             var request = URLRequest(url: Self.batchURL)
             request.httpMethod = "POST"
             request.timeoutInterval = 35
             request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
             request.httpBody = try encoder.encode(BatchRequest(
-                types: InteractionRules.contentTypes,
+                types: quizOnly ? ["math", "trivia", "riddle"] : InteractionRules.contentTypes,
                 limit: 30,
                 excludeIds: exclusions
             ))
@@ -206,22 +210,12 @@ final class InteractionService {
         return totalAdded
     }
 
-    func downloadOfflinePack() async throws -> Int {
-        await acquireNetwork()
-        defer { releaseNetwork() }
+    @discardableResult func recordDailyEntry(_ entry: DailyEntry) -> Bool {
         switchAccountIfNeeded()
-        let accountKey = activeAccountKey
-        var request = URLRequest(url: Self.offlinePackURL)
-        request.timeoutInterval = 45
-        try authorize(&request)
-        let envelope: SignedContentEnvelope = try await send(request)
-        let payload = try validate(envelope, expectedKind: "offline-pack")
-        switchAccountIfNeeded()
-        guard activeAccountKey == accountKey else { return state.items.count }
-        _ = apply(payload, replacing: true)
-        return state.items.count
+        let saved = activeJournal?.append(entry) ?? false
+        dailyChanged?()
+        return saved
     }
-
     func flushEvents() async throws {
         await acquireNetwork()
         defer { releaseNetwork() }
@@ -330,10 +324,12 @@ final class InteractionService {
         profileRevision = 0
         guard let url = try? Self.cacheURL(for: accountKey) else {
             cacheStore = nil
+            activeJournal = nil
             state = InteractionCacheDocument()
             return
         }
         let store = InteractionCacheStore(url: url)
+        activeJournal = DailyJournal(url: url.deletingLastPathComponent().appendingPathComponent("daily-" + url.lastPathComponent))
         cacheStore = store
         state = store.load()
     }
