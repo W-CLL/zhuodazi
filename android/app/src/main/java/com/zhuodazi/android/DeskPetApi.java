@@ -9,6 +9,7 @@ final class DeskPetApi {
 
     static final String ACTIVATE = "/api/activate";
     static final String TRIAL = "/api/trial";
+    static final String DEVICE_HEARTBEAT = "/api/device/heartbeat";
     static final String FEEDBACK = "/api/feedback";
     static final String INTERACTION_PROFILE = "/api/interactions/profile";
     static final String INTERACTION_EVENTS = "/api/interactions/events";

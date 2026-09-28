@@ -92,6 +92,7 @@ public partial class App : System.Windows.Application
         try
         {
             var trial = await _licenseService.CheckTrialAsync();
+            Controller.RefreshDeviceActivity();
             if (_stopping) return;
             if (_licenseService.IsActivated) return;
             if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
@@ -158,6 +159,7 @@ public partial class App : System.Windows.Application
         try
         {
             var trial = await _licenseService.CheckTrialAsync();
+            Controller.RefreshDeviceActivity();
             if (_stopping || _licenseService.IsActivated) return;
             if (trial.Allowed) ScheduleTrialCheck(trial.RemainingSeconds);
             else expired = true;

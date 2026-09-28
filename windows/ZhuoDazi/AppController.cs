@@ -139,6 +139,7 @@ public sealed partial class AppController : IDisposable
 
     public void Start(bool synchronizeStartupRegistration = true)
     {
+        StartDeviceHeartbeat();
         _remoteInitialization = RefreshRemoteConfigAsync();
         _remoteConfigTimer.Start();
         if (synchronizeStartupRegistration)
@@ -285,6 +286,7 @@ public sealed partial class AppController : IDisposable
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
         {
+            RefreshDeviceActivity();
             var activationMessage = _licenses.ActivationSuccessMessage;
             try
             {
@@ -1677,6 +1679,7 @@ public sealed partial class AppController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        StopDeviceHeartbeat();
         SystemEvents.SessionSwitch -= OnDailySessionSwitch;
         if (_journal is not null) _journal.Changed -= OnDailyJournalChanged;
         DismissGuide();

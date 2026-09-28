@@ -185,6 +185,27 @@ final class LicenseService {
         try? save()
     }
 
+    // This proves the saved device identity only; an expired trial stays expired.
+    func sendHeartbeat() async {
+        let identity = record
+        var request = URLRequest(url: DeskPetApi.deviceHeartbeat)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 12
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+        request.setValue("macos", forHTTPHeaderField: "X-DeskPet-Platform")
+        request.setValue(Self.architecture, forHTTPHeaderField: "X-DeskPet-Architecture")
+        request.setValue(AppVersion.current, forHTTPHeaderField: "X-DeskPet-Version")
+        guard let body = try? JSONSerialization.data(withJSONObject: [
+            "installationId": identity.installationId,
+            "credential": identity.credential,
+            "appVersion": AppVersion.current
+        ]) else { return }
+        request.httpBody = body
+        // All responses, including 400/401, are independent of local entitlement state.
+        _ = try? await URLSession.shared.data(for: request)
+    }
+
     private func clearTrialState() {
         trialActive = false
         trialExpiresAt = nil

@@ -167,6 +167,34 @@ public sealed class LicenseService : IDisposable
         Save();
     }
 
+    // Activity verifies this saved device identity without granting or refreshing any entitlement.
+    public async Task SendHeartbeatAsync(CancellationToken cancellationToken = default)
+    {
+        var identity = _record;
+        try
+        {
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(12));
+            using var request = new HttpRequestMessage(HttpMethod.Post, DeskPetApi.DeviceHeartbeat)
+            {
+                Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(new
+                {
+                    installationId = identity.InstallationId,
+                    credential = identity.Credential,
+                    appVersion = UpdateService.CurrentVersion
+                }))
+            };
+            request.Content.Headers.ContentType = new("application/json") { CharSet = "utf-8" };
+            request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
+            request.Headers.TryAddWithoutValidation("X-DeskPet-Platform", "windows");
+            request.Headers.TryAddWithoutValidation("X-DeskPet-Architecture", "x64");
+            request.Headers.TryAddWithoutValidation("X-DeskPet-Version", UpdateService.CurrentVersion);
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+            // A 400/401 or network failure must not change the local license or trial state.
+        }
+        catch { }
+    }
+
     public void Authorize(HttpRequestMessage request)
     {
         if (IsActivated)

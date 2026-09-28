@@ -8,6 +8,7 @@ enum DeskPetApi {
 
     static let activate = baseURL.appendingPathComponent("api/activate")
     static let trial = baseURL.appendingPathComponent("api/trial")
+    static let deviceHeartbeat = baseURL.appendingPathComponent("api/device/heartbeat")
     static let feedback = baseURL.appendingPathComponent("api/feedback")
     static let interactionProfile = baseURL.appendingPathComponent("api/interactions/profile")
     static let interactionEvents = baseURL.appendingPathComponent("api/interactions/events")

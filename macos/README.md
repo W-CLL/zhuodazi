@@ -1,6 +1,6 @@
 # 桌搭子 macOS 版
 
-这是使用 Swift 与 AppKit 实现的原生 macOS 版，最低支持 macOS 13。本轮目标版本为 3.4.0，用户变化见 [更新说明](RELEASE_NOTES.md)。
+这是使用 Swift 与 AppKit 实现的原生 macOS 版，最低支持 macOS 13。本轮目标版本为 3.4.1，用户变化见 [更新说明](RELEASE_NOTES.md)。
 
 ## 当前功能
 
@@ -71,9 +71,9 @@ bash macos/scripts/build-app.sh
 
 从 `2.0.0` 开始，App、ZIP 和 GitHub Actions Artifact 都包含三段式版本号。当前版本示例：
 
-- `ZhuoDazi-macOS-3.4.0-arm64.zip`
-- `ZhuoDazi-macOS-3.4.0-x86_64.zip`
+- `ZhuoDazi-macOS-3.4.1-arm64.zip`
+- `ZhuoDazi-macOS-3.4.1-x86_64.zip`
 
-macOS 与 Windows 独立管理版本号。macOS 新包上传到 `macos-v3.4.0` Draft Release，完成验收后再公开；Windows 没有应用改动时保留原版本并跳过构建。旧版统一 Release 仍然保留，已发布的安装包不会被覆盖。
+macOS 与 Windows 独立管理版本号。macOS 新包上传到 `macos-v3.4.1` Draft Release，完成验收后再公开；Windows 没有应用改动时保留原版本并跳过构建。旧版统一 Release 仍然保留，已发布的安装包不会被覆盖。
 
 在线更新后台按 `macos/arm64` 与 `macos/x86_64` 分别上传、发布，不能上传 Windows EXE。以后配置 Developer ID 和公证凭据时，可在现有打包脚本后追加正式签名、公证和 DMG 步骤。

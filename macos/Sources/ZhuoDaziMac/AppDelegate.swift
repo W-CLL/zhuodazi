@@ -59,11 +59,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var remoteConfigTimer: Timer?
     private var refreshingRemoteConfig = false
     private var companionPolling = false
+    private var deviceHeartbeat: DeviceHeartbeatLoop?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
             settings = settingsStore.load()
             licenses = try LicenseService()
+            startDeviceHeartbeat()
             analytics = AnalyticsService(licenses: licenses)
             interactions = InteractionService(licenses: licenses)
             companions = CompanionService(licenses: licenses)
@@ -87,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     guard let self else { return }
                     do {
                         let trial = try await licenses.checkTrial()
+                        deviceHeartbeat?.identityRefreshed()
                         if trial.allowed {
                             scheduleTrialCheck(trial.remainingSeconds)
                         } else {
@@ -120,6 +123,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        deviceHeartbeat?.resume()
         showSettings()
         return true
     }
@@ -129,8 +133,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        deviceHeartbeat?.stop()
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
         remoteConfigTimer?.invalidate()
         fakeAdWindow?.close()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        deviceHeartbeat?.resume()
+    }
+
+    private func startDeviceHeartbeat() {
+        guard deviceHeartbeat == nil else { return }
+        let heartbeat = DeviceHeartbeatLoop { [weak self] in
+            guard let self else { return }
+            await licenses.sendHeartbeat()
+        }
+        deviceHeartbeat = heartbeat
+        let notifications = NSWorkspace.shared.notificationCenter
+        notifications.addObserver(self, selector: #selector(suspendDeviceHeartbeat(_:)), name: NSWorkspace.willSleepNotification, object: nil)
+        notifications.addObserver(self, selector: #selector(resumeDeviceHeartbeat(_:)), name: NSWorkspace.didWakeNotification, object: nil)
+        notifications.addObserver(self, selector: #selector(resumeDeviceHeartbeat(_:)), name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        heartbeat.start()
+    }
+
+    @objc private func suspendDeviceHeartbeat(_ notification: Notification) {
+        deviceHeartbeat?.suspend()
+    }
+
+    @objc private func resumeDeviceHeartbeat(_ notification: Notification) {
+        deviceHeartbeat?.resume()
     }
 
     private func startPet() {
@@ -222,6 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard !self.licenses.isActivated else { return }
                 do {
                     let trial = try await self.licenses.checkTrial()
+                    self.deviceHeartbeat?.identityRefreshed()
                     if trial.allowed {
                         self.scheduleTrialCheck(trial.remainingSeconds)
                         return

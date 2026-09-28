@@ -426,10 +426,16 @@ public final class FlutterMainActivity extends FlutterActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        DeviceActivityService.start(this, this);
         if (startAfterOverlayGrant && Settings.canDrawOverlays(this)) {
             startAfterOverlayGrant = false;
             startPetIfNeeded();
         }
+    }
+
+    @Override protected void onPause() {
+        DeviceActivityService.stop(this);
+        super.onPause();
     }
 
     private void startPetIfNeeded() {
@@ -806,6 +812,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     }
 
     @Override protected void onDestroy() {
+        DeviceActivityService.stop(this);
         executor.shutdownNow();
         super.onDestroy();
     }

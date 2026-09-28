@@ -38,7 +38,9 @@ jobs:
           xcodebuild -version
 
       - name: Test macOS core logic
-        run: swift test --package-path macos
+        run: |
+          swift test --package-path macos
+          bash macos/scripts/test-device-heartbeat.sh
 
       - name: Read application version
         run: echo "APP_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Info.plist)" >> "$GITHUB_ENV"

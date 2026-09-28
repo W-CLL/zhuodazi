@@ -29,13 +29,13 @@ Android 不支持 Windows 托盘、全局鼠标追逐和 WPF 窗口模型。提�
 
 ### GitHub Actions
 
-向 `main` 推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.5.0-arm64.apk` 和 `ZhuoDazi-Android-1.5.0-armv7.apk` 上传到 `android-v1.5.0` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
+向 `main` 推送 Android 相关文件、创建 Pull Request，或在 GitHub 的 **Actions > Build Android > Run workflow** 中手动运行。非 Pull Request 构建通过后，会使用仓库 Actions Secrets 中的稳定发布密钥签名，并把 `ZhuoDazi-Android-1.5.1-arm64.apk` 和 `ZhuoDazi-Android-1.5.1-armv7.apk` 上传到 `android-v1.5.1` Draft Release。Pull Request 只构建临时调试包，不接触发布密钥。
 
 Android 版本号统一从 `android/app/build.gradle.kts` 读取，打包名称和 Release 标签自动同步，Flutter 的 `pubspec.yaml` 必须同步版本与安装编号。Android 与桌面分别递增：修复加末位，新增功能加中间位并清零末位，大版本升级加首位并清零后两位。详见 [版本规则](../docs/releases/versioning.md)。工作流在构建前检查元数据及用户更新说明，并拒绝覆盖已发布的 Release。创建发布标签不会再次触发构建。
 
 工作流会执行 Android Lint、APK 编译和 v2 签名验证，并使用 GitHub Release 保存安装包。
 
-v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。本轮目标版本为 v1.5.0（versionCode 24），用户变化见 [更新说明](../docs/releases/android-1.5.0.md)。远程构建使用稳定发布签名并上传到草稿 Release，完成验收后再公开；本地调试包使用独立包名和 `-debug` 后缀。覆盖安装要求包名和签名一致；正式签名包不会覆盖本地调试应用。
+v1.0 测试包由 GitHub 临时调试证书签名，不能覆盖升级到稳定签名版。安装 v1.1.0 前需先卸载 v1.0；从 v1.1.0 起后续版本可以直接覆盖升级。本轮目标版本为 v1.5.1（versionCode 25），用户变化见 [更新说明](../docs/releases/android-1.5.1.md)。远程构建使用稳定发布签名并上传到草稿 Release，完成验收后再公开；本地调试包使用独立包名和 `-debug` 后缀。覆盖安装要求包名和签名一致；正式签名包不会覆盖本地调试应用。
 
 ### 本地构建
 

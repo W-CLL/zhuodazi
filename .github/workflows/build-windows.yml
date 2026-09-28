@@ -25,6 +25,8 @@ jobs:
       - name: Run Windows checks
         shell: pwsh
         run: |
+          dotnet run --project windows/tests/DeviceHeartbeat.Checks/DeviceHeartbeat.Checks.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Device heartbeat checks failed" }
           dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
           if ($LASTEXITCODE -ne 0) { throw "Windows checks failed" }
           dotnet run --project windows/tests/DailyJournal.Checks/DailyJournal.Checks.csproj --configuration Release

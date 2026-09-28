@@ -279,6 +279,7 @@ public final class PetOverlayService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_STOP.equals(action)) {
+            DeviceActivityService.stop(this);
             pauseGuide();
             interactionGeneration++;
             answerInteraction("桌宠已完全退出");
@@ -296,6 +297,8 @@ public final class PetOverlayService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
+        // A rapid stop/start can reuse this service before onDestroy; renew its activity ownership.
+        DeviceActivityService.start(this, this);
         try {
             if (ACTION_GUIDE.equals(action)) {
                 handleGuideAction(intent.getStringExtra("guide_action"));
@@ -374,6 +377,7 @@ public final class PetOverlayService extends Service {
     @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override public void onDestroy() {
+        DeviceActivityService.stop(this);
         destroyed = true;
         if (liveService == this) liveService = null;
         stopGuideDemo(false);
