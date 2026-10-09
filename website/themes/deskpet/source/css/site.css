@@ -2910,6 +2910,8 @@ img {
     align-content: start;
     gap: 0;
     padding: 20px 18px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     background: var(--canvas);
   }
 

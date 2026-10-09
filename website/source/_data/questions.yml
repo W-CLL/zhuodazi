@@ -1,0 +1,55 @@
+- id: what-is-deskpet
+  question: 桌搭子是什么？可以做什么？
+  answer: 桌搭子是一款支持 Windows、macOS 和 Android 的桌面宠物软件。它提供 20 只默认桌宠，可以拖动、换宠、进行趣味问答、看双宠小剧场、设置提醒，并通过桌宠大厅发送桌宠和留言。互动、小剧场、提醒与大厅需要有效体验或正式激活。
+  link: /posts/deskpet-feature-guide/
+  link_label: 查看完整玩法指南
+- id: free-and-activation
+  question: 桌搭子免费吗？激活多少钱？
+  answer: 桌搭子的基础陪伴免费，首次提供 7 天进阶体验，体验结束后保留基础陪伴。正式激活价格为 6.88 元，一次购买永久激活，不按月续费，也没有自动扣款。
+  link: /activate/
+  link_label: 查看价格与激活说明
+- id: permanent-activation
+  question: 永久激活还要续费吗？激活码有兑换期限吗？
+  answer: 正常授权状态下，成功激活后的授权不设置订阅到期时间，也不按月续费。未兑换的激活码可能有兑换有效期，请在购买页面标明的期限内兑换；具体授权说明见激活价格页。
+  link: /activate/
+  link_label: 阅读授权说明
+- id: supported-platforms
+  question: 支持哪些系统？有 iPhone 或 iPad 版吗？
+  answer: 桌搭子支持 Windows、macOS 和 Android，目前没有 iOS 或 iPadOS 版。Windows 安装包适用于 Windows 10 22H2 / Windows 11 的 x64 设备；macOS 分 Apple 芯片与 Intel 版本；Android 提供 ARM64 和 ARMv7 安装包。
+  link: /download/
+  link_label: 选择对应平台的安装包
+- id: official-download
+  question: 桌搭子从哪里下载？哪个是官网？
+  answer: 桌搭子官网是 https://desktoppet.online，官方下载页是 https://desktoppet.online/download/，安装包由 https://in.desktoppet.online 提供。下载页的官方入口指向各平台最新安装包，历史更新文章中的版本号只代表当次更新。
+  link: /download/
+  link_label: 打开官方下载页
+- id: devices-and-codes
+  question: 一个激活码可以用几台设备？能和朋友共用吗？
+  answer: 一组 6 位激活码最多授权两台设备，两台设备属于同一账号，例如自己的电脑和 Android 手机。私人搭子用于两个独立账号之间的配对；双方需要各自正式激活，再使用 8 位搭子码绑定，不能把同一组激活码当作配对码。
+  link: /activate/
+  link_label: 了解设备授权与配对
+- id: hall-and-partner
+  question: 桌宠大厅和私人搭子有什么区别？
+  answer: 桌宠大厅用于向公开在线的用户发送桌宠和留言，有效体验期间即可使用。私人搭子用于和熟人长期配对，需要双方使用独立账号并正式激活。来访桌宠会临时出现，不会替换原有桌宠；设备已接收不表示对方已读。
+  link: /posts/deskpet-feature-guide/#去大厅，给在线的人送只桌宠
+  link_label: 查看串门玩法
+- id: ai-chat
+  question: 桌搭子能自由输入文字和 AI 聊天吗？
+  answer: 桌搭子的互动包括日常台词、笑话、问候、选择题和双宠对白，不提供自由输入文字的 AI 聊天。词包用于更换场景台词，小剧场剧本用于设置两只桌宠的对白，它们不会新增在线题库。
+  link: /resources/
+  link_label: 查看词包与剧本的区别
+- id: custom-content
+  question: 可以导入自己的 GIF、词包和小剧场剧本吗？
+  answer: Windows / macOS 的基础陪伴即可导入自己的 GIF，Android 导入自己的 GIF 需要正式激活，最多添加 3 个。电脑端在有效体验或激活后可导入 JSON / TXT 词包和 JSON 小剧场剧本；Android 使用内置词包和内置剧场内容。
+  link: /resources/
+  link_label: 查看资源格式与导入说明
+- id: reminders-and-background
+  question: 提醒和桌宠需要一直运行吗？
+  answer: 提醒需要桌搭子保持运行，退出应用、设备休眠或系统后台限制可能影响触发。Android 还需要允许显示在其他应用上层，后台表现受省电设置影响。重要事项建议同时设置系统闹钟。
+  link: /download/
+  link_label: 查看安装与权限说明
+- id: pause-companion
+  question: 忙的时候可以让桌宠安静下来吗？
+  answer: 可以分别调整日常台词、走动、自动互动和自动小剧场，也可以隐藏桌宠，或暂停主动打扰一小时。暂停会暂缓主动台词、自动互动、自动小剧场和来访展示；手动玩法与提醒仍可用。
+  link: /posts/deskpet-feature-guide/#忙的时候，让它安静一会儿
+  link_label: 查看暂停和找回操作

@@ -7,7 +7,8 @@
     "clean": "hexo clean",
     "build": "hexo clean && hexo generate",
     "serve": "hexo server",
-    "check": "hexo clean && hexo generate"
+    "test": "node --test tests/discovery.test.cjs",
+    "check": "node --test tests/discovery.test.cjs && hexo clean && hexo generate && node tests/check-generated.cjs"
   },
   "dependencies": {
     "hexo": "8.1.2",

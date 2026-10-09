@@ -22,7 +22,7 @@ function shot(name, eager) {
       <h1>屏幕这么大，<br>分它一个<span>小角落。</span></h1>
       <p class="welcome-description">写东西、赶进度、发会儿呆，身边多一只小桌宠。<br class="desktop-break">陪你走走，接个梗，演段小剧场；也能带着留言，去别人的屏幕串个门。</p>
       <div class="welcome-actions"><a class="button button-primary" href="<%= url_for('/download/') %>">领一只桌搭子 <span aria-hidden="true">↓</span></a><a class="button button-secondary" href="#play">看看它会什么 <span aria-hidden="true">↘</span></a></div>
-      <p class="welcome-footnote">Windows / macOS / Android · 首次 7 天进阶体验<br>体验结束后，基础陪伴仍然保留。</p>
+      <p class="welcome-footnote">Windows / macOS / Android 桌面宠物 · 基础陪伴免费<br>首次 7 天进阶体验 · <a href="<%= url_for('/activate/') %>"><%= site.data.product.activation.price %> 元一次购买，永久激活 →</a></p>
     </div>
     <div class="welcome-visual">
       <div class="scene-topline"><span><i></i> 屏幕上的一小段日常</span><span>REAL MOMENTS / 01</span></div>
@@ -91,6 +91,6 @@ function shot(name, eager) {
 <section class="home-section start-section" id="start" aria-labelledby="start-title"><div class="site-shell"><div class="home-heading"><div><p class="overline">05 / 今天，就从一只开始</p><h2 id="start-title">不用做功课，跟着它玩一遍。</h2></div><p>首次使用有引导，可跳过，也能重看。<br>先玩懂，再决定要不要让它常住。</p></div><ol class="start-steps"><li><span>1</span><h3>下对版本，叫它出来</h3><p>按设备选择安装包。Android 先允许「显示在其他应用上层」。</p></li><li><span>2</span><h3>互动一次，看段小剧场</h3><p>跟着引导认识操作，试试内置玩法，学会暂停和找回。</p></li><li><span>3</span><h3>换只喜欢的，去大厅逛逛</h3><p>20 只默认桌宠任选。有效体验期内，可主动加入大厅发送桌宠和留言。</p></li></ol>
   <div class="start-cta"><div><h3>给今天，添一个小搭子。</h3><p>首次 7 天进阶体验 · 到期保留基础陪伴</p></div><a class="button button-primary" href="<%= url_for('/download/') %>">免费下载体验 <span aria-hidden="true">↓</span></a></div>
   <div class="home-faq"><details><summary>一定要买了才能养吗？</summary><p>不用。下载后可使用基础陪伴，首次有 7 天进阶体验。体验结束后基础陪伴仍保留；私人搭子绑定和 Android 导入自己的 GIF 需要正式激活。</p></details><details><summary>会一直说话、挡住工作吗？</summary><p>可以分别调整自动互动、日常台词、走动和自动小剧场。忙的时候暂停主动打扰一小时，也可以隐藏桌宠。关闭设置页不会退出应用，完全退出请用托盘、菜单栏或手机对应入口。</p></details><details><summary>大厅和私人搭子有什么不同？</summary><p>大厅面向主动公开在线的用户，有效体验期间即可发送桌宠和留言。私人搭子用于与熟人长期配对，双方需要正式激活；不是用同一组激活码互相配对。</p></details></div>
-  <div class="reading-links"><span>想再了解一点？</span><a href="<%= url_for('/posts/deskpet-feature-guide/') %>">完整玩法指南 ↗</a><a href="<%= url_for('/posts/deskpet-3-3-update/') %>">这次更新了什么 ↗</a><a href="<%= url_for('/archives/') %>">桌搭子手记 ↗</a></div>
+  <div class="reading-links"><span>想再了解一点？</span><a href="<%= url_for('/posts/deskpet-feature-guide/') %>">完整玩法指南 ↗</a><a href="<%= url_for('/faq/') %>">常见问题 ↗</a><a href="<%= url_for('/activate/') %>">激活价格与授权 ↗</a><a href="<%= url_for('/archives/') %>">桌搭子手记 ↗</a></div>
 </div></section>
 </div>
