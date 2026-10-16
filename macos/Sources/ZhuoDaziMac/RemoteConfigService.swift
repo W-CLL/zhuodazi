@@ -3,6 +3,9 @@ import ZhuoDaziCore
 
 struct RemoteConfig: Equatable {
     var wechatId = "wcl_lcw627"
+    var activationTitle = "还没有激活码"
+    var activationDescription = "加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。"
+    var activationQrCodeDataUrl = ""
     var announcement = ""
     var xianyuUrl = ""
     var trialVisits = true
@@ -45,6 +48,7 @@ final class RemoteConfigService {
     }
 
     private static func parse(_ data: Data) -> RemoteConfig? {
+        guard data.count <= 1024 * 1024 else { return nil }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         let features = root["features"] as? [String: Any] ?? [:]
         let defaults = root["defaults"] as? [String: Any] ?? [:]
@@ -52,10 +56,15 @@ final class RemoteConfigService {
         let interactionMode = string(defaults["interactionMode"], fallback: "standard")
         let theaterInterval = int(defaults["theaterIntervalSeconds"], fallback: 300)
         let wechatId = string(root["wechatId"], fallback: "wcl_lcw627")
+        let activation = root["activation"] as? [String: Any] ?? [:]
+        let fallback = RemoteConfig()
         let summaryObject = root["dailySummaries"] as? [String: Any]
         let summaryData = summaryObject.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
         return RemoteConfig(
             wechatId: isWechatId(wechatId) ? wechatId : "wcl_lcw627",
+            activationTitle: string(activation["title"], fallback: fallback.activationTitle),
+            activationDescription: string(activation["description"], fallback: fallback.activationDescription),
+            activationQrCodeDataUrl: string(activation["qrCodeDataUrl"], fallback: ""),
             announcement: string(root["announcement"], fallback: "").replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines),
             xianyuUrl: string(root["xianyuUrl"], fallback: ""),
             trialVisits: bool(features["trialVisits"], fallback: true),

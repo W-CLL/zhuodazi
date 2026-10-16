@@ -10,6 +10,8 @@ void main() {
   var overlayAllowed = false;
   var running = false;
   var activated = false;
+  var activationTitle = '还没有激活码';
+  var activationDescription = '最新激活说明';
 
   Map<String, dynamic> snapshot() => <String, dynamic>{
     'overlayAllowed': overlayAllowed,
@@ -39,6 +41,9 @@ void main() {
     'reminders': <Map<String, Object>>[],
     'xianyuUrl': 'https://www.goofish.com/item?id=1',
     'wechatId': 'wcl_lcw627',
+    'installationId': '0123456789abcdef0123456789abcdef',
+    'activationTitle': activationTitle,
+    'activationDescription': activationDescription,
     'websiteUrl': 'https://desktoppet.online/',
     'announcement': '',
     'trialVisitsEnabled': true,
@@ -59,6 +64,8 @@ void main() {
     overlayAllowed = false;
     running = false;
     activated = false;
+    activationTitle = '还没有激活码';
+    activationDescription = '最新激活说明';
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
@@ -235,6 +242,57 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'account shows remote activation text and supports device-code copy and manual sync',
+    (tester) async {
+      activationTitle = '远程激活指引';
+      activationDescription = '联系作者为这台设备激活';
+      await pumpApp(tester, const Size(360, 800));
+      await tester.tap(find.text('我的').last);
+      await tester.pumpAndSettle();
+      final scrollable = find
+          .descendant(
+            of: find.byType(AccountPage),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.text('复制设备码'),
+        120,
+        scrollable: scrollable,
+      );
+      expect(find.text('0123456789abcdef0123456789abcdef'), findsOneWidget);
+      await tester.tap(find.text('复制设备码'));
+      await tester.pumpAndSettle();
+      expect(
+        calls.any(
+          (call) =>
+              call.method == 'copyText' &&
+              call.arguments['text'] == '0123456789abcdef0123456789abcdef',
+        ),
+        isTrue,
+      );
+      await tester.scrollUntilVisible(
+        find.text('同步后台激活 / 体验时间'),
+        -100,
+        scrollable: scrollable,
+      );
+      calls.clear();
+      await tester.ensureVisible(find.text('同步后台激活 / 体验时间'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('同步后台激活 / 体验时间'));
+      await tester.pumpAndSettle();
+      expect(calls.any((call) => call.method == 'checkTrial'), isTrue);
+      await tester.scrollUntilVisible(
+        find.text('远程激活指引'),
+        120,
+        scrollable: scrollable,
+      );
+      expect(find.text('联系作者为这台设备激活'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('premium pet page can bind a library folder', (tester) async {
     activated = true;

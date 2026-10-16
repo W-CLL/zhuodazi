@@ -8,11 +8,23 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private let contactButton = NSButton(title: "还没有激活码", target: nil, action: nil)
     private let contactBox = NSBox()
     private let wechatLabel = NSTextField(labelWithString: "wcl_lcw627")
+    private let qrView = NSImageView()
+    private let contactTitle = NSTextField(wrappingLabelWithString: "还没有激活码")
+    private let contactDescription = NSTextView()
+    private let remoteConfig = RemoteConfigService()
+    private let licenses: LicenseService
+    private let replacingExisting: Bool
+    private var refreshTimer: Timer?
+    private var refreshing = false
+    private var finished = false
+    private(set) var activatedRemotely = false
     private var result: String?
 
-    init(required: Bool, statusMessage: String? = nil, trialEnded: Bool = false) {
+    init(licenses: LicenseService, replacingExisting: Bool = false, required: Bool, statusMessage: String? = nil, trialEnded: Bool = false) {
+        self.licenses = licenses
+        self.replacingExisting = replacingExisting
         window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 540, height: 760),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -30,7 +42,13 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         window.makeFirstResponder(input)
+        refreshTimer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.refreshActivation() }
+        }
+        if let refreshTimer { RunLoop.main.add(refreshTimer, forMode: .modalPanel) }
         NSApp.runModal(for: window)
+        finished = true
+        refreshTimer?.invalidate()
         window.orderOut(nil)
         return result
     }
@@ -81,6 +99,16 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         input.heightAnchor.constraint(equalToConstant: 42).isActive = true
         stack.addArrangedSubview(input)
 
+        let device = NSTextField(wrappingLabelWithString: "设备码：\(licenses.installationId)")
+        device.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
+        device.isSelectable = true
+        device.widthAnchor.constraint(equalToConstant: 484).isActive = true
+        stack.addArrangedSubview(device)
+        let copyDevice = NSButton(title: "复制设备码", target: self, action: #selector(copyDeviceCode))
+        let sync = NSButton(title: "同步后台激活", target: self, action: #selector(syncActivation))
+        sync.isEnabled = !replacingExisting
+        stack.addArrangedSubview(NSStackView(views: [copyDevice, sync]))
+
         statusLabel.textColor = trialEnded ? .secondaryLabelColor : .systemRed
         statusLabel.font = .systemFont(ofSize: 12)
         statusLabel.stringValue = statusMessage ?? " "
@@ -94,11 +122,12 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         stack.addArrangedSubview(contactButton)
 
         configureContactBox()
+        applyRemoteContact()
         contactBox.isHidden = false
         contactButton.isHidden = true
         stack.addArrangedSubview(contactBox)
         Task { @MainActor [weak self] in
-            await self?.loadRemoteContact()
+            await self?.refreshActivation()
         }
 
         let website = NSButton(title: trialEnded ? "去官网看看玩法" : "去官网看看", target: self, action: #selector(openWebsite))
@@ -132,29 +161,37 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.cornerRadius = 8
         contactBox.contentViewMargins = NSSize(width: 14, height: 14)
         contactBox.widthAnchor.constraint(equalToConstant: 484).isActive = true
-        contactBox.heightAnchor.constraint(equalToConstant: 236).isActive = true
+        contactBox.heightAnchor.constraint(equalToConstant: 264).isActive = true
 
-        let qrView = NSImageView()
         qrView.imageScaling = .scaleProportionallyUpOrDown
         qrView.image = Self.contactImage()
-        qrView.widthAnchor.constraint(equalToConstant: 200).isActive = true
-        qrView.heightAnchor.constraint(equalToConstant: 200).isActive = true
+        qrView.widthAnchor.constraint(equalToConstant: 168).isActive = true
+        qrView.heightAnchor.constraint(equalToConstant: 168).isActive = true
 
-        let title = NSTextField(labelWithString: "还没有激活码")
-        title.font = .systemFont(ofSize: 15, weight: .semibold)
-        let note = wrappingLabel("加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。")
+        contactTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        let note = NSScrollView()
+        note.hasVerticalScroller = true
+        note.drawsBackground = false
+        note.heightAnchor.constraint(equalToConstant: 92).isActive = true
+        note.widthAnchor.constraint(equalToConstant: 226).isActive = true
+        contactDescription.isEditable = false
+        contactDescription.drawsBackground = false
+        contactDescription.font = .systemFont(ofSize: 12)
+        contactDescription.textColor = .secondaryLabelColor
+        contactDescription.isVerticallyResizable = true
+        contactDescription.autoresizingMask = [.width]
+        contactDescription.textContainer?.widthTracksTextView = true
+        note.documentView = contactDescription
         let accountTitle = NSTextField(labelWithString: "微信号")
         accountTitle.font = .systemFont(ofSize: 11)
         accountTitle.textColor = .secondaryLabelColor
         wechatLabel.font = .monospacedSystemFont(ofSize: 14, weight: .semibold)
         wechatLabel.isSelectable = true
-        let support = wrappingLabel("想定制角色、动作或功能，也可以直接聊。")
-
-        let copy = NSStackView(views: [title, note, accountTitle, wechatLabel, support])
+        let copy = NSStackView(views: [contactTitle, note, accountTitle, wechatLabel])
         copy.orientation = .vertical
         copy.alignment = .leading
         copy.spacing = 7
-        copy.widthAnchor.constraint(equalToConstant: 194).isActive = true
+        copy.widthAnchor.constraint(equalToConstant: 226).isActive = true
         let row = NSStackView(views: [qrView, copy])
         row.orientation = .horizontal
         row.alignment = .centerY
@@ -162,17 +199,49 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.contentView = row
     }
 
-    private func loadRemoteContact() async {
-        var request = URLRequest(url: DeskPetApi.siteSettings)
-        request.timeoutInterval = 8
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
-              let http = response as? HTTPURLResponse,
-              (200..<300).contains(http.statusCode),
-              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let wechat = root["wechatId"] as? String,
-              !wechat.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        wechatLabel.stringValue = wechat.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func refreshActivation() async {
+        guard !refreshing, !finished else { return }
+        refreshing = true
+        defer { refreshing = false }
+        await remoteConfig.refresh()
+        guard !finished else { return }
+        applyRemoteContact()
+        if !replacingExisting {
+            do {
+                _ = try await licenses.checkTrial()
+                guard !finished else { return }
+                if licenses.isActivated {
+                    activatedRemotely = true
+                    NSApp.stopModal()
+                    return
+                }
+            } catch { }
+        }
+    }
+
+    private func applyRemoteContact() {
+        let config = remoteConfig.current
+        wechatLabel.stringValue = config.wechatId
+        contactTitle.stringValue = config.activationTitle
+        contactDescription.string = config.activationDescription
+        contactDescription.setFrameSize(NSSize(width: 226, height: 92))
+        contactDescription.sizeToFit()
+        qrView.image = Self.contactImage()
+        let image = config.activationQrCodeDataUrl
+        if image.hasPrefix("data:image/png;base64,"), image.count <= 350_000,
+           let data = Data(base64Encoded: String(image.dropFirst(22))), let decoded = NSImage(data: data) {
+            qrView.image = decoded
+        }
+    }
+
+    @objc private func copyDeviceCode() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(licenses.installationId, forType: .string)
+        statusLabel.stringValue = "设备码已复制，可发给作者指定此设备激活。"
+    }
+
+    @objc private func syncActivation() {
+        Task { @MainActor [weak self] in await self?.refreshActivation() }
     }
 
     private func wrappingLabel(_ text: String) -> NSTextField {
@@ -188,7 +257,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         let show = contactBox.isHidden
         contactBox.isHidden = !show
         contactButton.title = show ? "收起联系方式  ‹" : "还没有激活码"
-        window.setContentSize(NSSize(width: 540, height: show ? 680 : 640))
+        window.setContentSize(NSSize(width: 540, height: show ? 760 : 480))
         window.center()
     }
 

@@ -67,6 +67,10 @@ final class LicenseService {
             .put("appVersion", NetworkClient.appVersion(context));
         JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.ACTIVATE, body,
             this, NetworkClient.Auth.NONE);
+        applyActivation(record, response);
+    }
+
+    private void applyActivation(SecureLicenseStore.LicenseRecord record, JSONObject response) throws Exception {
         String licenseId = response.optString("licenseId");
         try { UUID.fromString(licenseId); }
         catch (Exception error) { throw new IllegalStateException("激活服务返回的授权无效"); }
@@ -98,6 +102,14 @@ final class LicenseService {
             .put("credential", record.credential).put("appVersion", NetworkClient.appVersion(context));
         JSONObject response = NetworkClient.json(context, "POST", DeskPetApi.TRIAL, body,
             this, NetworkClient.Auth.NONE);
+        JSONObject license = response.optJSONObject("license");
+        synchronized (IDENTITY_LOCK) {
+            if (isActivated()) return new TrialStatus(false, 0);
+            if (license != null) {
+                applyActivation(record, license);
+                return new TrialStatus(false, 0);
+            }
+        }
         int seconds = response.optInt("remainingSeconds", -1);
         String expiresAtText = response.optString("expiresAt", "");
         boolean hasExpiresAt = !expiresAtText.isEmpty() && !response.isNull("expiresAt");

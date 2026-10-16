@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/services.dart';
 
 const settingSize = 'size_dp';
@@ -177,11 +179,29 @@ class HostSnapshot {
   int get libraryGifCount => _int('libraryGifCount', 0);
   String get wordPack => _string('wordPack', '');
   String get installationSuffix => _string('installationSuffix', '');
+  String get installationId => _string('installationId', '');
   String get version => _string('version', '1.3.0');
   bool get theaterEnabled => _bool('theaterEnabled');
   int get theaterInterval => _int('theaterInterval', 300);
   String get xianyuUrl => _string('xianyuUrl', '');
   String get wechatId => _string('wechatId', 'wcl_lcw627');
+  String get activationTitle => _string('activationTitle', '还没有激活码');
+  String get activationDescription => _string(
+    'activationDescription',
+    '加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。',
+  );
+  Uint8List? get activationQrBytes {
+    final image = _string('activationQrCodeDataUrl', '');
+    if (!image.startsWith('data:image/png;base64,') || image.length > 350000) {
+      return null;
+    }
+    try {
+      return base64Decode(image.substring(22));
+    } on FormatException {
+      return null;
+    }
+  }
+
   String get websiteUrl => _string('websiteUrl', 'https://desktoppet.online/');
   String get announcement => _string('announcement', '');
   bool get trialVisitsEnabled =>

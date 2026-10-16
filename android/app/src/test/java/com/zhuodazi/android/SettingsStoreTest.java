@@ -28,6 +28,22 @@ public class SettingsStoreTest {
         return new JSONObject("{\"defaults\":{\"personality\":\"chaotic\",\"interactionMode\":\"lively\",\"theaterIntervalSeconds\":600},\"xianyuUrl\":\"\"}");
     }
 
+    @Test public void activationTextAndQrSurviveReloadAndCanRestoreBundledQr() throws Exception {
+        Map<String, Object> values = new HashMap<>();
+        SettingsStore settings = new SettingsStore(preferences(values));
+        JSONObject activation = new JSONObject().put("title", "新激活标题")
+            .put("description", "新的说明\n第二行").put("qrCodeDataUrl", "data:image/png;base64,test");
+        settings.applyRemoteConfig(remote().put("activation", activation));
+        SettingsStore reloaded = new SettingsStore(preferences(values));
+        assertEquals("新激活标题", reloaded.activationSettings().getString("title"));
+        assertEquals("新的说明\n第二行", reloaded.activationSettings().getString("description"));
+        assertEquals("data:image/png;base64,test", reloaded.activationSettings().getString("qrCodeDataUrl"));
+        reloaded.applyRemoteConfig(remote().put("activation", activation.put("qrCodeDataUrl", "")));
+        assertEquals("", reloaded.activationSettings().getString("qrCodeDataUrl"));
+        reloaded.applyRemoteConfig(remote());
+        assertFalse(reloaded.activationSettings().has("title"));
+    }
+
     @Test public void trialAndRuntimeMetadataDoNotBlockFirstRemoteDefaults() throws Exception {
         Map<String,Object> values = new HashMap<>();
         values.put(SettingsStore.TRIAL_EXPIRES_AT, 12345L);

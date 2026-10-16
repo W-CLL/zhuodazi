@@ -104,6 +104,12 @@
                          FontFamily="Consolas" FontSize="26" FontWeight="SemiBold" CharacterCasing="Upper"
                          BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="White"
                          TextChanged="CodeTextBox_TextChanged" />
+                <TextBlock Text="设备码（联系作者手动激活时提供）" FontSize="11" Margin="0,10,0,4" Foreground="{StaticResource MutedBrush}" />
+                <TextBox x:Name="DeviceCodeText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" Padding="6" />
+                <WrapPanel Margin="0,6,0,0">
+                    <Button Content="复制设备码" Click="CopyDeviceCode_Click" MinHeight="30" Padding="10,4" Margin="0,0,8,0" />
+                    <Button x:Name="SyncActivationButton" Content="同步后台激活" Click="SyncActivation_Click" MinHeight="30" Padding="10,4" />
+                </WrapPanel>
             </StackPanel>
 
             <Grid Grid.Row="3" Margin="0,10,0,0" MinHeight="28">
@@ -119,12 +125,12 @@
                         <ColumnDefinition Width="16" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <Image Width="168" Height="168" Stretch="Uniform"
+                    <Image x:Name="ActivationQrImage" Width="168" Height="168" Stretch="Uniform"
                            Source="pack://application:,,,/ZhuoDazi;component/assets/contact-author-wechat.png" />
                     <StackPanel Grid.Column="2" VerticalAlignment="Center">
-                        <TextBlock Text="还没有激活码" FontSize="15" FontWeight="SemiBold"
+                        <TextBlock x:Name="ContactTitleText" Text="还没有激活码" TextWrapping="Wrap" FontSize="15" FontWeight="SemiBold"
                                    Foreground="{StaticResource InkBrush}" />
-                        <TextBlock Margin="0,8,0,0" FontSize="12" TextWrapping="Wrap"
+                        <TextBlock x:Name="ContactDescriptionText" Margin="0,8,0,0" FontSize="12" TextWrapping="Wrap"
                                    Foreground="{StaticResource MutedBrush}"
                                    Text="加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。" />
                         <TextBlock Margin="0,10,0,0" Text="微信号" FontSize="11"

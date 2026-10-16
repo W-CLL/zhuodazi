@@ -4,6 +4,8 @@
 
 ## 开发运行
 
+本轮补丁版本为 v3.4.2。激活页的二维码、标题和说明从后台同步并缓存；页面展示完整设备码，可复制给作者协助激活，之后自动或手动同步授权。服务端需先升级至 1.0.1，原购买码流程和最多两台设备的规则不变，详见 [更新说明](../docs/releases/desktop-3.4.2.md)。
+
 ```powershell
 dotnet run --project .\windows\ZhuoDazi\ZhuoDazi.csproj -- --settings
 ```

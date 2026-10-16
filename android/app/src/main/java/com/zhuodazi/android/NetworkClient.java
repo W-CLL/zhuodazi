@@ -24,7 +24,8 @@ final class NetworkClient {
 
     static JSONObject json(Context context, String method, String path, JSONObject body,
                            LicenseService licenses, Auth auth) throws Exception {
-        return json(context, method, path, body, licenses, auth, DEFAULT_MAX_RESPONSE);
+        return json(context, method, path, body, licenses, auth,
+            DeskPetApi.SITE_SETTINGS.equals(path) ? 1024 * 1024 : DEFAULT_MAX_RESPONSE);
     }
 
     static JSONObject json(Context context, String method, String path, JSONObject body,

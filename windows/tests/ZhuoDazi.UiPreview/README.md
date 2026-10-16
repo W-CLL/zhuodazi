@@ -1,5 +1,7 @@
 # Windows 离线界面验收
 
+激活页回归：`dotnet run --project windows/tests/ZhuoDazi.UiPreview -c Release -- --activation-check <输出目录>`。使用离屏真实 WPF 激活窗口和内存模拟后台，验证动态文案、微信号、设备码、内置二维码回退及指定设备授权同步，输出 `activation-window.png` 与 `activation-check.txt`，完成后自动退出；不读取正式授权或请求生产服务。
+
 运行 `dotnet run --project windows/tests/ZhuoDazi.UiPreview -c Release`。验收结束时，在此验收进程的托盘菜单点击“退出桌搭子”；设置窗口右上角的关闭按钮只隐藏窗口，不结束进程。
 
 此入口展示真实的 `SettingsWindow` 与真实托盘菜单，标题包含“离线界面验收”。每次启动使用独立临时目录保存设置、试用凭据与缓存，不读取或覆盖正常安装的数据。所有 `DeskPetHttp` 请求由内存处理器接管，未实现的请求也只返回模拟错误，不会访问生产服务。

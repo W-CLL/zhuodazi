@@ -38,6 +38,14 @@ internal static class Program
         var resources = new XElement(ns + "ResourceDictionary", source.Element(ns + "Application.Resources")!.Elements());
         resources.SetAttributeValue(XNamespace.Xmlns + "x", x.NamespaceName);
         app.Resources = (ResourceDictionary)XamlReader.Parse(resources.ToString());
+        if (args.Contains("--activation-check"))
+        {
+            System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
+            var output = args.SkipWhile(argument => argument != "--activation-check").Skip(1).FirstOrDefault() ?? directory;
+            ActivationFlowChecks.Run(directory, Path.GetFullPath(output));
+            app.Shutdown(0);
+            return;
+        }
         using var license = new LicenseService(directory);
         license.CheckTrialAsync().GetAwaiter().GetResult();
         System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));

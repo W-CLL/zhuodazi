@@ -173,6 +173,18 @@ final class LicenseService {
         guard let result = try? JSONDecoder().decode(TrialResponse.self, from: data) else {
             throw LicenseError.invalidResponse
         }
+        if isActivated { return TrialStatus(allowed: false, remainingSeconds: 0) }
+        if let license = result.license {
+            guard UUID(uuidString: license.licenseId) != nil else { throw LicenseError.invalidResponse }
+            record.licenseId = license.licenseId
+            record.activatedAt = license.activatedAt
+            record.trialExpiresAt = nil
+            deviceCount = license.deviceCount.flatMap { (1...2).contains($0) ? $0 : nil } ?? 1
+            alreadyActivated = true
+            clearTrialState()
+            try save()
+            return TrialStatus(allowed: false, remainingSeconds: 0)
+        }
         try applyTrialResponse(result)
         return TrialStatus(
             allowed: isTrialActive,
@@ -311,6 +323,7 @@ final class LicenseService {
     }
 
     private struct TrialResponse: Decodable {
+        let license: ActivationResponse?
         let allowed: Bool
         let remainingSeconds: Int
         let expiresAt: String?

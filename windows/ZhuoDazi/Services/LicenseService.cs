@@ -30,6 +30,7 @@ public sealed class LicenseService : IDisposable
     public bool HasPremiumAccess => IsActivated || IsTrialActive;
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
     public string InstallationId => _record.InstallationId;
+    internal string DataDirectory => Path.GetDirectoryName(_licensePath)!;
     public int RemainingTrialSeconds
     {
         get
@@ -154,6 +155,18 @@ public sealed class LicenseService : IDisposable
             if (result is null) throw new InvalidOperationException("试用服务返回的数据无效。");
             // An activation can finish while the background trial request is in flight.
             if (IsActivated) return new TrialStatus(false, 0);
+            if (result.License is { } license && Guid.TryParse(license.LicenseId, out _))
+            {
+                _record.LicenseId = license.LicenseId;
+                _record.ActivatedAt = license.ActivatedAt;
+                _record.TrialExpiresAt = null;
+                DeviceCount = license.DeviceCount is > 0 and <= 2 ? license.DeviceCount : 1;
+                AlreadyActivated = true;
+                _trialActive = false;
+                _trialExpiresAt = null;
+                Save();
+                return new TrialStatus(false, 0);
+            }
             ApplyTrialResponse(result);
             return new TrialStatus(IsTrialActive, RemainingTrialSeconds);
         }
@@ -358,6 +371,9 @@ public sealed class LicenseService : IDisposable
 
     private sealed class TrialResponse
     {
+        [JsonPropertyName("license")]
+        public ActivationResponse? License { get; set; }
+
         [JsonPropertyName("allowed")]
         public bool Allowed { get; set; }
 

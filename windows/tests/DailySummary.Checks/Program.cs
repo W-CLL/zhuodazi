@@ -202,7 +202,8 @@ internal static class Program
         var settings = new SettingsStore(directory);
         var remote = new RemoteConfigService(settings);
         Require(remote.Current.DailySummaries is null, "A fresh install does not include hardcoded client summary templates.");
-        var json = JsonSerializer.Serialize(new { dailySummaries = Config(), announcement = "remote announcement" }, JsonOptions);
+        var activation = new { title = "新激活标题", description = "新引导文案\n第二行", qrCodeDataUrl = "data:image/png;base64,test" };
+        var json = JsonSerializer.Serialize(new { dailySummaries = Config(), announcement = "remote announcement", activation }, JsonOptions);
         Uri? requested = null;
         DeskPetHttp.HandlerFactory = () => new ResponseHandler(request =>
         {
@@ -213,6 +214,9 @@ internal static class Program
             && requested == RemoteConfigService.PreviewSiteSettingsUri, "The loopback preview endpoint supplies real parsed summary settings.");
         Require(new RemoteConfigService(settings).Current.DailySummaries?.Templates.Count == 4,
             "Downloaded backend settings survive a client restart.");
+        Require(remote.Current.ActivationTitle == activation.title && remote.Current.ActivationDescription == activation.description
+            && new RemoteConfigService(settings).Current.ActivationQrCodeDataUrl == activation.qrCodeDataUrl,
+            "Activation text and QR configuration use the existing persistent remote-config cache.");
         Require(!File.Exists(Path.Combine(directory, "remote-config.json")), "Local preview configuration never overwrites the production cache.");
         DeskPetHttp.HandlerFactory = () => new ResponseHandler(_ => new(HttpStatusCode.OK)
             { Content = new StringContent(new string('x', 1024 * 1024 + 1)) });
@@ -221,6 +225,8 @@ internal static class Program
         DeskPetHttp.HandlerFactory = () => new ResponseHandler(_ => new(HttpStatusCode.OK) { Content = new StringContent("{}") });
         Require(await remote.RefreshAsync() && remote.Current.DailySummaries is null,
             "Removing summary settings on the backend clears them rather than preserving stale built-in copy.");
+        Require(remote.Current.ActivationTitle == "还没有激活码" && remote.Current.ActivationQrCodeDataUrl == "",
+            "Legacy server responses keep built-in activation defaults rather than an outdated downloaded QR.");
         foreach (var url in new[] { "https://example.com/api/public/site-settings", "file:///tmp/settings", "http://user@localhost/settings" })
         {
             var rejected = false;

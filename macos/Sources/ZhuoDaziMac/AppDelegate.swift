@@ -90,7 +90,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     do {
                         let trial = try await licenses.checkTrial()
                         deviceHeartbeat?.identityRefreshed()
-                        if trial.allowed {
+                        if licenses.isActivated {
+                            startCompanionPolling()
+                        } else if trial.allowed {
                             scheduleTrialCheck(trial.remainingSeconds)
                         } else {
                             if await ActivationPrompts.activate(
@@ -255,6 +257,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 do {
                     let trial = try await self.licenses.checkTrial()
                     self.deviceHeartbeat?.identityRefreshed()
+                    if self.licenses.isActivated {
+                        self.petController.refreshPremiumAccess()
+                        self.settingsWindow?.refreshAccessState()
+                        self.refreshMenuState()
+                        self.startCompanionPolling()
+                        return
+                    }
                     if trial.allowed {
                         self.scheduleTrialCheck(trial.remainingSeconds)
                         return

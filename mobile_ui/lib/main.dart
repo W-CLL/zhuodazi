@@ -1510,10 +1510,24 @@ class AccountPage extends StatelessWidget {
                   onPressed: () => runAction(
                     context,
                     controller.checkTrial(),
-                    (_) => '体验时间已更新',
+                    (_) => controller.snapshot.activated
+                        ? '后台授权已同步，设备已激活'
+                        : '后台尚未激活此设备，体验时间已更新',
                   ),
-                  icon: const Icon(Icons.timer_outlined),
-                  label: const Text('检查体验时间'),
+                  icon: const Icon(Icons.sync),
+                  label: const Text('同步后台激活 / 体验时间'),
+                ),
+                const SizedBox(height: 8),
+                const Text('设备码（联系作者手动激活时提供）'),
+                SelectableText(snapshot.installationId),
+                TextButton.icon(
+                  onPressed: () => runAction(
+                    context,
+                    controller.copyText(snapshot.installationId),
+                    (_) => '设备码已复制',
+                  ),
+                  icon: const Icon(Icons.copy_outlined),
+                  label: const Text('复制设备码'),
                 ),
               ],
             ),
@@ -1523,38 +1537,54 @@ class AccountPage extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('还没有激活码', style: Theme.of(context).textTheme.titleMedium),
+                Text(
+                  snapshot.activationTitle,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
                 const SizedBox(height: 10),
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final stacked = constraints.maxWidth < 420;
+                    final remoteQr = snapshot.activationQrBytes;
+                    Widget bundledQr() => Image.asset(
+                      'assets/contact-author-wechat.png',
+                      width: stacked ? double.infinity : 148,
+                      height: stacked ? 168 : 148,
+                      fit: BoxFit.contain,
+                    );
                     final qr = ClipRRect(
                       borderRadius: BorderRadius.circular(8),
-                      child: Image.asset(
-                        'assets/contact-author-wechat.png',
-                        width: stacked ? double.infinity : 148,
-                        height: stacked ? 168 : 148,
-                        fit: BoxFit.contain,
-                        errorBuilder: (_, _, _) => SizedBox(
-                          width: stacked ? double.infinity : 148,
-                          height: stacked ? 168 : 148,
-                          child: const ColoredBox(
-                            color: _mint,
-                            child: Icon(
-                              Icons.qr_code_2,
-                              color: _brand,
-                              size: 48,
+                      child: remoteQr != null
+                          ? Image.memory(
+                              remoteQr,
+                              width: stacked ? double.infinity : 148,
+                              height: stacked ? 168 : 148,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => bundledQr(),
+                            )
+                          : Image.asset(
+                              'assets/contact-author-wechat.png',
+                              width: stacked ? double.infinity : 148,
+                              height: stacked ? 168 : 148,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, _, _) => SizedBox(
+                                width: stacked ? double.infinity : 148,
+                                height: stacked ? 168 : 148,
+                                child: const ColoredBox(
+                                  color: _mint,
+                                  child: Icon(
+                                    Icons.qr_code_2,
+                                    color: _brand,
+                                    size: 48,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
                     );
                     final copy = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          '加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。',
-                        ),
+                        Text(snapshot.activationDescription),
                         const SizedBox(height: 10),
                         const Text(
                           '微信号',

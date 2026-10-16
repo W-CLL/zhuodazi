@@ -11,8 +11,9 @@ enum ActivationPrompts {
         trialEnded: Bool = false
     ) async -> Bool {
         while true {
-            let prompt = InvitationWindowController(required: required, statusMessage: statusMessage, trialEnded: trialEnded)
-            guard let code = prompt.runModal() else { return false }
+            let prompt = InvitationWindowController(licenses: licenses, replacingExisting: replacingExisting,
+                required: required, statusMessage: statusMessage, trialEnded: trialEnded)
+            guard let code = prompt.runModal() else { return prompt.activatedRemotely && licenses.isActivated }
 
             do {
                 try await licenses.activate(code, replacingExisting: replacingExisting)

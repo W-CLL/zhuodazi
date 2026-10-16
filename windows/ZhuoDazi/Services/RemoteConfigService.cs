@@ -7,6 +7,9 @@ namespace ZhuoDazi.Services;
 public sealed class RemoteConfig
 {
     public string WechatId { get; init; } = "wcl_lcw627";
+    public string ActivationTitle { get; init; } = "还没有激活码";
+    public string ActivationDescription { get; init; } = "加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。";
+    public string ActivationQrCodeDataUrl { get; init; } = "";
     public string Announcement { get; init; } = "";
     public string XianyuUrl { get; init; } = "";
     public bool TrialVisits { get; init; } = true;
@@ -128,8 +131,13 @@ internal sealed class RemoteConfigService
         var interactionMode = ReadString(defaults, "interactionMode", "standard");
         var theaterInterval = ReadInt(defaults, "theaterIntervalSeconds", 300);
         var wechatId = ReadString(root, "wechatId", "wcl_lcw627");
+        var activation = root.TryGetProperty("activation", out var activationElement) ? activationElement : default;
+        var fallback = new RemoteConfig();
         return new RemoteConfig
         {
+            ActivationTitle = ReadString(activation, "title", fallback.ActivationTitle),
+            ActivationDescription = ReadString(activation, "description", fallback.ActivationDescription),
+            ActivationQrCodeDataUrl = ReadString(activation, "qrCodeDataUrl", ""),
             WechatId = IsWechatId(wechatId) ? wechatId : "wcl_lcw627",
             Announcement = ReadString(root, "announcement", "").Replace('\r', ' ').Replace('\n', ' ').Trim(),
             XianyuUrl = ReadString(root, "xianyuUrl", ""),

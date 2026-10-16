@@ -184,6 +184,7 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("deviceCount", licenses.deviceCount());
         value.put("trialSeconds", licenses.trialRemainingSeconds());
         value.put("installationSuffix", lastEight(licenses.installationId()));
+        value.put("installationId", licenses.installationId());
         value.put("version", NetworkClient.appVersion(this));
         value.put("theaterEnabled", settings.theaterEnabled());
         value.put("theaterInterval", settings.theaterInterval());
@@ -191,6 +192,10 @@ public final class FlutterMainActivity extends FlutterActivity {
         value.put("reminders", reminderMaps());
         value.put("xianyuUrl", settings.xianyuUrl());
         value.put("wechatId", settings.wechatId());
+        JSONObject activation = settings.activationSettings();
+        value.put("activationTitle", activation.optString("title", "还没有激活码"));
+        value.put("activationDescription", activation.optString("description", "加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。"));
+        value.put("activationQrCodeDataUrl", activation.optString("qrCodeDataUrl", ""));
         value.put("websiteUrl", WEBSITE_URL);
         value.put("announcement", settings.announcement());
         value.put("trialVisitsEnabled", settings.trialVisitsEnabled());
@@ -532,6 +537,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private void checkTrial(MethodChannel.Result result) {
         runAsync(result, () -> {
             licenses.checkTrial();
+            runOnUiThread(() -> sendService(PetOverlayService.ACTION_REFRESH));
             return snapshot();
         });
     }

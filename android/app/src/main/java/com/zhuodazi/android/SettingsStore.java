@@ -122,6 +122,13 @@ final class SettingsStore {
     boolean companionHallDefaultApplied() { return values.getBoolean(COMPANION_HALL_DEFAULT_APPLIED, false); }
     boolean remoteDefaultsApplied() { return values.getInt(REMOTE_DEFAULTS_VERSION, 0) >= 2; }
     String wechatId() { return values.getString(WECHAT_ID, "wcl_lcw627"); }
+    org.json.JSONObject activationSettings() {
+        try {
+            org.json.JSONObject activation = new org.json.JSONObject(remoteConfigJson()).optJSONObject("activation");
+            if (activation != null) return activation;
+        } catch (org.json.JSONException ignored) { }
+        return new org.json.JSONObject();
+    }
     String announcement() { return values.getString(ANNOUNCEMENT, ""); }
     boolean trialVisitsEnabled() { return values.getBoolean(FEATURE_TRIAL_VISITS, true); }
     boolean companionHallEnabled() { return values.getBoolean(FEATURE_COMPANION_HALL, true); }

@@ -2,6 +2,9 @@ using System.Diagnostics;
 using System.Net.Http;
 using System.Windows;
 using System.Windows.Controls;
+using System.IO;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using ZhuoDazi.Services;
 
 namespace ZhuoDazi;
@@ -14,6 +17,10 @@ public partial class ActivationWindow : Window
     private bool _normalizing;
     private string _wechatId = "wcl_lcw627";
     private string? _xianyuUrl;
+    private readonly RemoteConfigService _remoteConfig;
+    private readonly CancellationTokenSource _lifetime = new();
+    private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(15) };
+    private bool _refreshing;
 
     public ActivationWindow(
         LicenseService licenses,
@@ -23,7 +30,11 @@ public partial class ActivationWindow : Window
     {
         _licenses = licenses;
         _replacingExisting = replacingExisting;
+        _remoteConfig = new RemoteConfigService(new SettingsStore(licenses.DataDirectory));
         InitializeComponent();
+        DeviceCodeText.Text = licenses.InstallationId;
+        SyncActivationButton.IsEnabled = !replacingExisting;
+        ApplyContactConfiguration();
         ContinueButton.Content = replacingExisting ? "取消" : "先留下桌宠";
         if (trialEnded)
         {
@@ -38,7 +49,17 @@ public partial class ActivationWindow : Window
         }
         StatusText.Text = initialStatus ?? string.Empty;
         ContentRendered += (_, _) => CodeTextBox.Focus();
-        Loaded += async (_, _) => await LoadXianyuLinkAsync();
+        _refreshTimer.Tick += async (_, _) => await RefreshActivationAsync();
+        Loaded += async (_, _) =>
+        {
+            _refreshTimer.Start();
+            await RefreshActivationAsync();
+        };
+        Closed += (_, _) =>
+        {
+            _refreshTimer.Stop();
+            _lifetime.Cancel();
+        };
     }
 
     private void CodeTextBox_TextChanged(object sender, TextChangedEventArgs e)
@@ -115,32 +136,75 @@ public partial class ActivationWindow : Window
 
     private void Continue_Click(object sender, RoutedEventArgs e) => DialogResult = false;
 
-    private async Task LoadXianyuLinkAsync()
+    private void CopyDeviceCode_Click(object sender, RoutedEventArgs e)
     {
+        System.Windows.Clipboard.SetText(_licenses.InstallationId);
+        StatusText.Text = "设备码已复制，可发给作者指定此设备激活。";
+    }
+
+    private async void SyncActivation_Click(object sender, RoutedEventArgs e)
+        => await RefreshActivationAsync(true);
+
+    private async Task RefreshActivationAsync(bool showStatus = false)
+    {
+        if (_refreshing || _lifetime.IsCancellationRequested) return;
+        _refreshing = true;
         try
         {
-            using var client = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(8));
-            using var response = await client.GetAsync(DeskPetApi.SiteSettings);
-            if (!response.IsSuccessStatusCode) return;
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            using var document = await System.Text.Json.JsonDocument.ParseAsync(stream);
-            if (document.RootElement.TryGetProperty("wechatId", out var wechatElement))
+            await _remoteConfig.RefreshAsync(_lifetime.Token);
+            if (_lifetime.IsCancellationRequested) return;
+            ApplyContactConfiguration();
+            if (!_replacingExisting)
             {
-                var wechat = wechatElement.GetString()?.Trim();
-                if (!string.IsNullOrWhiteSpace(wechat))
+                await _licenses.CheckTrialAsync(_lifetime.Token);
+                if (_lifetime.IsCancellationRequested) return;
+                if (_licenses.IsActivated)
                 {
-                    _wechatId = wechat;
-                    WeChatIdText.Text = wechat;
+                    DialogResult = true;
+                    return;
                 }
+                if (showStatus) StatusText.Text = "后台尚未为此设备激活，请核对设备码后稍后重试。";
             }
-            if (!document.RootElement.TryGetProperty("xianyuUrl", out var urlElement)) return;
-            var url = urlElement.GetString();
-            if (string.IsNullOrWhiteSpace(url)) return;
-            _xianyuUrl = url;
-            XianyuButton.Visibility = Visibility.Visible;
         }
         catch
         {
+            if (showStatus && !_lifetime.IsCancellationRequested) StatusText.Text = "暂时无法同步，请检查网络后重试。";
+        }
+        finally
+        {
+            _refreshing = false;
+        }
+    }
+
+    private void ApplyContactConfiguration()
+    {
+        var config = _remoteConfig.Current;
+        ContactTitleText.Text = config.ActivationTitle;
+        ContactDescriptionText.Text = config.ActivationDescription;
+        _wechatId = config.WechatId;
+        WeChatIdText.Text = _wechatId;
+        CopyWeChatButton.IsEnabled = !string.IsNullOrWhiteSpace(_wechatId);
+        _xianyuUrl = Uri.TryCreate(config.XianyuUrl, UriKind.Absolute, out var link)
+            && link.Scheme == Uri.UriSchemeHttps ? link.AbsoluteUri : null;
+        XianyuButton.Visibility = _xianyuUrl is null ? Visibility.Collapsed : Visibility.Visible;
+        try
+        {
+            var image = new BitmapImage();
+            image.BeginInit();
+            image.CacheOption = BitmapCacheOption.OnLoad;
+            using var stream = config.ActivationQrCodeDataUrl.StartsWith("data:image/png;base64,", StringComparison.Ordinal)
+                && config.ActivationQrCodeDataUrl.Length <= 350_000
+                ? new MemoryStream(Convert.FromBase64String(config.ActivationQrCodeDataUrl[22..])) : null;
+            if (stream is not null) image.StreamSource = stream;
+            else image.UriSource = new Uri("pack://application:,,,/ZhuoDazi;component/assets/contact-author-wechat.png");
+            image.DecodePixelWidth = 336;
+            image.EndInit();
+            image.Freeze();
+            ActivationQrImage.Source = image;
+        }
+        catch
+        {
+            ActivationQrImage.Source = new BitmapImage(new Uri("pack://application:,,,/ZhuoDazi;component/assets/contact-author-wechat.png"));
         }
     }
 }

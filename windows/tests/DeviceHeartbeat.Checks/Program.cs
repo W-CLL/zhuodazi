@@ -13,6 +13,7 @@ internal static class Program
     private static async Task Main()
     {
         await CheckExpiredIdentityAndFailures();
+        await CheckManualActivationSync();
         await CheckSingleFlightSuspendAndDisposal();
         CheckThrottleAndPeriodicRetry();
         Console.WriteLine($"Device heartbeat checks passed ({_checks} assertions); no production requests or app windows.");
@@ -83,6 +84,39 @@ internal static class Program
             await licenses.SendHeartbeatAsync();
             Require(licenses.IsActivated && licenses.LicenseId == licenseId, "A heartbeat 401 cannot revoke the existing local license.");
             Require(heartbeatRequests == 6, "Expired, cancelled and activated identities reached the heartbeat transport.");
+        }
+        finally
+        {
+            DeskPetHttp.HandlerFactory = null;
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static async Task CheckManualActivationSync()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "zhuodazi-activation-sync-" + Guid.NewGuid().ToString("N"));
+        var licenseId = Guid.NewGuid().ToString();
+        var authorized = false;
+        DeskPetHttp.HandlerFactory = () => new StubHandler((_, _) => Task.FromResult(Json(HttpStatusCode.OK,
+            JsonSerializer.Serialize(new
+            {
+                allowed = false, remainingSeconds = 0,
+                license = authorized ? new { licenseId, activatedAt = "2026-10-16T08:00:00Z", deviceCount = 2 } : null
+            }))));
+        try
+        {
+            using var licenses = new LicenseService(directory);
+            var identity = licenses.InstallationId;
+            await licenses.CheckTrialAsync();
+            Require(!licenses.IsActivated, "An expired trial without an authorized license stays inactive.");
+            authorized = true;
+            await licenses.CheckTrialAsync();
+            Require(licenses.IsActivated && licenses.LicenseId == licenseId, "A verified server license activates the current device without a purchase code.");
+            Require(licenses.InstallationId == identity && licenses.DeviceCount == 2 && !licenses.IsTrialActive,
+                "Manual activation keeps the device identity and clears trial state.");
+            using var reopened = new LicenseService(directory);
+            Require(reopened.LicenseId == licenseId && reopened.InstallationId == identity,
+                "The synchronized license survives an encrypted local reload.");
         }
         finally
         {
