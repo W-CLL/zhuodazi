@@ -21,11 +21,14 @@ internal static class ActivationFlowChecks
         string? expectedInstallation = null;
         var title = "扫码联系作者 · 最新激活指引";
         var description = "这是后台动态下发的激活说明。\n复制下方设备码发给作者，作者可为指定设备直接激活；一组购买码仍可绑定两台设备。";
+        var replacementTitle = "更换激活码 · 单独指引";
+        var replacementDescription = "这是后台单独下发的更换激活码说明。";
         DeskPetHttp.HandlerFactory = () => new ResponseHandler(async request =>
         {
             object payload;
             if (request.RequestUri!.AbsolutePath == "/api/public/site-settings")
-                payload = new { wechatId = "support_123", activation = new { title, description, qrCodeDataUrl = "" } };
+                payload = new { wechatId = "support_123", activation = new { title, description,
+                    replacementTitle, replacementDescription, qrCodeDataUrl = "" } };
             else if (request.RequestUri.AbsolutePath == "/api/trial")
             {
                 using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
@@ -77,8 +80,31 @@ internal static class ActivationFlowChecks
         if (failure is not null) throw failure;
         if (result != true || licenses.LicenseId != licenseId || !identityVerified)
             throw new InvalidOperationException("The activation window did not complete a verified backend activation.");
+
+        var replacementWindow = new ActivationWindow(licenses, replacingExisting: true)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual, Left = -30000, Top = -30000, ShowActivated = false
+        };
+        failure = null;
+        replacementWindow.Loaded += async (_, _) =>
+        {
+            try
+            {
+                await WaitFor(() => ((TextBlock)replacementWindow.FindName("ContactTitleText")).Text == replacementTitle);
+                if (((TextBlock)replacementWindow.FindName("ContactDescriptionText")).Text != replacementDescription)
+                    throw new InvalidOperationException("The replacement flow reused the first-activation copy.");
+                replacementWindow.DialogResult = false;
+            }
+            catch (Exception error)
+            {
+                failure = error;
+                replacementWindow.Close();
+            }
+        };
+        replacementWindow.ShowDialog();
+        if (failure is not null) throw failure;
         File.WriteAllText(Path.Combine(output, "activation-check.txt"),
-            "PASS: backend copy and WeChat sync, full device code, offline QR fallback, verified manual activation, modal completion; no production requests.");
+            "PASS: separate first/replacement copy, WeChat sync, full device code, offline QR fallback, verified manual activation, modal completion; no production requests.");
     }
 
     private static async Task WaitFor(Func<bool> condition)

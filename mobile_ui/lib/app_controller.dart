@@ -320,6 +320,9 @@ class AppController extends ChangeNotifier {
 
   Future<void> copyText(String text) => _api.copyText(text);
 
+  Future<String> saveActivationQr(Uint8List bytes) =>
+      _api.saveActivationQr(bytes);
+
   Future<void> importTheaterScript() async {
     await _guard(() async {
       snapshot = await _api.importTheaterScript();

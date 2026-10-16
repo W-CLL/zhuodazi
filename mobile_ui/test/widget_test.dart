@@ -12,6 +12,7 @@ void main() {
   var activated = false;
   var activationTitle = '还没有激活码';
   var activationDescription = '最新激活说明';
+  var activationQrDataUrl = '';
 
   Map<String, dynamic> snapshot() => <String, dynamic>{
     'overlayAllowed': overlayAllowed,
@@ -44,6 +45,9 @@ void main() {
     'installationId': '0123456789abcdef0123456789abcdef',
     'activationTitle': activationTitle,
     'activationDescription': activationDescription,
+    'activationReplacementTitle': '更换激活码专用标题',
+    'activationReplacementDescription': '更换激活码专用说明',
+    'activationQrCodeDataUrl': activationQrDataUrl,
     'websiteUrl': 'https://desktoppet.online/',
     'announcement': '',
     'trialVisitsEnabled': true,
@@ -66,6 +70,7 @@ void main() {
     activated = false;
     activationTitle = '还没有激活码';
     activationDescription = '最新激活说明';
+    activationQrDataUrl = '';
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
@@ -88,6 +93,8 @@ void main() {
               return snapshot();
             case 'companionSend':
               return '小布';
+            case 'saveActivationQr':
+              return '二维码已保存到相册';
             default:
               return snapshot();
           }
@@ -290,6 +297,62 @@ void main() {
         scrollable: scrollable,
       );
       expect(find.text('联系作者为这台设备激活'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'activation QR remains stable across refresh and can be enlarged and saved',
+    (tester) async {
+      activationQrDataUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aF9sAAAAASUVORK5CYII=';
+      await pumpApp(tester, const Size(320, 568));
+      await tester.tap(find.text('我的').last);
+      await tester.pumpAndSettle();
+      final scrollable = find
+          .descendant(
+            of: find.byType(AccountPage),
+            matching: find.byType(Scrollable),
+          )
+          .first;
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('activation-qr')),
+        140,
+        scrollable: scrollable,
+      );
+      final imageFinder = find.descendant(
+        of: find.byKey(const Key('activation-qr')),
+        matching: find.byType(Image),
+      );
+      final providerBefore = tester.widget<Image>(imageFinder.first).image;
+
+      await tester.scrollUntilVisible(
+        find.text('同步后台激活 / 体验时间'),
+        -100,
+        scrollable: scrollable,
+      );
+      await tester.tap(find.text('同步后台激活 / 体验时间'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('activation-qr')),
+        140,
+        scrollable: scrollable,
+      );
+      final providerAfter = tester.widget<Image>(imageFinder.first).image;
+      expect(identical(providerAfter, providerBefore), isTrue);
+
+      await tester.tap(find.byKey(const Key('activation-qr')));
+      await tester.pumpAndSettle();
+      expect(find.byType(InteractiveViewer), findsOneWidget);
+      expect(find.text('保存图片'), findsOneWidget);
+      calls.clear();
+      await tester.tap(find.text('保存图片'));
+      await tester.pumpAndSettle();
+      final save = calls.singleWhere(
+        (call) => call.method == 'saveActivationQr',
+      );
+      expect(save.arguments['bytes'], isNotEmpty);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(tester.takeException(), isNull);
     },
   );

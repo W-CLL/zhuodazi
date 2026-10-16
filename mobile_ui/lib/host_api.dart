@@ -2,6 +2,17 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+Uint8List? decodeActivationQrDataUrl(String image) {
+  if (!image.startsWith('data:image/png;base64,') || image.length > 350000) {
+    return null;
+  }
+  try {
+    return base64Decode(image.substring(22));
+  } on FormatException {
+    return null;
+  }
+}
+
 const settingSize = 'size_dp';
 const settingOpacity = 'opacity';
 const settingMirrored = 'mirrored';
@@ -190,17 +201,15 @@ class HostSnapshot {
     'activationDescription',
     '加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。',
   );
-  Uint8List? get activationQrBytes {
-    final image = _string('activationQrCodeDataUrl', '');
-    if (!image.startsWith('data:image/png;base64,') || image.length > 350000) {
-      return null;
-    }
-    try {
-      return base64Decode(image.substring(22));
-    } on FormatException {
-      return null;
-    }
-  }
+  String get activationReplacementTitle =>
+      _string('activationReplacementTitle', '需要更换激活码');
+  String get activationReplacementDescription => _string(
+    'activationReplacementDescription',
+    '如需更换当前设备的激活码，请先联系作者确认。输入新码后，当前设备会更新到新的绑定记录。',
+  );
+  String get activationQrCodeDataUrl => _string('activationQrCodeDataUrl', '');
+  Uint8List? get activationQrBytes =>
+      decodeActivationQrDataUrl(activationQrCodeDataUrl);
 
   String get websiteUrl => _string('websiteUrl', 'https://desktoppet.online/');
   String get announcement => _string('announcement', '');
@@ -425,6 +434,12 @@ class HostApi {
 
   Future<void> copyText(String text) =>
       _channel.invokeMethod<void>('copyText', {'text': text});
+
+  Future<String> saveActivationQr(Uint8List bytes) async =>
+      await _channel.invokeMethod<String>('saveActivationQr', {
+        'bytes': bytes,
+      }) ??
+      '二维码已保存到相册';
 
   Future<HostSnapshot> importTheaterScript() =>
       _snapshotCall('importTheaterScript');

@@ -5,6 +5,8 @@ struct RemoteConfig: Equatable {
     var wechatId = "wcl_lcw627"
     var activationTitle = "还没有激活码"
     var activationDescription = "加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。"
+    var activationReplacementTitle = "需要更换激活码"
+    var activationReplacementDescription = "如需更换当前设备的激活码，请先联系作者确认。输入新码后，当前设备会更新到新的绑定记录。"
     var activationQrCodeDataUrl = ""
     var announcement = ""
     var xianyuUrl = ""
@@ -64,6 +66,8 @@ final class RemoteConfigService {
             wechatId: isWechatId(wechatId) ? wechatId : "wcl_lcw627",
             activationTitle: string(activation["title"], fallback: fallback.activationTitle),
             activationDescription: string(activation["description"], fallback: fallback.activationDescription),
+            activationReplacementTitle: string(activation["replacementTitle"], fallback: fallback.activationReplacementTitle),
+            activationReplacementDescription: string(activation["replacementDescription"], fallback: fallback.activationReplacementDescription),
             activationQrCodeDataUrl: string(activation["qrCodeDataUrl"], fallback: ""),
             announcement: string(root["announcement"], fallback: "").replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines),
             xianyuUrl: string(root["xianyuUrl"], fallback: ""),

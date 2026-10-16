@@ -19,7 +19,7 @@
 
 ## 产品规则与本次改动
 
-当前目标版本为 Windows/macOS **v3.4.2**、Android **v1.5.2**（versionCode 26）。激活页动态同步二维码与文案，支持复制设备码并同步作者协助激活的授权；已有设置和日常数据保留。详见 [版本递增规则](docs/releases/versioning.md)、[桌面更新说明](docs/releases/desktop-3.4.2.md) 与 [Android 更新说明](docs/releases/android-1.5.2.md)。版本文件不代表已经正式发布。
+当前目标版本为 Windows/macOS **v3.4.3**、Android **v1.5.3**（versionCode 27）。首次激活与更换激活码使用独立后台文案；Android 二维码固定显示，并支持放大和保存。详见 [版本递增规则](docs/releases/versioning.md)、[桌面更新说明](docs/releases/desktop-3.4.3.md) 与 [Android 更新说明](docs/releases/android-1.5.3.md)。版本文件不代表已经正式发布。
 
 参见 [2026-09-18 实施基线](docs/product-experience/2026-09-18-plan.md)、[实施对照与手动验收](docs/product-experience/2026-09-18-acceptance.md) 与 [当前功能说明](marketing/桌搭子功能点说明.md)。
 

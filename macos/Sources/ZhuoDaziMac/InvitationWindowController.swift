@@ -222,8 +222,9 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private func applyRemoteContact() {
         let config = remoteConfig.current
         wechatLabel.stringValue = config.wechatId
-        contactTitle.stringValue = config.activationTitle
-        contactDescription.string = config.activationDescription
+        contactTitle.stringValue = replacingExisting ? config.activationReplacementTitle : config.activationTitle
+        contactDescription.string = replacingExisting
+            ? config.activationReplacementDescription : config.activationDescription
         contactDescription.setFrameSize(NSSize(width: 226, height: 92))
         contactDescription.sizeToFit()
         qrView.image = Self.contactImage()

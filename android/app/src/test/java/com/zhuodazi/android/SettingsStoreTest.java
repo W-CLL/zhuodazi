@@ -32,11 +32,16 @@ public class SettingsStoreTest {
         Map<String, Object> values = new HashMap<>();
         SettingsStore settings = new SettingsStore(preferences(values));
         JSONObject activation = new JSONObject().put("title", "新激活标题")
-            .put("description", "新的说明\n第二行").put("qrCodeDataUrl", "data:image/png;base64,test");
+            .put("description", "新的说明\n第二行")
+            .put("replacementTitle", "新更换标题")
+            .put("replacementDescription", "新更换说明")
+            .put("qrCodeDataUrl", "data:image/png;base64,test");
         settings.applyRemoteConfig(remote().put("activation", activation));
         SettingsStore reloaded = new SettingsStore(preferences(values));
         assertEquals("新激活标题", reloaded.activationSettings().getString("title"));
         assertEquals("新的说明\n第二行", reloaded.activationSettings().getString("description"));
+        assertEquals("新更换标题", reloaded.activationSettings().getString("replacementTitle"));
+        assertEquals("新更换说明", reloaded.activationSettings().getString("replacementDescription"));
         assertEquals("data:image/png;base64,test", reloaded.activationSettings().getString("qrCodeDataUrl"));
         reloaded.applyRemoteConfig(remote().put("activation", activation.put("qrCodeDataUrl", "")));
         assertEquals("", reloaded.activationSettings().getString("qrCodeDataUrl"));

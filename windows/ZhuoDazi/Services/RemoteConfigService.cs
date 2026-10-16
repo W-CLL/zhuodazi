@@ -9,6 +9,8 @@ public sealed class RemoteConfig
     public string WechatId { get; init; } = "wcl_lcw627";
     public string ActivationTitle { get; init; } = "还没有激活码";
     public string ActivationDescription { get; init; } = "加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。";
+    public string ActivationReplacementTitle { get; init; } = "需要更换激活码";
+    public string ActivationReplacementDescription { get; init; } = "如需更换当前设备的激活码，请先联系作者确认。输入新码后，当前设备会更新到新的绑定记录。";
     public string ActivationQrCodeDataUrl { get; init; } = "";
     public string Announcement { get; init; } = "";
     public string XianyuUrl { get; init; } = "";
@@ -137,6 +139,8 @@ internal sealed class RemoteConfigService
         {
             ActivationTitle = ReadString(activation, "title", fallback.ActivationTitle),
             ActivationDescription = ReadString(activation, "description", fallback.ActivationDescription),
+            ActivationReplacementTitle = ReadString(activation, "replacementTitle", fallback.ActivationReplacementTitle),
+            ActivationReplacementDescription = ReadString(activation, "replacementDescription", fallback.ActivationReplacementDescription),
             ActivationQrCodeDataUrl = ReadString(activation, "qrCodeDataUrl", ""),
             WechatId = IsWechatId(wechatId) ? wechatId : "wcl_lcw627",
             Announcement = ReadString(root, "announcement", "").Replace('\r', ' ').Replace('\n', ' ').Trim(),

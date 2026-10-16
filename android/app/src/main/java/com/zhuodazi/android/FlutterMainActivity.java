@@ -4,18 +4,22 @@ import android.Manifest;
 import android.app.Activity;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentValues;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.ImageDecoder;
 import android.graphics.drawable.AnimatedImageDrawable;
 import android.graphics.drawable.Drawable;
+import android.media.MediaScannerConnection;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.ResultReceiver;
 import android.os.SystemClock;
+import android.provider.MediaStore;
 import android.provider.Settings;
 
 import androidx.annotation.NonNull;
@@ -26,6 +30,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -47,6 +52,7 @@ public final class FlutterMainActivity extends FlutterActivity {
     private static final int REQUEST_NOTIFICATIONS = 4303;
     private static final int REQUEST_THEATER_SCRIPT = 4304;
     private static final int REQUEST_LIBRARY = 4305;
+    private static final int REQUEST_SAVE_QR = 4306;
     private static final String WEBSITE_URL = "https://desktoppet.online/";
 
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -64,6 +70,8 @@ public final class FlutterMainActivity extends FlutterActivity {
     private MethodChannel.Result pendingImport;
     private MethodChannel.Result pendingTheaterImport;
     private MethodChannel.Result pendingLibraryImport;
+    private MethodChannel.Result pendingQrSave;
+    private byte[] pendingQrBytes;
     private boolean startAfterOverlayGrant;
 
     @Override public void configureFlutterEngine(@NonNull FlutterEngine engine) {
@@ -121,6 +129,7 @@ public final class FlutterMainActivity extends FlutterActivity {
                 case "siteLinks" -> siteLinks(result);
                 case "openUrl" -> openUrl((String) call.argument("url"), result);
                 case "copyText" -> copyText((String) call.argument("text"), result);
+                case "saveActivationQr" -> saveActivationQr((byte[]) call.argument("bytes"), result);
                 case "importTheaterScript" -> importTheaterScript(result);
                 case "deleteTheaterScript" -> deleteTheaterScript((String) call.argument("id"), result);
                 case "saveReminder" -> saveReminder(call, result);
@@ -195,6 +204,8 @@ public final class FlutterMainActivity extends FlutterActivity {
         JSONObject activation = settings.activationSettings();
         value.put("activationTitle", activation.optString("title", "还没有激活码"));
         value.put("activationDescription", activation.optString("description", "加作者微信，备注「桌搭子」。一组码填两台，电脑和手机都能收；对象那边仍要自己买一次。一般当天回。"));
+        value.put("activationReplacementTitle", activation.optString("replacementTitle", "需要更换激活码"));
+        value.put("activationReplacementDescription", activation.optString("replacementDescription", "如需更换当前设备的激活码，请先联系作者确认。输入新码后，当前设备会更新到新的绑定记录。"));
         value.put("activationQrCodeDataUrl", activation.optString("qrCodeDataUrl", ""));
         value.put("websiteUrl", WEBSITE_URL);
         value.put("announcement", settings.announcement());
@@ -573,6 +584,78 @@ public final class FlutterMainActivity extends FlutterActivity {
         result.success(true);
     }
 
+    private void saveActivationQr(byte[] bytes, MethodChannel.Result result) {
+        if (!isPng(bytes)) {
+            result.error("INVALID_IMAGE", "二维码图片无效", null);
+            return;
+        }
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P
+            && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            if (pendingQrSave != null) {
+                result.error("SAVE_BUSY", "正在保存上一张图片", null);
+                return;
+            }
+            pendingQrSave = result;
+            pendingQrBytes = bytes.clone();
+            requestPermissions(new String[]{Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_SAVE_QR);
+            return;
+        }
+        writeActivationQr(bytes.clone(), result);
+    }
+
+    private void writeActivationQr(byte[] bytes, MethodChannel.Result result) {
+        executor.execute(() -> {
+            try {
+                String name = "zhuodazi-wechat-qr-" + System.currentTimeMillis() + ".png";
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) saveScopedImage(bytes, name);
+                else saveLegacyImage(bytes, name);
+                runOnUiThread(() -> result.success("二维码已保存到相册"));
+            } catch (Exception error) {
+                runOnUiThread(() -> result.error("SAVE_FAILED", safeMessage(error), null));
+            }
+        });
+    }
+
+    private void saveScopedImage(byte[] bytes, String name) throws Exception {
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+        values.put(MediaStore.MediaColumns.MIME_TYPE, "image/png");
+        values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/桌搭子");
+        values.put(MediaStore.MediaColumns.IS_PENDING, 1);
+        Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) throw new IllegalStateException("无法创建相册图片");
+        try {
+            try (OutputStream output = getContentResolver().openOutputStream(uri, "w")) {
+                if (output == null) throw new IllegalStateException("无法写入相册图片");
+                output.write(bytes);
+            }
+            values.clear();
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0);
+            getContentResolver().update(uri, values, null, null);
+        } catch (Exception error) {
+            getContentResolver().delete(uri, null, null);
+            throw error;
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private void saveLegacyImage(byte[] bytes, String name) throws Exception {
+        File directory = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "桌搭子");
+        if (!directory.exists() && !directory.mkdirs()) throw new IllegalStateException("无法创建图片目录");
+        File image = new File(directory, name);
+        try (FileOutputStream output = new FileOutputStream(image)) { output.write(bytes); }
+        MediaScannerConnection.scanFile(this, new String[]{image.getAbsolutePath()}, new String[]{"image/png"}, null);
+    }
+
+    private static boolean isPng(byte[] bytes) {
+        byte[] signature = {(byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a};
+        if (bytes == null || bytes.length < 45 || bytes.length > 2 * 1024 * 1024) return false;
+        for (int index = 0; index < signature.length; index++) {
+            if (bytes[index] != signature[index]) return false;
+        }
+        return true;
+    }
+
     private void importTheaterScript(MethodChannel.Result result) {
         if (!licenses.hasPremiumAccess()) {
             result.error("PREMIUM_REQUIRED", "体验或正式激活后才能导入小剧场剧本", null);
@@ -770,6 +853,21 @@ public final class FlutterMainActivity extends FlutterActivity {
                 runOnUiThread(() -> result.error("IMPORT_ERROR", safeMessage(error), null));
             }
         });
+    }
+
+    @Override public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                                      @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_SAVE_QR || pendingQrSave == null) return;
+        MethodChannel.Result result = pendingQrSave;
+        byte[] bytes = pendingQrBytes;
+        pendingQrSave = null;
+        pendingQrBytes = null;
+        if (grantResults.length == 0 || grantResults[0] != PackageManager.PERMISSION_GRANTED) {
+            result.error("SAVE_PERMISSION", "需要存储权限才能保存二维码", null);
+            return;
+        }
+        writeActivationQr(bytes, result);
     }
 
     private void handleLibraryImportResult(int resultCode, Intent data) {

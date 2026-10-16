@@ -36,6 +36,12 @@ public partial class ActivationWindow : Window
         SyncActivationButton.IsEnabled = !replacingExisting;
         ApplyContactConfiguration();
         ContinueButton.Content = replacingExisting ? "取消" : "先留下桌宠";
+        if (replacingExisting)
+        {
+            Title = "更换激活码";
+            HeadingText.Text = "更换激活码";
+            SubtitleText.Text = "输入新的激活码后，当前设备会更新绑定记录。";
+        }
         if (trialEnded)
         {
             Title = "完整体验结束，基础陪伴继续";
@@ -179,8 +185,9 @@ public partial class ActivationWindow : Window
     private void ApplyContactConfiguration()
     {
         var config = _remoteConfig.Current;
-        ContactTitleText.Text = config.ActivationTitle;
-        ContactDescriptionText.Text = config.ActivationDescription;
+        ContactTitleText.Text = _replacingExisting ? config.ActivationReplacementTitle : config.ActivationTitle;
+        ContactDescriptionText.Text = _replacingExisting
+            ? config.ActivationReplacementDescription : config.ActivationDescription;
         _wechatId = config.WechatId;
         WeChatIdText.Text = _wechatId;
         CopyWeChatButton.IsEnabled = !string.IsNullOrWhiteSpace(_wechatId);

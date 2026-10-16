@@ -1545,41 +1545,11 @@ class AccountPage extends StatelessWidget {
                 LayoutBuilder(
                   builder: (context, constraints) {
                     final stacked = constraints.maxWidth < 420;
-                    final remoteQr = snapshot.activationQrBytes;
-                    Widget bundledQr() => Image.asset(
-                      'assets/contact-author-wechat.png',
+                    final qr = ActivationQrImage(
+                      dataUrl: snapshot.activationQrCodeDataUrl,
                       width: stacked ? double.infinity : 148,
                       height: stacked ? 168 : 148,
-                      fit: BoxFit.contain,
-                    );
-                    final qr = ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: remoteQr != null
-                          ? Image.memory(
-                              remoteQr,
-                              width: stacked ? double.infinity : 148,
-                              height: stacked ? 168 : 148,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, _, _) => bundledQr(),
-                            )
-                          : Image.asset(
-                              'assets/contact-author-wechat.png',
-                              width: stacked ? double.infinity : 148,
-                              height: stacked ? 168 : 148,
-                              fit: BoxFit.contain,
-                              errorBuilder: (_, _, _) => SizedBox(
-                                width: stacked ? double.infinity : 148,
-                                height: stacked ? 168 : 148,
-                                child: const ColoredBox(
-                                  color: _mint,
-                                  child: Icon(
-                                    Icons.qr_code_2,
-                                    color: _brand,
-                                    size: 48,
-                                  ),
-                                ),
-                              ),
-                            ),
+                      onSave: controller.saveActivationQr,
                     );
                     final copy = Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1896,6 +1866,182 @@ class AccountPage extends StatelessWidget {
             : '这组码也可以填到另一台电脑或手机。',
       );
     }
+  }
+}
+
+class ActivationQrImage extends StatefulWidget {
+  const ActivationQrImage({
+    required this.dataUrl,
+    required this.width,
+    required this.height,
+    required this.onSave,
+    super.key,
+  });
+
+  final String dataUrl;
+  final double width;
+  final double height;
+  final Future<String> Function(Uint8List bytes) onSave;
+
+  @override
+  State<ActivationQrImage> createState() => _ActivationQrImageState();
+}
+
+class _ActivationQrImageState extends State<ActivationQrImage> {
+  static const _asset = 'assets/contact-author-wechat.png';
+  late ImageProvider _provider;
+  Uint8List? _remoteBytes;
+  bool _fallbackScheduled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncProvider();
+  }
+
+  @override
+  void didUpdateWidget(covariant ActivationQrImage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.dataUrl != oldWidget.dataUrl) _syncProvider();
+  }
+
+  void _syncProvider() {
+    _fallbackScheduled = false;
+    _remoteBytes = decodeActivationQrDataUrl(widget.dataUrl);
+    _provider = _remoteBytes == null
+        ? const AssetImage(_asset)
+        : MemoryImage(_remoteBytes!);
+  }
+
+  void _scheduleBundledFallback() {
+    if (_remoteBytes == null || _fallbackScheduled) return;
+    _fallbackScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _remoteBytes == null) return;
+      setState(() {
+        _remoteBytes = null;
+        _provider = const AssetImage(_asset);
+      });
+    });
+  }
+
+  Widget _image({required double width, required double height}) => Image(
+    image: _provider,
+    width: width,
+    height: height,
+    fit: BoxFit.contain,
+    gaplessPlayback: true,
+    filterQuality: FilterQuality.high,
+    errorBuilder: (_, _, _) {
+      _scheduleBundledFallback();
+      return Image.asset(
+        _asset,
+        width: width,
+        height: height,
+        fit: BoxFit.contain,
+        errorBuilder: (_, _, _) => SizedBox(
+          width: width,
+          height: height,
+          child: const ColoredBox(
+            color: _mint,
+            child: Icon(Icons.qr_code_2, color: _brand, size: 48),
+          ),
+        ),
+      );
+    },
+  );
+
+  @override
+  Widget build(BuildContext context) => Tooltip(
+    message: '查看二维码',
+    child: Semantics(
+      button: true,
+      label: '查看二维码',
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          key: const Key('activation-qr'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => _showViewer(context),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: widget.width,
+              height: widget.height,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  _image(width: widget.width, height: widget.height),
+                  const Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: Color(0xccffffff),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Padding(
+                        padding: EdgeInsets.all(6),
+                        child: Icon(Icons.zoom_in, size: 20, color: _ink),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Future<Uint8List> _bytesForSave() async {
+    if (_remoteBytes != null) return _remoteBytes!;
+    final data = await rootBundle.load(_asset);
+    return data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+  }
+
+  Future<void> _showViewer(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final extent = (MediaQuery.sizeOf(dialogContext).width - 128)
+            .clamp(180.0, 520.0)
+            .toDouble();
+        return AlertDialog(
+          title: Row(
+            children: [
+              const Expanded(child: Text('二维码')),
+              IconButton(
+                tooltip: '关闭',
+                onPressed: () => Navigator.pop(dialogContext),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: extent,
+            height: extent,
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: _image(width: extent, height: extent),
+            ),
+          ),
+          actions: [
+            FilledButton.icon(
+              onPressed: () => runAction<String>(
+                context,
+                _bytesForSave().then(widget.onSave),
+                (message) => message,
+              ),
+              icon: const Icon(Icons.download_rounded),
+              label: const Text('保存图片'),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
