@@ -8,6 +8,7 @@ internal static class RealtimeContentChecks
 {
     public static async Task<int> Run(string output)
     {
+        Program.Stage("realtime service checks: migration and signed fetch");
         var assertions = 0;
         void Require(bool condition, string message)
         {
@@ -98,6 +99,7 @@ internal static class RealtimeContentChecks
             "Empty responses, unshown results and failures do not add history or shown events.");
 
         using var cancellation = new CancellationTokenSource();
+        Program.Stage("realtime service checks: cancelling in-flight request");
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         handler.BeforeContentResponse = async token =>
         {
@@ -105,17 +107,27 @@ internal static class RealtimeContentChecks
             await Task.Delay(Timeout.Infinite, token);
         };
         var pending = service.FetchNextContentAsync(cancellationToken: cancellation.Token);
-        await started.Task;
-        cancellation.Cancel();
         var cancelled = false;
-        try { await pending; }
-        catch (OperationCanceledException) { cancelled = true; }
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            cancellation.Cancel();
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (OperationCanceledException) { cancelled = true; }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            handler.BeforeContentResponse = null;
+            try { await pending.WaitAsync(TimeSpan.FromSeconds(5)); }
+            catch (OperationCanceledException) { }
+        }
         Require(cancelled && service.PendingEventCount == 2,
             "Cancelling an in-flight live request releases it without recording a displayed question.");
-        handler.BeforeContentResponse = null;
         Require((await service.FetchNextContentAsync())?.Id == second.Id,
             "A cancelled request releases the network gate so the next interaction can fetch normally.");
 
+        Program.Stage("realtime service checks: concurrent profile synchronization");
         var profileStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseProfile = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         handler.BeforeProfileResponse = async token =>
@@ -124,9 +136,9 @@ internal static class RealtimeContentChecks
             await releaseProfile.Task.WaitAsync(token);
         };
         var profileSync = service.SyncProfileAsync("standard", true);
-        await profileStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
         try
         {
+            await profileStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
             var duringProfileSync = await service.FetchNextContentAsync().WaitAsync(TimeSpan.FromSeconds(5));
             Require(duringProfileSync?.Id == second.Id && !profileSync.IsCompleted,
                 "A live question request proceeds while background profile synchronization is still blocked.");
@@ -134,12 +146,13 @@ internal static class RealtimeContentChecks
         finally
         {
             releaseProfile.TrySetResult();
-            await profileSync;
             handler.BeforeProfileResponse = null;
+            await profileSync.WaitAsync(TimeSpan.FromSeconds(5));
         }
 
         File.WriteAllText(Path.Combine(output, "realtime-content-results.txt"),
             $"PASS: {assertions} real-time content service assertions; signed in-memory HTTP only.\n");
+        Program.Stage($"realtime service checks passed ({assertions} assertions)");
         return assertions;
     }
 }

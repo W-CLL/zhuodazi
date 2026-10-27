@@ -17,6 +17,7 @@ internal static class DailyFlowChecks
     public static async Task Run(AppController controller, PetWindow pet, string output, Func<string[]> requests,
         Action<DailySummaryConfig?> setSummaryConfiguration, RealtimeContentHandler contentHandler)
     {
+        Program.Stage("daily flow: mood, workday and journal");
         await Task.Delay(400);
         Require(pet.IsVisible && controller.HasPremiumAccess, "The real Start flow opens a pet with the test-only trial.");
         await CheckLocalPreviewIsolation(controller, requests);
@@ -96,14 +97,18 @@ internal static class DailyFlowChecks
             await Settle(settings);
             Capture(settings, output, "daily-07-" + period);
         }
+        Program.Stage("daily flow: signed real-time quiz UI");
         await CheckRealQuizFlow(controller, pet, settings, output, contentHandler);
+        Program.Stage("daily flow: remote weekly and monthly summaries");
         await CheckRemoteSummaries(controller, settings, output, setSummaryConfiguration);
+        Program.Stage("daily flow: frequency stability");
         await CheckFrequencyRemainsStable(controller);
         _assertions += await RealtimeContentChecks.Run(output);
         File.WriteAllText(Path.Combine(output, "daily-flow-results.txt"),
             $"PASS: {_assertions} real WPF daily flow assertions.\n" +
             "Real AppController.Start; all HTTP intercepted by test-only in-memory handlers.\n" +
             "Production settings, startup registration, licenses and server records are untouched.\n");
+        Program.Stage($"daily flow passed ({_assertions} assertions)");
     }
 
     private static async Task CheckRealQuizFlow(AppController controller, PetWindow pet, SettingsWindow settings, string output,
@@ -197,25 +202,35 @@ internal static class DailyFlowChecks
             started.TrySetResult();
             await release.Task;
         };
-        controller.StartQuizInteraction();
-        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        await Settle(pet);
-        Require(pet.IsInteractionVisible && ((TextBlock)pet.FindName("InteractionTitle")).Text == "线上互动"
-            && ChoiceButtons(pet).Any(button => ((PetInteractionChoice)button.Tag).Value == "cancel"),
-            "A pending online request displays a cancellable loading card.");
-        var requestsWhileLoading = contentHandler.BatchRequests.Count;
-        controller.StartQuizInteraction();
-        await Settle(pet);
-        Require(contentHandler.BatchRequests.Count == requestsWhileLoading,
-            "Repeated clicks while loading cannot start duplicate content requests.");
-        ClickChoice(pet, "cancel");
-        await Settle(pet);
-        Require(!pet.IsInteractionVisible, "Cancelling a pending live request closes its loading card.");
-        release.TrySetResult();
-        await Settle(pet);
-        Require(!pet.IsInteractionVisible, "A response arriving after cancellation must not reopen or replace a card.");
-        contentHandler.BeforeContentResponse = null;
-        contentHandler.IgnoreCancellation = false;
+        var requestsWhileLoading = 0;
+        Program.Stage("daily flow: cancellable loading and late response");
+        try
+        {
+            controller.StartQuizInteraction();
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            await Settle(pet);
+            Require(pet.IsInteractionVisible && ((TextBlock)pet.FindName("InteractionTitle")).Text == "线上互动"
+                && ChoiceButtons(pet).Any(button => ((PetInteractionChoice)button.Tag).Value == "cancel"),
+                "A pending online request displays a cancellable loading card.");
+            requestsWhileLoading = contentHandler.BatchRequests.Count;
+            controller.StartQuizInteraction();
+            await Settle(pet);
+            Require(contentHandler.BatchRequests.Count == requestsWhileLoading,
+                "Repeated clicks while loading cannot start duplicate content requests.");
+            ClickChoice(pet, "cancel");
+            await Settle(pet);
+            Require(!pet.IsInteractionVisible, "Cancelling a pending live request closes its loading card.");
+            release.TrySetResult();
+            await Settle(pet);
+            Require(!pet.IsInteractionVisible, "A response arriving after cancellation must not reopen or replace a card.");
+        }
+        finally
+        {
+            pet.DismissCurrentInteraction();
+            release.TrySetResult();
+            contentHandler.BeforeContentResponse = null;
+            contentHandler.IgnoreCancellation = false;
+        }
         controller.StartQuizInteraction();
         await Settle(pet);
         Require(pet.IsInteractionVisible && contentHandler.BatchRequests.Count == requestsWhileLoading + 1

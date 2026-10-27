@@ -14,6 +14,15 @@ using ZhuoDazi.Services;
 
 internal static class Program
 {
+    private static string _stage = "starting harness";
+
+    internal static void Stage(string stage)
+    {
+        Volatile.Write(ref _stage, stage);
+        Console.WriteLine($"[{DateTimeOffset.UtcNow:O}] UiPreview: {stage}");
+        Console.Out.Flush();
+    }
+
     [STAThread]
     private static void Main(string[] args)
     {
@@ -21,6 +30,21 @@ internal static class Program
         DeskPetHttp.HandlerFactory = () => new OfflineHandler();
         var directory = Path.Combine(Path.GetTempPath(), "ZhuoDazi-OfflinePreview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
+        var automated = args.Any(argument => argument is "--library-check" or "--daily-smoke" or "--guide-check" or "--activation-check");
+        // A ThreadPool timer can terminate this isolated test process even when
+        // the STA dispatcher or synchronous disposal is blocked.
+        using var watchdog = automated ? new System.Threading.Timer(_ =>
+        {
+            var failure = $"UiPreview exceeded 60 seconds; last stage: {Volatile.Read(ref _stage)}";
+            try
+            {
+                Console.Error.WriteLine(failure);
+                Console.Error.Flush();
+                File.WriteAllText(Path.Combine(directory, "watchdog-failure.txt"), failure);
+            }
+            finally { Environment.Exit(124); }
+        }, null, TimeSpan.FromSeconds(60), Timeout.InfiniteTimeSpan) : null;
+        Stage($"initializing WPF ({string.Join(' ', args)})");
         var app = new System.Windows.Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         if (args.Contains("--guide-check") || args.Contains("--daily-smoke"))
         {
@@ -38,6 +62,7 @@ internal static class Program
         var resources = new XElement(ns + "ResourceDictionary", source.Element(ns + "Application.Resources")!.Elements());
         resources.SetAttributeValue(XNamespace.Xmlns + "x", x.NamespaceName);
         app.Resources = (ResourceDictionary)XamlReader.Parse(resources.ToString());
+        Stage("WPF resources loaded");
         if (args.Contains("--activation-check"))
         {
             System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
@@ -46,20 +71,32 @@ internal static class Program
             app.Shutdown(0);
             return;
         }
-        using var license = new LicenseService(directory);
-        license.CheckTrialAsync().GetAwaiter().GetResult();
+        using var licenseLifetime = new TracedLifetime<LicenseService>(new LicenseService(directory), "license");
+        var license = licenseLifetime.Value;
+        Stage($"initial trial request; context={SynchronizationContext.Current?.GetType().Name ?? "none"}");
+        // Bootstrap precedes app.Run(); keep its async continuation off any
+        // synchronization context installed by WPF or the CI host.
+        Task.Run(() => license.CheckTrialAsync()).GetAwaiter().GetResult();
+        Stage("initial trial request completed");
         System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
         var store = new SettingsStore(directory);
         var contentHandler = args.Contains("--daily-smoke")
             ? new RealtimeContentHandler(request => OfflineHandler.Requests.Enqueue(request)) : null;
-        using var controller = new AppController(license, store, localPreview: args.Contains("--daily-smoke"),
-            contentHandler is null ? null : new InteractionService(store, license, contentHandler, contentHandler.PublicKey));
+        Stage("constructing controller");
+        using var controllerLifetime = new TracedLifetime<AppController>(
+            new AppController(license, store, localPreview: args.Contains("--daily-smoke"),
+                contentHandler is null ? null : new InteractionService(store, license, contentHandler, contentHandler.PublicKey)), "controller");
+        var controller = controllerLifetime.Value;
+        Stage("controller constructed");
         controller.Settings.RemoteDefaultsApplied = true;
         if (args.Contains("--library-check"))
         {
+            Stage("library upgrade checks starting");
             CheckDefaultLibraryUpgrade(controller, directory);
             Console.WriteLine("Default library upgrade checks passed.");
+            Stage("library checks passed; requesting WPF shutdown");
             app.Shutdown(0);
+            Stage("library WPF shutdown returned; returning through disposal");
             return;
         }
         controller.Settings.RandomPetEnabled = false;
@@ -80,25 +117,33 @@ internal static class Program
             controller.Settings.TheaterEnabled = false;
             controller.Settings.DailySpeechEnabled = false;
             controller.Settings.AutoCheckUpdates = false;
+            Stage("daily controller Start");
             controller.Start(synchronizeStartupRegistration: false);
+            Stage("daily controller started; enqueueing checks");
             app.Dispatcher.BeginInvoke(async () =>
             {
                 try
                 {
+                    Stage("daily dispatcher callback entered");
                     var petWindow = app.Windows.OfType<PetWindow>().Single();
                     await DailyFlowChecks.Run(controller, petWindow, output, () => OfflineHandler.Requests.ToArray(),
                         configuration => OfflineHandler.DailySummaries = configuration, contentHandler!);
                     File.WriteAllLines(Path.Combine(output, "mock-http-requests.txt"), OfflineHandler.Requests);
+                    Stage("daily checks passed; requesting WPF shutdown");
                     app.Shutdown(0);
+                    Stage("daily WPF shutdown returned");
                 }
                 catch (Exception error)
                 {
                     File.WriteAllText(Path.Combine(output, "daily-failure.txt"), error.ToString());
                     Console.Error.WriteLine(error);
+                    Stage("daily checks failed; requesting WPF shutdown");
                     app.Shutdown(1);
                 }
             });
+            Stage("daily dispatcher Run entering");
             app.Run();
+            Stage("daily dispatcher Run returned; returning through disposal");
             return;
         }
         if (args.Contains("--guide-check") || args.Contains("--guide-preview"))
@@ -140,6 +185,17 @@ internal static class Program
         typeof(AppController).GetMethod("CreateTray", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(controller, null);
         // The settings close button hides the window. Exit through the real tray command.
         app.Run();
+    }
+
+    private sealed class TracedLifetime<T>(T value, string name) : IDisposable where T : IDisposable
+    {
+        internal T Value { get; } = value;
+        public void Dispose()
+        {
+            Stage($"disposing {name}");
+            Value.Dispose();
+            Stage($"disposed {name}");
+        }
     }
 
     private static void CheckDefaultLibraryUpgrade(AppController controller, string directory)
