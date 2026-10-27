@@ -38,7 +38,7 @@ public class DailyInteractionTest {
         when(context.getSharedPreferences(anyString(), anyInt())).thenAnswer(call ->
             SettingsStoreTest.preferences(files.computeIfAbsent(call.getArgument(0), key -> new HashMap<>())));
         InteractionContentService content = new InteractionContentService(context, mock(LicenseService.class));
-        assertNull(content.takeNextContent());
+        assertFalse(files.get("zhuodazi_interaction_content").containsKey("items"));
         InteractionContentService.Item joke = new InteractionContentService.Item("joke1", "joke", 1, "hello?", "world", "", List.of());
         DailyJournalStore journal = new DailyJournalStore(context);
         assertEquals(0, journal.entries().size());

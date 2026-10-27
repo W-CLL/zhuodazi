@@ -49,7 +49,11 @@ internal static class Program
         using var license = new LicenseService(directory);
         license.CheckTrialAsync().GetAwaiter().GetResult();
         System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
-        using var controller = new AppController(license, new SettingsStore(directory), localPreview: args.Contains("--daily-smoke"));
+        var store = new SettingsStore(directory);
+        var contentHandler = args.Contains("--daily-smoke")
+            ? new RealtimeContentHandler(request => OfflineHandler.Requests.Enqueue(request)) : null;
+        using var controller = new AppController(license, store, localPreview: args.Contains("--daily-smoke"),
+            contentHandler is null ? null : new InteractionService(store, license, contentHandler, contentHandler.PublicKey));
         controller.Settings.RemoteDefaultsApplied = true;
         if (args.Contains("--library-check"))
         {
@@ -83,7 +87,7 @@ internal static class Program
                 {
                     var petWindow = app.Windows.OfType<PetWindow>().Single();
                     await DailyFlowChecks.Run(controller, petWindow, output, () => OfflineHandler.Requests.ToArray(),
-                        configuration => OfflineHandler.DailySummaries = configuration);
+                        configuration => OfflineHandler.DailySummaries = configuration, contentHandler!);
                     File.WriteAllLines(Path.Combine(output, "mock-http-requests.txt"), OfflineHandler.Requests);
                     app.Shutdown(0);
                 }

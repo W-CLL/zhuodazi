@@ -80,6 +80,7 @@ public final class PetOverlayService extends Service {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Random random = new Random();
     private final ExecutorService networkExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService contentExecutor = Executors.newSingleThreadExecutor();
     private WindowManager windowManager;
     private WindowManager.LayoutParams windowParams;
     private PetOverlayView overlay;
@@ -368,7 +369,7 @@ public final class PetOverlayService extends Service {
         updateNotification();
         scheduleCompanionPoll();
         scheduleTrialCheck();
-        warmInteractionContent();
+        syncInteractionProfile();
         scheduleQuietResume();
         scheduleDailyRoutine();
         return START_STICKY;
@@ -388,6 +389,7 @@ public final class PetOverlayService extends Service {
         cancelMovement();
         removeVisitor(false);
         removeMainOverlay(true);
+        contentExecutor.shutdownNow();
         networkExecutor.shutdownNow();
         settings.setRunning(false);
         super.onDestroy();
@@ -617,40 +619,43 @@ public final class PetOverlayService extends Service {
         interactionWasManual = manual;
         currentInteractionAnswered = false;
         int requestedGeneration = ++interactionGeneration;
+        String requestedOwner = licenses.visitOwner();
         cancelMovement();
         if (!manual && !quizOnly && showWorkCheckInIfDue()) return;
         boolean moodDue = !quizOnly && interactionContent.isMoodPromptDue();
-        if (moodDue && (interactionContent.cachedCount() == 0 || random.nextInt(4) == 0)) {
+        if (!manual && moodDue && random.nextInt(4) == 0) {
             showMoodInteraction();
             return;
         }
-        InteractionContentService.Item item = interactionContent.takeNextContent(quizOnly);
-        if (item != null) {
-            showContentInteraction(item);
-            warmInteractionContent();
-            return;
-        }
-        sayText("正在找点有趣的内容…", 5000);
-        networkExecutor.execute(() -> {
+        if (manual) sayText("正在获取新的趣味内容…", 5000);
+        contentExecutor.execute(() -> {
             Exception failure = null;
-            try { interactionContent.refillOnline(); }
+            InteractionContentService.Item fetched = null;
+            try { fetched = interactionContent.fetchNextOnline(quizOnly); }
             catch (Exception error) { failure = error; }
-            InteractionContentService.Item loaded = interactionContent.takeNextContent(quizOnly);
+            InteractionContentService.Item loaded = fetched;
             Exception finalFailure = failure;
             handler.post(() -> {
-                if (requestedGeneration != interactionGeneration) return;
-                if (overlay == null) {
-                    answerInteraction("桌宠暂时不可见，请显示后重试");
+                if (destroyed || requestedGeneration != interactionGeneration || !interactionBusy) return;
+                if (!settings.running() || overlay == null || !overlay.isAttachedToWindow()
+                    || settings.petHidden() || !requestedOwner.equals(licenses.visitOwner())
+                    || !licenses.hasPremiumAccess()
+                    || (!manual && (settings.isQuiet() || settings.isGentleTime()
+                        || settings.clickThrough() || !settings.interactions()))) {
+                    trackedDailyInteraction = false;
+                    answerInteraction("互动状态已改变，请重试");
                     finishInteraction();
                 } else if (loaded != null) {
                     showContentInteraction(loaded);
-                } else if (moodDue) {
-                    showMoodInteraction();
+                    if (interactionBusy && overlay != null && overlay.isInteractionVisible())
+                        interactionContent.markContentShown(loaded);
                 } else {
-                    answerInteraction("趣味内容暂时不可用，请重试；首页新手演示可以离线观看");
-                    if (manual) sayText(finalFailure == null
-                        ? "暂时没有新内容，稍后再试。"
-                        : "线上内容暂时不可用，稍后再试。", 5200);
+                    String message = finalFailure == null
+                        ? (quizOnly ? "暂时没有新题目，稍后再试。" : "暂时没有新内容，稍后再试。")
+                        : "线上内容暂时不可用，请联网后重试。";
+                    trackedDailyInteraction = false;
+                    answerInteraction(manual ? message : null);
+                    if (manual) sayText(message, 5200);
                     finishInteraction();
                 }
             });
@@ -782,6 +787,7 @@ public final class PetOverlayService extends Service {
     }
 
     private void finishInteraction() {
+        interactionGeneration++;
         if (trackedDailyInteraction) {
             if (currentInteractionAnswered) unansweredInteractions = 0;
             else if (!interactionWasManual && ++unansweredInteractions >= 2) {
@@ -796,7 +802,6 @@ public final class PetOverlayService extends Service {
         applyPendingPetRefresh();
         scheduleInteraction();
         showNextVisit();
-        warmInteractionContent();
         if (interactionContent.shouldFlush() && !interactionSyncBusy) {
             interactionSyncBusy = true;
             networkExecutor.execute(() -> {
@@ -956,11 +961,12 @@ public final class PetOverlayService extends Service {
         }
     }
 
-    private void warmInteractionContent() {
-        if (settings.guide().holdsAttention() || !interactionContent.needsRefill() || interactionSyncBusy) return;
+    private void syncInteractionProfile() {
+        if (settings.guide().holdsAttention() || !licenses.hasPremiumAccess() || interactionSyncBusy) return;
         interactionSyncBusy = true;
         networkExecutor.execute(() -> {
-            try { interactionContent.refillOnline(); } catch (Exception ignored) { }
+            try { interactionContent.syncProfile(); } catch (Exception ignored) { }
+            try { interactionContent.flushEvents(); } catch (Exception ignored) { }
             finally { interactionSyncBusy = false; }
         });
     }

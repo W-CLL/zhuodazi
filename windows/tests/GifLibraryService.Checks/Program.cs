@@ -187,9 +187,8 @@ internal static class Program
         };
 
         var normalized = InteractionCacheStore.Normalize(document, now);
-        Require(normalized.Items.Count == 5
-            && normalized.Items.Single(item => item.Id == "joke.cache-1").Revision == 3,
-            "Interaction cache normalization did not keep six-type content and the latest item revision.");
+        Require(normalized.Items.Count == 0,
+            "Interaction cache migration must discard the legacy question pool for real-time delivery.");
         Require(normalized.Shown.Count == 1 && normalized.Shown[0].Id == "trivia.cache-2",
             "Interaction cache normalization did not expire old shown-content records.");
         Require(normalized.PendingEvents.Count == 1 && normalized.InteractionMode == "standard",

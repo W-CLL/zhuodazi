@@ -1,6 +1,5 @@
 using System.Net;
 using System.Net.Http;
-using System.Security.Cryptography;
 using System.Text.Json;
 using ZhuoDazi.Models;
 
@@ -12,13 +11,7 @@ public sealed class InteractionService : IDisposable
     private const string EventsUrl = DeskPetApi.InteractionEvents;
     private const string BatchUrl = DeskPetApi.ContentBatch;
     private const int MaximumResponseBytes = 20 * 1024 * 1024;
-    private const int TargetCacheSize = 60;
     private const int EventBatchSize = 50;
-
-    // 指数退避配置
-    private const int MaxRetryAttempts = 3;
-    private const int InitialRetryDelayMs = 1000; // 1 秒
-    private const int MaxRetryDelayMs = 30000; // 30 秒
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -29,7 +22,9 @@ public sealed class InteractionService : IDisposable
     private readonly LicenseService _licenses;
     private readonly InteractionCacheStore _cacheStore;
     private readonly HttpClient _httpClient;
+    private readonly byte[]? _signingPublicKey;
     private readonly SemaphoreSlim _networkGate = new(1, 1);
+    private readonly SemaphoreSlim _contentGate = new(1, 1);
     private InteractionCacheDocument _state;
     private int _profileRevision;
     private bool _disposed;
@@ -39,9 +34,11 @@ public sealed class InteractionService : IDisposable
     {
     }
 
-    internal InteractionService(SettingsStore store, LicenseService licenses, HttpMessageHandler handler)
+    internal InteractionService(SettingsStore store, LicenseService licenses, HttpMessageHandler handler,
+        byte[]? signingPublicKey = null)
     {
         _licenses = licenses;
+        _signingPublicKey = signingPublicKey?.ToArray();
         _cacheStore = new InteractionCacheStore(store.InteractionsPath);
         _state = _cacheStore.Load();
         _httpClient = new HttpClient(handler)
@@ -50,11 +47,6 @@ public sealed class InteractionService : IDisposable
             DefaultRequestVersion = HttpVersion.Version20,
             DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
         };
-    }
-
-    public int CachedContentCount
-    {
-        get { lock (_sync) return _state.Items.Count; }
     }
 
     public int PendingEventCount
@@ -82,32 +74,24 @@ public sealed class InteractionService : IDisposable
         }
     }
 
-    public InteractionContentItem? TakeNextContent(IReadOnlyCollection<string>? types = null)
+    public void RecordContentShown(InteractionContentItem item)
     {
+        if (!ContentEnvelopeVerifier.IsValidItem(item)) return;
         lock (_sync)
         {
-            var eligible = _state.Items.Where(item => types is null || types.Contains(item.Type, StringComparer.Ordinal)).ToList();
-            if (eligible.Count == 0) return null;
-            var candidates = eligible
-                .Where(item => !item.Type.Equals(_state.LastPromptType, StringComparison.Ordinal))
-                .ToList();
-            if (candidates.Count == 0) candidates = eligible;
-            var selected = candidates[RandomNumberGenerator.GetInt32(candidates.Count)];
-            _state.Items.RemoveAll(item => item.Id.Equals(selected.Id, StringComparison.Ordinal));
-            _state.Shown.RemoveAll(item => item.Id.Equals(selected.Id, StringComparison.Ordinal));
+            _state.Shown.RemoveAll(shown => shown.Id.Equals(item.Id, StringComparison.Ordinal));
             _state.Shown.Insert(0, new InteractionShownContent
             {
-                Id = selected.Id,
+                Id = item.Id,
                 ShownAt = DateTimeOffset.UtcNow.ToString("O")
             });
-            _state.LastPromptType = selected.Type;
+            _state.LastPromptType = item.Type;
             AddEventLocked(new InteractionEventRecord
             {
                 Type = "content_shown",
-                ContentId = selected.Id
+                ContentId = item.Id
             });
             SaveLocked();
-            return selected;
         }
     }
 
@@ -208,55 +192,50 @@ public sealed class InteractionService : IDisposable
         }
     }
 
-    public async Task<int> RefillAsync(CancellationToken cancellationToken = default, bool force = false,
-        IReadOnlyCollection<string>? types = null)
+    public async Task<InteractionContentItem?> FetchNextContentAsync(
+        IReadOnlyCollection<string>? types = null, CancellationToken cancellationToken = default)
     {
-        await _networkGate.WaitAsync(cancellationToken);
+        // A fresh question must not wait for background profile/event uploads to drain.
+        await _contentGate.WaitAsync(cancellationToken);
         try
         {
-            var totalAdded = 0;
-            for (var attempt = 0; attempt < MaxRetryAttempts; attempt++)
+            var requestedTypes = (types ?? new[] { "joke", "math", "trivia", "riddle", "tip", "care" })
+                .Distinct(StringComparer.Ordinal).ToArray();
+            Random.Shared.Shuffle(requestedTypes);
+            string[] exclusions;
+            lock (_sync)
             {
-                string[] exclusions;
-                int cachedCount;
-                lock (_sync)
-                {
-                    cachedCount = _state.Items.Count;
-                    exclusions = BuildExclusionsLocked();
-                }
-                if (!force && cachedCount >= TargetCacheSize) break;
-
-                try
-                {
-                    using var request = JsonRequest(HttpMethod.Post, BatchUrl, new
-                    {
-                        types = types ?? new[] { "joke", "math", "trivia", "riddle", "tip", "care" },
-                        limit = 30,
-                        excludeIds = exclusions
-                    });
-                    Authorize(request);
-                    var envelope = await SendAsync<SignedContentEnvelope>(request, cancellationToken);
-                    var payload = ContentEnvelopeVerifier.Validate(envelope, "batch");
-                    var added = ApplyPayload(payload);
-                    totalAdded += added;
-                    if (added == 0 || force) break;
-                }
-                catch (InvalidOperationException) when (attempt < MaxRetryAttempts - 1)
-                {
-                    // 指数退避：计算延迟时间
-                    var delayMs = Math.Min(
-                        InitialRetryDelayMs * (1 << attempt), // 2^attempt
-                        MaxRetryDelayMs
-                    );
-                    await Task.Delay(delayMs, cancellationToken);
-                    continue;
-                }
+                requestedTypes = requestedTypes.OrderBy(type => type == _state.LastPromptType ? 1 : 0).ToArray();
+                exclusions = BuildExclusionsLocked();
             }
-            return totalAdded;
+            using var request = JsonRequest(HttpMethod.Post, BatchUrl, new
+            {
+                types = requestedTypes,
+                limit = 1,
+                excludeIds = exclusions
+            });
+            request.Headers.CacheControl = new() { NoCache = true, NoStore = true };
+            Authorize(request);
+            var envelope = await SendAsync<SignedContentEnvelope>(request, cancellationToken);
+            var payload = ContentEnvelopeVerifier.Validate(envelope, "batch", _signingPublicKey);
+            lock (_sync)
+            {
+                if (payload.CatalogVersion < _state.CatalogVersion || payload.Items.Count > 1)
+                    throw new InvalidOperationException("互动内容响应无效，请稍后重试。");
+                _state.CatalogVersion = payload.CatalogVersion;
+                _state.CatalogUpdatedAt = payload.CatalogUpdatedAt;
+                SaveLocked();
+                var item = payload.Items.SingleOrDefault();
+                return item is not null
+                    && requestedTypes.Contains(item.Type, StringComparer.Ordinal)
+                    && !payload.DisabledIds.Contains(item.Id, StringComparer.Ordinal)
+                    && !_state.Shown.Any(shown => shown.Id.Equals(item.Id, StringComparison.Ordinal))
+                    ? item : null;
+            }
         }
         finally
         {
-            _networkGate.Release();
+            _contentGate.Release();
         }
     }
 
@@ -287,42 +266,9 @@ public sealed class InteractionService : IDisposable
         }
     }
 
-    private int ApplyPayload(SignedContentPayload payload)
-    {
-        lock (_sync)
-        {
-            if (payload.CatalogVersion < _state.CatalogVersion) return 0;
-            var disabled = payload.DisabledIds.ToHashSet(StringComparer.Ordinal);
-            var shown = _state.Shown.Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
-            var existing = _state.Items.Where(item => !disabled.Contains(item.Id))
-                .ToDictionary(item => item.Id, StringComparer.Ordinal);
-            var added = 0;
-            foreach (var item in payload.Items)
-            {
-                if (disabled.Contains(item.Id) || shown.Contains(item.Id)) continue;
-                if (!existing.TryGetValue(item.Id, out var current))
-                {
-                    existing[item.Id] = item;
-                    added += 1;
-                }
-                else if (item.Revision > current.Revision)
-                {
-                    existing[item.Id] = item;
-                }
-            }
-            _state.Items = existing.Values.OrderBy(item => item.Type, StringComparer.Ordinal)
-                .ThenBy(item => item.Id, StringComparer.Ordinal).ToList();
-            _state.CatalogVersion = payload.CatalogVersion;
-            _state.CatalogUpdatedAt = payload.CatalogUpdatedAt;
-            SaveLocked();
-            return added;
-        }
-    }
-
     private string[] BuildExclusionsLocked()
     {
-        return _state.Items.Select(item => item.Id)
-            .Concat(_state.Shown.Select(item => item.Id))
+        return _state.Shown.Select(item => item.Id)
             .Distinct(StringComparer.Ordinal)
             .Take(500)
             .ToArray();
@@ -425,6 +371,6 @@ public sealed class InteractionService : IDisposable
         if (_disposed) return;
         _disposed = true;
         _httpClient.Dispose();
-        _networkGate.Dispose();
+        // In-flight requests still release these managed gates after HTTP cancellation.
     }
 }

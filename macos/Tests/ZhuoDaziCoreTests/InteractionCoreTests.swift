@@ -45,7 +45,7 @@ final class InteractionCoreTests: XCTestCase {
         XCTAssertTrue(InteractionRules.isValidPayload(valid, expectedKind: "batch"))
     }
 
-    func testCacheNormalizationKeepsNewestItemsAndValidEvents() {
+    func testCacheMigrationDropsOfflineItemsButPreservesShownIdsEventsAndPreferences() {
         let now = Date()
         var old = validItem()
         old.revision = 1
@@ -67,14 +67,58 @@ final class InteractionCoreTests: XCTestCase {
         ]
         document.interactionMode = "unexpected"
         document.lastPromptType = "unsupported"
+        document.promptsEnabled = false
+        document.profileDirty = true
+        document.nextMoodPromptAt = InteractionTimestamp.string(from: now.addingTimeInterval(3600))
 
         let normalized = InteractionRules.normalizeCache(document, now: now)
-        XCTAssertEqual(normalized.items.count, 1)
-        XCTAssertEqual(normalized.items.first?.revision, 2)
+        XCTAssertTrue(normalized.items.isEmpty)
         XCTAssertEqual(normalized.shown.map(\.id), [old.id])
         XCTAssertEqual(normalized.pendingEvents.count, 1)
         XCTAssertEqual(normalized.interactionMode, "standard")
         XCTAssertNil(normalized.lastPromptType)
+        XCTAssertFalse(normalized.promptsEnabled)
+        XCTAssertTrue(normalized.profileDirty)
+        XCTAssertEqual(normalized.nextMoodPromptAt, document.nextMoodPromptAt)
+    }
+
+    func testRealtimeRequestEncodesOneItemAndOnlyShownExclusions() throws {
+        let request = RealtimeContentRequest(quizOnly: true, shown: [
+            InteractionShownContent(id: "seen-1"), InteractionShownContent(id: "seen-1"),
+            InteractionShownContent(id: "invalid id"), InteractionShownContent(id: "seen-2")
+        ], lastPromptType: "math")
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(request)) as? [String: Any])
+        XCTAssertEqual(body["limit"] as? Int, 1)
+        XCTAssertEqual(Set(try XCTUnwrap(body["types"] as? [String])), Set(["math", "trivia", "riddle"]))
+        XCTAssertEqual(request.types.last, "math")
+        XCTAssertEqual(body["excludeIds"] as? [String], ["seen-1", "seen-2"])
+        let general = RealtimeContentRequest(quizOnly: false, shown: [], lastPromptType: "joke")
+        XCTAssertEqual(Set(general.types), Set(InteractionRules.contentTypes))
+        XCTAssertEqual(general.types.count, 6)
+        XCTAssertEqual(general.types.last, "joke")
+    }
+
+    func testRealtimeRequestCapsExclusionsAtMostRecentFiveHundred() {
+        let shown = (0..<600).map { InteractionShownContent(id: "seen-\($0)") }
+        let request = RealtimeContentRequest(quizOnly: false, shown: shown)
+        XCTAssertEqual(request.excludeIds.count, 500)
+        XCTAssertEqual(request.excludeIds.first, "seen-0")
+        XCTAssertEqual(request.excludeIds.last, "seen-499")
+    }
+
+    func testRealtimePayloadRejectsExtraItemsAndWrongTypesButAllowsEmptyCatalog() {
+        let request = RealtimeContentRequest(quizOnly: true, shown: [])
+        func payload(_ items: [InteractionContentItem]) -> SignedContentPayload {
+            SignedContentPayload(schemaVersion: 1, kind: "batch", catalogVersion: 1,
+                catalogUpdatedAt: InteractionTimestamp.string(from: Date()), items: items, disabledIds: [])
+        }
+        var other = validItem()
+        other.id = "math:item-2"
+        XCTAssertTrue(InteractionRules.isValidRealtimePayload(payload([]), request: request))
+        XCTAssertTrue(InteractionRules.isValidRealtimePayload(payload([validItem()]), request: request))
+        XCTAssertFalse(InteractionRules.isValidRealtimePayload(payload([validItem(), other]), request: request))
+        other.type = "joke"
+        XCTAssertFalse(InteractionRules.isValidRealtimePayload(payload([other]), request: request))
     }
 
     private func validItem() -> InteractionContentItem {

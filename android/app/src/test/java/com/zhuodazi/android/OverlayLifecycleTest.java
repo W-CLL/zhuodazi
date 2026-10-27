@@ -48,6 +48,7 @@ public class OverlayLifecycleTest {
     private LicenseService licenses;
     private PetRepository pets;
     private QueuedExecutor network;
+    private QueuedExecutor contentRequests;
     private MockedStatic<ImageDecoder> visitorDecoder;
 
     @Before public void setUp() throws Exception {
@@ -70,8 +71,11 @@ public class OverlayLifecycleTest {
         when(pets.load(anyString())).thenAnswer(call -> new ColorDrawable(Color.GREEN));
         service = Robolectric.buildService(PetOverlayService.class).get();
         ((ExecutorService) field("networkExecutor")).shutdownNow();
+        ((ExecutorService) field("contentExecutor")).shutdownNow();
         network = new QueuedExecutor();
+        contentRequests = new QueuedExecutor();
         field("networkExecutor", network);
+        field("contentExecutor", contentRequests);
         field("liveService", service);
         field("settings", settings);
         field("licenses", licenses);
@@ -97,6 +101,7 @@ public class OverlayLifecycleTest {
         invoke("removeVisitor", new Class<?>[]{boolean.class}, false);
         invoke("removeMainOverlay", new Class<?>[]{boolean.class}, false);
         ((ExecutorService) field("networkExecutor")).shutdownNow();
+        ((ExecutorService) field("contentExecutor")).shutdownNow();
         ((Handler) field("handler")).removeCallbacksAndMessages(null);
     }
 
@@ -396,6 +401,137 @@ public class OverlayLifecycleTest {
         View answer = ((LinearLayout) choicesField.get(view)).getChildAt(0);
         answer.performClick(); answer.performClick();
         verify(content, times(1)).recordQuiz(eq(item), eq(true), anyString());
+    }
+
+    @Test public void eachManualInteractionFetchesOneFreshItemAndRecordsOnlyAfterDisplay() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        InteractionContentService.Item item = new InteractionContentService.Item("fresh", "math", 1, "1 + 1 = ?", "2", "", List.of("2", "3"));
+        when(content.isMoodPromptDue()).thenReturn(true);
+        when(content.fetchNextOnline(false)).thenReturn(item);
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, false);
+        assertEquals(1, contentRequests.tasks.size());
+        verify(content, never()).markContentShown(any());
+        assertFalse(((PetOverlayView) field("overlay")).isInteractionVisible());
+        contentRequests.runNext();
+        verify(content, times(1)).fetchNextOnline(false);
+        verify(content, never()).markContentShown(any());
+        shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(((PetOverlayView) field("overlay")).isInteractionVisible());
+        verify(content).markContentShown(item);
+        invoke("finishInteraction");
+        assertEquals("finishing never prefetches content", 0, contentRequests.tasks.size());
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, false);
+        assertEquals(1, contentRequests.tasks.size());
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        verify(content, times(2)).fetchNextOnline(false);
+    }
+
+    @Test public void cancelledRequestCannotDisplayOrConsumeAResultAfterANewRequestStarts() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        InteractionContentService.Item old = new InteractionContentService.Item("old-request", "math", 1, "old?", "2", "", List.of());
+        InteractionContentService.Item fresh = new InteractionContentService.Item("new-request", "math", 1, "new?", "2", "", List.of());
+        when(content.fetchNextOnline(true)).thenReturn(old, fresh);
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, true);
+        invoke("finishInteraction");
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, true);
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertFalse(((PetOverlayView) field("overlay")).isInteractionVisible());
+        verify(content, never()).markContentShown(any());
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(((PetOverlayView) field("overlay")).isInteractionVisible());
+        verify(content).markContentShown(fresh);
+        verify(content, never()).markContentShown(old);
+    }
+
+    @Test public void destroyedServiceIgnoresPendingContentWithoutMarkingItShown() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        when(content.fetchNextOnline(true)).thenReturn(new InteractionContentService.Item("late", "math", 1, "late?", "2", "", List.of()));
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, true);
+        field("destroyed", true);
+        settings.setRunning(false);
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertFalse(((PetOverlayView) field("overlay")).isInteractionVisible());
+        verify(content, never()).markContentShown(any());
+    }
+
+    @Test public void manualNetworkFailureRequestsConnectivityWithoutShowingCachedContent() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        when(content.fetchNextOnline(true)).thenThrow(new java.io.IOException("offline"));
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, true);
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        PetOverlayView view = (PetOverlayView) field("overlay");
+        assertFalse(view.isInteractionVisible());
+        assertTrue(bubble(view).getText().toString().contains("联网后重试"));
+        assertEquals(false, field("interactionBusy"));
+        verify(content, never()).markContentShown(any());
+        verify(content, times(1)).fetchNextOnline(true);
+        assertEquals(0, contentRequests.tasks.size());
+    }
+
+    @Test public void automaticNetworkFailureIsSilentAndDoesNotCountAsAnUnansweredPrompt() throws Exception {
+        settings.guide().dismiss();
+        settings.putBoolean(SettingsStore.INTERACTIONS, true);
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        when(content.fetchNextOnline(true)).thenThrow(new java.io.IOException("offline"));
+        PetOverlayView view = (PetOverlayView) field("overlay");
+        String previous = bubble(view).getText().toString();
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, false, true);
+        assertEquals(previous, bubble(view).getText().toString());
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertEquals(previous, bubble(view).getText().toString());
+        assertFalse(view.isInteractionVisible());
+        assertEquals(0, field("unansweredInteractions"));
+        verify(content, never()).markContentShown(any());
+    }
+
+    @Test public void emptyOnlineQuizShowsAFriendlyMessageWithoutReplacingItWithMood() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        when(content.isMoodPromptDue()).thenReturn(true);
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, true);
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        PetOverlayView view = (PetOverlayView) field("overlay");
+        assertFalse(view.isInteractionVisible());
+        assertEquals("暂时没有新题目，稍后再试。", bubble(view).getText().toString());
+        verify(content, never()).markMoodPrompted(anyBoolean());
+        verify(content, never()).markContentShown(any());
+    }
+
+    @Test public void liveContentFetchDoesNotWaitForBackgroundProfileWork() throws Exception {
+        settings.guide().dismiss();
+        InteractionContentService content = (InteractionContentService) field("interactionContent");
+        InteractionContentService.Item item = new InteractionContentService.Item("prompt-now", "math", 1, "1 + 1 = ?", "2", "", List.of());
+        when(content.fetchNextOnline(true)).thenReturn(item);
+        invoke("syncInteractionProfile");
+        assertEquals(1, network.tasks.size());
+        invoke("startRandomInteraction", new Class<?>[]{boolean.class, boolean.class}, true, true);
+        assertEquals("content has its own executor", 1, contentRequests.tasks.size());
+        contentRequests.runNext();
+        shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(((PetOverlayView) field("overlay")).isInteractionVisible());
+        verify(content).fetchNextOnline(true);
+        verify(content).markContentShown(item);
+        verify(content, never()).syncProfile();
+        assertEquals("the blocked background work is still pending", 1, network.tasks.size());
+    }
+
+    @Test public void destroyingServiceShutsDownBothNetworkExecutors() throws Exception {
+        service.onDestroy();
+        assertTrue(contentRequests.isShutdown());
+        assertTrue(network.isShutdown());
+        assertTrue(contentRequests.tasks.isEmpty());
+        assertTrue(network.tasks.isEmpty());
     }
 
     @Test public void twoUnansweredAutomaticInteractionsBackOffButManualDismissalsDoNot() throws Exception {

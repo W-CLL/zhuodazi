@@ -149,6 +149,30 @@ public struct InteractionCacheDocument: Codable, Equatable {
     }
 }
 
+/// Each content interaction requests one fresh item; only displayed IDs travel back.
+public struct RealtimeContentRequest: Encodable, Equatable {
+    public let types: [String]
+    public let limit = 1
+    public let excludeIds: [String]
+
+    public init(quizOnly: Bool, shown: [InteractionShownContent], lastPromptType: String? = nil) {
+        var requestedTypes = (quizOnly ? InteractionRules.quizTypes : InteractionRules.contentTypes).shuffled()
+        // The server visits types in request order, so vary the first candidate for limit=1.
+        if let lastPromptType, let index = requestedTypes.firstIndex(of: lastPromptType) {
+            requestedTypes.remove(at: index)
+            requestedTypes.append(lastPromptType)
+        }
+        types = requestedTypes
+        var seen = Set<String>()
+        var exclusions: [String] = []
+        for item in shown where InteractionRules.isValidItemId(item.id) && seen.insert(item.id).inserted {
+            exclusions.append(item.id)
+            if exclusions.count == 500 { break }
+        }
+        excludeIds = exclusions
+    }
+}
+
 public enum InteractionTimestamp {
     public static func string(from date: Date) -> String {
         let formatter = ISO8601DateFormatter()
@@ -166,6 +190,7 @@ public enum InteractionTimestamp {
 
 public enum InteractionRules {
     public static let contentTypes = ["joke", "math", "trivia", "riddle", "tip", "care"]
+    public static let quizTypes = ["math", "trivia", "riddle"]
 
     public static func normalizeMode(_ mode: String) -> String {
         ["quiet", "standard", "lively"].contains(mode) ? mode : "standard"
@@ -217,18 +242,18 @@ public enum InteractionRules {
             && Set(payload.disabledIds).count == payload.disabledIds.count
     }
 
+    public static func isValidRealtimePayload(_ payload: SignedContentPayload, request: RealtimeContentRequest) -> Bool {
+        isValidPayload(payload, expectedKind: "batch") && payload.items.count <= request.limit
+            && payload.items.allSatisfy { request.types.contains($0.type) }
+    }
+
     public static func normalizeCache(_ source: InteractionCacheDocument, now: Date = Date()) -> InteractionCacheDocument {
         var document = source
         document.version = 1
         document.catalogVersion = max(0, document.catalogVersion)
 
-        var bestItems: [String: InteractionContentItem] = [:]
-        for item in document.items where isValidItem(item) {
-            if bestItems[item.id].map({ item.revision > $0.revision }) ?? true { bestItems[item.id] = item }
-        }
-        document.items = bestItems.values
-            .sorted { ($0.type, $0.id) < ($1.type, $1.id) }
-            .prefix(5_000).map { $0 }
+        // Keep the legacy field decodable, but never retain prefetched/offline content.
+        document.items.removeAll()
 
         var bestShown: [String: InteractionShownContent] = [:]
         for item in document.shown {

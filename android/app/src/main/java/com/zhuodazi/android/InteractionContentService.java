@@ -14,11 +14,9 @@ import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -38,10 +36,8 @@ final class InteractionContentService {
         Arrays.asList("joke", "math", "trivia", "riddle", "tip", "care"));
     private static final List<String> REQUEST_TYPES =
         Arrays.asList("joke", "math", "trivia", "riddle", "tip", "care");
-    private static final List<String> LEGACY_REQUEST_TYPES =
-        Arrays.asList("joke", "math", "trivia");
+    private static final List<String> QUIZ_TYPES = Arrays.asList("math", "trivia", "riddle");
     private static final Pattern ID_PATTERN = Pattern.compile("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$");
-    private static final int MAX_CACHE = 90;
     private static final int MAX_SHOWN = 500;
     private static final int MAX_EVENTS = 1000;
     private static final Object PROFILE_LOCK = new Object();
@@ -53,11 +49,8 @@ final class InteractionContentService {
     private final LicenseService licenses;
     private final SharedPreferences store;
     private final DailyJournalStore journal;
-    private final Random random = new Random();
-    private final List<Item> items = new ArrayList<>();
     private final List<String> shown = new ArrayList<>();
     private final List<JSONObject> events = new ArrayList<>();
-    private String lastType = "";
     private long catalogVersion;
 
     InteractionContentService(Context context, LicenseService licenses) {
@@ -68,21 +61,11 @@ final class InteractionContentService {
         load();
     }
 
-    synchronized int cachedCount() { return items.size(); }
-
-    synchronized int onlineCount() {
-        int count = 0;
-        for (Item item : items) if (item.online()) count++;
-        return count;
-    }
-
     synchronized long catalogVersion() { return catalogVersion; }
 
     synchronized String lastSyncError() { return store.getString(LAST_SYNC_ERROR, ""); }
 
     synchronized long lastSyncAt() { return store.getLong(LAST_SYNC_AT, 0L); }
-
-    synchronized boolean needsRefill() { return licenses.hasPremiumAccess() && onlineCount() < 18; }
 
     synchronized boolean shouldFlush() { return events.size() >= 10; }
 
@@ -98,28 +81,15 @@ final class InteractionContentService {
         store.edit().putLong(NEXT_MOOD_AT, System.currentTimeMillis() + 180 * 60_000L)
             .putString("mood_prompt_date", today).putInt("mood_prompt_count", count + (automatic ? 1 : 0))
             .putString(LAST_TYPE, "mood").apply();
-        lastType = "mood";
     }
 
-    synchronized Item takeNextContent() {
-        return takeNextContent(false);
-    }
-
-    synchronized Item takeNextContent(boolean quizOnly) {
-        if (items.isEmpty()) return null;
-        List<Item> candidates = new ArrayList<>();
-        for (Item item : items) if ((!quizOnly || Arrays.asList("math", "trivia", "riddle").contains(item.type)) && !item.type.equals(lastType)) candidates.add(item);
-        if (candidates.isEmpty()) for (Item item : items) if (!quizOnly || Arrays.asList("math", "trivia", "riddle").contains(item.type)) candidates.add(item);
-        if (candidates.isEmpty()) return null;
-        Item selected = candidates.get(random.nextInt(candidates.size()));
-        items.remove(selected);
-        shown.remove(selected.id);
-        shown.add(0, selected.id);
+    synchronized void markContentShown(Item item) {
+        if (item == null || !item.online() || shown.contains(item.id)) return;
+        shown.add(0, item.id);
         while (shown.size() > MAX_SHOWN) shown.remove(shown.size() - 1);
-        lastType = selected.type;
-        if (selected.online()) addEvent("content_shown", null, selected.id, null);
+        store.edit().putString(LAST_TYPE, item.type).apply();
+        addEvent("content_shown", null, item.id, null);
         save();
-        return selected;
     }
 
     synchronized void recordMood(String mood) {
@@ -148,13 +118,12 @@ final class InteractionContentService {
         }
     }
 
-    int refillOnline() throws Exception {
+    Item fetchNextOnline(boolean quizOnly) throws Exception {
         try {
-            syncProfile();
-            int added = performRefillOnline();
+            Item item = requestNextOnline(quizOnly);
             store.edit().putString(LAST_SYNC_ERROR, "")
                 .putLong(LAST_SYNC_AT, System.currentTimeMillis()).apply();
-            return added;
+            return item;
         } catch (Exception error) {
             String message = error.getMessage();
             store.edit().putString(LAST_SYNC_ERROR,
@@ -190,7 +159,7 @@ final class InteractionContentService {
                         licenses, NetworkClient.Auth.NONE);
                     settings.applyRemoteConfig(remote);
                 } catch (Exception ignored) {
-                    // Existing account preferences and cached/local content remain available during a settings outage.
+                    // Existing account preferences remain available during a settings outage.
                 }
             }
             final long revision;
@@ -218,43 +187,28 @@ final class InteractionContentService {
         }
     }
 
-    private int performRefillOnline() throws Exception {
-        if (!licenses.hasPremiumAccess()) throw new IllegalStateException("体验或正式激活后可同步线上互动内容");
+    private Item requestNextOnline(boolean quizOnly) throws Exception {
+        if (!licenses.hasPremiumAccess()) throw new IllegalStateException("体验或正式激活后可获取线上互动内容");
+        List<String> types = new ArrayList<>(quizOnly ? QUIZ_TYPES : REQUEST_TYPES);
+        Collections.shuffle(types);
+        String lastType = store.getString(LAST_TYPE, "");
+        if (types.remove(lastType)) types.add(lastType);
         JSONArray exclusions = new JSONArray();
         synchronized (this) {
-            Set<String> unique = new HashSet<>();
-            for (Item item : items) if (item.online()) unique.add(item.id);
-            for (String id : shown) if (!id.startsWith("local:")) unique.add(id);
-            for (String id : unique) {
-                if (exclusions.length() >= 500) break;
-                exclusions.put(id);
-            }
+            for (String id : shown) if (!id.startsWith("local:")) exclusions.put(id);
         }
-        JSONObject envelope;
-        try {
-            envelope = requestBatch(REQUEST_TYPES, exclusions);
-        } catch (Exception error) {
-            if (!isUnsupportedTypeError(error)) throw error;
-            envelope = requestBatch(LEGACY_REQUEST_TYPES, exclusions);
-        }
+        JSONObject envelope = requestBatch(types, exclusions);
         JSONObject payload = verifyEnvelope(envelope, "batch");
-        int added = applyPayload(payload);
-        try { flushEvents(); } catch (Exception ignored) { }
-        return added;
+        return readRequestedItem(payload, types);
     }
 
     private JSONObject requestBatch(List<String> types, JSONArray exclusions) throws Exception {
         JSONObject body = new JSONObject()
             .put("types", new JSONArray(types))
-            .put("limit", 30)
+            .put("limit", 1)
             .put("excludeIds", exclusions);
         return NetworkClient.json(context, "POST", DeskPetApi.CONTENT_BATCH, body,
             licenses, NetworkClient.Auth.PREMIUM);
-    }
-
-    private boolean isUnsupportedTypeError(Exception error) {
-        String message = error.getMessage();
-        return message != null && message.contains("内容类型无效");
     }
 
     void flushEvents() throws Exception {
@@ -291,76 +245,49 @@ final class InteractionContentService {
         return document;
     }
 
-    private synchronized int applyPayload(JSONObject payload) throws Exception {
+    private synchronized Item readRequestedItem(JSONObject payload, List<String> requestedTypes) throws Exception {
         long incomingVersion = payload.optLong("catalogVersion", -1L);
-        if (incomingVersion < catalogVersion) return 0;
+        if (incomingVersion < catalogVersion) throw new IllegalStateException("互动内容目录已过期，请重试");
         Set<String> disabled = new HashSet<>();
         JSONArray disabledIds = payload.optJSONArray("disabledIds");
         if (disabledIds != null) {
             for (int i = 0; i < disabledIds.length(); i++) disabled.add(disabledIds.getString(i));
         }
-        items.removeIf(item -> disabled.contains(item.id));
-        Map<String, Item> existing = new HashMap<>();
-        for (Item item : items) existing.put(item.id, item);
-        int added = 0;
         JSONArray incoming = payload.getJSONArray("items");
-        if (incoming.length() > 5000) throw new IllegalStateException("互动内容数量无效");
-        for (int i = 0; i < incoming.length(); i++) {
-            Item item = Item.fromJson(incoming.getJSONObject(i));
-            if (!item.valid() || disabled.contains(item.id) || shown.contains(item.id)) continue;
-            Item old = existing.get(item.id);
-            if (old == null) {
-                items.add(item);
-                existing.put(item.id, item);
-                added++;
-            } else if (item.revision > old.revision) {
-                items.set(items.indexOf(old), item);
-                existing.put(item.id, item);
-            }
-        }
-        while (items.size() > MAX_CACHE) {
-            int localIndex = -1;
-            for (int i = 0; i < items.size(); i++) {
-                if (!items.get(i).online()) { localIndex = i; break; }
-            }
-            items.remove(localIndex >= 0 ? localIndex : 0);
-        }
+        if (incoming.length() > 1) throw new IllegalStateException("互动内容数量无效");
         catalogVersion = incomingVersion;
         save();
-        return added;
+        if (incoming.length() == 0) return null;
+        Item item = Item.fromJson(incoming.getJSONObject(0));
+        if (!item.valid() || !item.online() || !requestedTypes.contains(item.type)
+            || disabled.contains(item.id) || shown.contains(item.id)) return null;
+        return item;
     }
 
     private synchronized void load() {
         try {
-            JSONArray storedItems = new JSONArray(store.getString(ITEMS, "[]"));
-            for (int i = 0; i < storedItems.length(); i++) {
-                Item item = Item.fromJson(storedItems.getJSONObject(i));
-                if (item.valid() && item.online()) items.add(item);
-            }
             JSONArray storedShown = new JSONArray(store.getString(SHOWN, "[]"));
             for (int i = 0; i < storedShown.length() && shown.size() < MAX_SHOWN; i++)
                 shown.add(storedShown.getString(i));
             JSONArray storedEvents = new JSONArray(store.getString(EVENTS, "[]"));
             for (int i = 0; i < storedEvents.length() && events.size() < MAX_EVENTS; i++)
                 events.add(storedEvents.getJSONObject(i));
-            lastType = store.getString(LAST_TYPE, "");
             catalogVersion = store.getLong(CATALOG_VERSION, 0L);
         } catch (Exception error) {
-            items.clear();
             shown.clear();
             events.clear();
         }
+        // Upgrade from batch caching without discarding displayed IDs, pending events, or journal data.
+        store.edit().remove(ITEMS).apply();
     }
 
     private synchronized void save() {
-        JSONArray storedItems = new JSONArray();
-        for (Item item : items) storedItems.put(item.toJson());
         JSONArray storedShown = new JSONArray();
         for (String id : shown) storedShown.put(id);
         JSONArray storedEvents = new JSONArray();
         for (JSONObject event : events) storedEvents.put(event);
-        store.edit().putString(ITEMS, storedItems.toString()).putString(SHOWN, storedShown.toString())
-            .putString(EVENTS, storedEvents.toString()).putString(LAST_TYPE, lastType)
+        store.edit().remove(ITEMS).putString(SHOWN, storedShown.toString())
+            .putString(EVENTS, storedEvents.toString())
             .putLong(CATALOG_VERSION, catalogVersion).apply();
     }
 

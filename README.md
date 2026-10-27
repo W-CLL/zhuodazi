@@ -19,7 +19,9 @@
 
 ## 产品规则与本次改动
 
-当前目标版本为 Windows/macOS **v3.4.3**、Android **v1.5.3**（versionCode 27）。首次激活与更换激活码使用独立后台文案；Android 二维码固定显示，并支持放大和保存。详见 [版本递增规则](docs/releases/versioning.md)、[桌面更新说明](docs/releases/desktop-3.4.3.md) 与 [Android 更新说明](docs/releases/android-1.5.3.md)。版本文件不代表已经正式发布。
+内容互动与答题已改为每次触发时联网获取一条，取消题目预取和缓存回退；详见 [实时取题行为与验证](docs/product-experience/2026-10-27-realtime-content.md)。需要发布客户端新版后生效。
+
+当前目标版本为 Windows/macOS **v3.4.4**、Android **v1.5.4**（versionCode 28）。内容互动与答题每次实时联网获取一条，取消旧题池缓存回退；已有设置和日常数据保留。详见 [版本递增规则](docs/releases/versioning.md)、[桌面更新说明](docs/releases/desktop-3.4.4.md) 与 [Android 更新说明](docs/releases/android-1.5.4.md)。版本文件不代表已经正式发布。
 
 参见 [2026-09-18 实施基线](docs/product-experience/2026-09-18-plan.md)、[实施对照与手动验收](docs/product-experience/2026-09-18-acceptance.md) 与 [当前功能说明](marketing/桌搭子功能点说明.md)。
 

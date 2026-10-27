@@ -39,6 +39,7 @@ public sealed partial class AppController : IDisposable
     private Forms.NotifyIcon? _tray;
     private Forms.ContextMenuStrip? _trayMenu;
     private CancellationTokenSource? _theaterCancellation;
+    private CancellationTokenSource? _interactionFetchCancellation;
     private DateOnly? _lastMidnightSecret;
     private bool _theaterActive;
     private bool _interactionActive;
@@ -90,6 +91,12 @@ public sealed partial class AppController : IDisposable
     public string QuietStatus => IsQuiet ? $"已暂停主动打扰，{Settings.QuietUntilUtc!.Value.LocalDateTime:HH:mm} 恢复" : "主动陪伴正常 · 设置自动保存";
 
     public AppController(LicenseService licenses, SettingsStore? store = null, bool localPreview = false)
+        : this(licenses, store, localPreview, null)
+    {
+    }
+
+    internal AppController(LicenseService licenses, SettingsStore? store, bool localPreview,
+        InteractionService? interactions)
     {
         IsLocalPreview = localPreview;
         _store = store ?? new SettingsStore();
@@ -100,7 +107,7 @@ public sealed partial class AppController : IDisposable
         _remoteConfig = new RemoteConfigService(_store);
         Updates = new UpdateService(_store, _licenses);
         Feedback = new FeedbackService(_licenses);
-        Interactions = new InteractionService(_store, _licenses);
+        Interactions = interactions ?? new InteractionService(_store, _licenses);
         Companions = new CompanionService(_store, _licenses);
         _visitorQueue.Restore(Companions.Inbox);
         Updates.StateChanged += OnUpdateStateChanged;
@@ -214,7 +221,11 @@ public sealed partial class AppController : IDisposable
         Settings.QuietUntilUtc = DateTimeOffset.UtcNow.AddHours(1);
         CancelTheater();
         _visitorQueue.PauseActive();
-        if (_interactionActive && !_interactionWasManual) _petWindow?.DismissCurrentInteraction();
+        if (_interactionActive && !_interactionWasManual)
+        {
+            CancelPendingInteractionFetch();
+            _petWindow?.DismissCurrentInteraction();
+        }
         _petWindow?.HideSpeech();
         RestartInteractionTimer();
         RestartTheaterTimer();
@@ -594,7 +605,11 @@ public sealed partial class AppController : IDisposable
 
     public void SetClickThrough(bool value)
     {
-        if (value) DismissGuide();
+        if (value)
+        {
+            DismissGuide();
+            CancelPendingInteractionFetch();
+        }
         Settings.ClickThrough = value;
         SaveAndRefresh();
         if (!value)
@@ -870,6 +885,7 @@ public sealed partial class AppController : IDisposable
         {
             DismissGuide();
             CancelTheater();
+            CancelPendingInteractionFetch();
             _visitorQueue.PauseActive();
             _petWindow.Hide();
             if (!Settings.HideRecoveryHintSeen)
@@ -886,6 +902,7 @@ public sealed partial class AppController : IDisposable
     public void Exit()
     {
         IsExiting = true;
+        CancelPendingInteractionFetch();
         DismissGuide();
         _theaterCancellation?.Cancel();
         if (_companionWindow?.IsLoaded == true) _companionWindow.Close();
@@ -970,45 +987,60 @@ public sealed partial class AppController : IDisposable
         _interactionActive = true;
         _interactionWasManual = manual;
         _currentInteractionAnswered = false;
+        using var fetchCancellation = new CancellationTokenSource();
+        var account = (_licenses.LicenseId, _licenses.InstallationId);
         try
         {
             if (!manual && !quizOnly && TryShowWorkCheckIn(pet)) return;
-            var moodDue = !quizOnly && IsDailyMoodDue();
-            if (moodDue && (Interactions.CachedContentCount == 0 || _random.Next(4) == 0))
+            if (!manual && !quizOnly && IsDailyMoodDue() && _random.Next(4) == 0)
             {
                 ShowMoodInteraction(pet);
                 return;
             }
-            if (Interactions.CachedContentCount == 0) await Interactions.RefillAsync();
-            if (IsExiting || !manual && IsQuiet || _theaterActive || _petWindow is not { IsVisible: true })
+            _interactionFetchCancellation = fetchCancellation;
+            if (manual)
+                pet.ShowInteraction("线上互动", "正在获取最新内容…", [new("取消", "cancel")], _ =>
+                {
+                    if (ReferenceEquals(_interactionFetchCancellation, fetchCancellation))
+                        FinishInteraction(countUnanswered: false);
+                });
+            var item = await Interactions.FetchNextContentAsync(
+                quizOnly ? new[] { "math", "trivia", "riddle" } : null, fetchCancellation.Token);
+            if (!ReferenceEquals(_interactionFetchCancellation, fetchCancellation)) return;
+            if (_disposed || IsExiting || !HasPremiumAccess || account != (_licenses.LicenseId, _licenses.InstallationId)
+                || IsGuideActive || GuideBusy || _theaterActive || _visitorQueue.IsShowing
+                || _petWindow != pet || !pet.IsVisible
+                || !manual && (IsQuiet || Settings.ClickThrough || !Settings.RandomInteractionsEnabled
+                    || IsSessionLocked || NativeMethods.IsUserIdle || IsGentleTime))
             {
-                FinishInteraction();
+                CancelPendingInteractionFetch();
                 return;
             }
-
-            var item = Interactions.TakeNextContent(quizOnly ? new[] { "math", "trivia", "riddle" } : null);
-            if (item is null && quizOnly)
-            {
-                await Interactions.RefillAsync(force: true, types: ["math", "trivia", "riddle"]);
-                if (IsExiting || _petWindow is not { IsVisible: true }) { FinishInteraction(); return; }
-                item = Interactions.TakeNextContent(["math", "trivia", "riddle"]);
-            }
+            _interactionFetchCancellation = null;
+            if (manual) pet.DismissCurrentInteraction();
             if (item is null)
             {
-                if (moodDue) ShowMoodInteraction(pet);
-                else
-                {
-                    if (manual) pet.ShowReaction(quizOnly ? "暂时没有新的题目，请联网后再试一次。" : "稍后再来找我玩吧。");
-                    FinishInteraction();
-                }
+                if (manual) pet.ShowReaction("线上暂时没有可用的新内容，请稍后再试。");
+                FinishInteraction(countUnanswered: false);
                 return;
             }
             ShowContentInteraction(pet, item);
+            if (pet.IsInteractionVisible) Interactions.RecordContentShown(item);
         }
         catch (Exception error)
         {
-            if (manual) pet.ShowReaction(error.Message);
-            FinishInteraction();
+            if (fetchCancellation.IsCancellationRequested || _disposed || IsExiting) return;
+            if (_interactionFetchCancellation is not null
+                && !ReferenceEquals(_interactionFetchCancellation, fetchCancellation)) return;
+            var canShowError = HasPremiumAccess && account == (_licenses.LicenseId, _licenses.InstallationId);
+            if (_interactionFetchCancellation is not null) CancelPendingInteractionFetch();
+            else
+            {
+                pet.DismissCurrentInteraction();
+                FinishInteraction(countUnanswered: false);
+            }
+            if (manual && pet.IsVisible && canShowError)
+                pet.ShowReaction(error.Message);
         }
     }
 
@@ -1133,11 +1165,24 @@ public sealed partial class AppController : IDisposable
     private static bool AnswersMatch(string selected, string answer)
         => selected.Trim().Equals(answer.Trim(), StringComparison.OrdinalIgnoreCase);
 
-    private void FinishInteraction()
+    private void CancelPendingInteractionFetch()
     {
+        if (_interactionFetchCancellation is null) return;
+        var cancellation = _interactionFetchCancellation;
+        _interactionFetchCancellation = null;
+        cancellation.Cancel();
+        _petWindow?.DismissCurrentInteraction();
+        FinishInteraction(countUnanswered: false);
+    }
+
+    private void FinishInteraction(bool countUnanswered = true)
+    {
+        var cancellation = _interactionFetchCancellation;
+        _interactionFetchCancellation = null;
+        cancellation?.Cancel();
         _interactionActive = false;
         if (_currentInteractionAnswered) _unansweredInteractions = 0;
-        else if (!_interactionWasManual) _unansweredInteractions++;
+        else if (!_interactionWasManual && countUnanswered) _unansweredInteractions++;
         if (_unansweredInteractions >= 2)
         {
             _nextInteractionAt = DateTimeOffset.UtcNow.AddMinutes(30);
@@ -1186,7 +1231,6 @@ public sealed partial class AppController : IDisposable
                 Settings.RandomInteractionsEnabled);
             if (!IsLocalPreview) ApplyInteractionProfile(profile);
             if (!IsLocalPreview) await Interactions.FlushEventsAsync();
-            await Interactions.RefillAsync();
         }
         catch { }
         finally
@@ -1679,6 +1723,7 @@ public sealed partial class AppController : IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        CancelPendingInteractionFetch();
         StopDeviceHeartbeat();
         SystemEvents.SessionSwitch -= OnDailySessionSwitch;
         if (_journal is not null) _journal.Changed -= OnDailyJournalChanged;

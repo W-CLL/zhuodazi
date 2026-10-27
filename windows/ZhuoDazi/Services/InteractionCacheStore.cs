@@ -7,7 +7,6 @@ namespace ZhuoDazi.Services;
 
 internal sealed class InteractionCacheStore
 {
-    private const int MaximumCachedItems = 5000;
     private const int MaximumShownItems = 500;
     private const int MaximumPendingEvents = 1000;
     private static readonly TimeSpan ShownRetention = TimeSpan.FromDays(30);
@@ -52,12 +51,9 @@ internal sealed class InteractionCacheStore
     {
         document.Version = 1;
         document.CatalogVersion = Math.Max(0, document.CatalogVersion);
-        document.Items = (document.Items ?? [])
-            .Where(ContentEnvelopeVerifier.IsValidItem)
-            .GroupBy(item => item.Id, StringComparer.Ordinal)
-            .Select(group => group.OrderByDescending(item => item.Revision).First())
-            .Take(MaximumCachedItems)
-            .ToList();
+        // Older versions persisted a question pool. Only live responses may now be displayed.
+        // Retain the legacy field for migration, while keeping history and pending events.
+        document.Items = [];
         document.Shown = (document.Shown ?? [])
             .Where(item => item is not null && ContentEnvelopeVerifier.IsValidItemId(item.Id)
                 && DateTimeOffset.TryParse(item.ShownAt, out var shownAt)

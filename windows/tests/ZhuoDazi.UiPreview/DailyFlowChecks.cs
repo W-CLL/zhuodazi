@@ -15,7 +15,7 @@ internal static class DailyFlowChecks
     private static int _assertions;
 
     public static async Task Run(AppController controller, PetWindow pet, string output, Func<string[]> requests,
-        Action<DailySummaryConfig?> setSummaryConfiguration)
+        Action<DailySummaryConfig?> setSummaryConfiguration, RealtimeContentHandler contentHandler)
     {
         await Task.Delay(400);
         Require(pet.IsVisible && controller.HasPremiumAccess, "The real Start flow opens a pet with the test-only trial.");
@@ -96,31 +96,29 @@ internal static class DailyFlowChecks
             await Settle(settings);
             Capture(settings, output, "daily-07-" + period);
         }
-        await CheckRealQuizFlow(controller, pet, settings, output);
+        await CheckRealQuizFlow(controller, pet, settings, output, contentHandler);
         await CheckRemoteSummaries(controller, settings, output, setSummaryConfiguration);
         await CheckFrequencyRemainsStable(controller);
-        CheckCachedQuizSelection(output);
+        _assertions += await RealtimeContentChecks.Run(output);
         File.WriteAllText(Path.Combine(output, "daily-flow-results.txt"),
             $"PASS: {_assertions} real WPF daily flow assertions.\n" +
             "Real AppController.Start; all HTTP intercepted by test-only in-memory handlers.\n" +
             "Production settings, startup registration, licenses and server records are untouched.\n");
     }
 
-    private static async Task CheckRealQuizFlow(AppController controller, PetWindow pet, SettingsWindow settings, string output)
+    private static async Task CheckRealQuizFlow(AppController controller, PetWindow pet, SettingsWindow settings, string output,
+        RealtimeContentHandler contentHandler)
     {
-        // Only the smoke test's isolated in-memory cache receives this fixture. Network signature verification remains unchanged.
-        var state = (InteractionCacheDocument)typeof(InteractionService)
-            .GetField("_state", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(controller.Interactions)!;
-        state.Items.Add(new InteractionContentItem
-        {
-            Id = "math.daily-smoke-only", Type = "math", Revision = 1, Prompt = "【自动验收模拟题】2 + 2 等于多少？",
-            Answer = "4", Choices = ["3", "4", "5"], Explanation = "这道题只用于本地自动验收，不会加入线上题库。"
-        });
+        Require(contentHandler.BatchRequests.Count == 0, "Starting the real controller never prefetches a question pool.");
+        contentHandler.Items = [RealtimeContentHandler.Question("math.daily-smoke-only")];
         var before = controller.Journal.GetAllTimeSummary();
         ((Button)settings.FindName("DailyQuizButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await Settle(pet);
         Require(pet.IsInteractionVisible && ((TextBlock)pet.FindName("InteractionTitle")).Text == "来道数学题",
             "The real daily quiz button opens a question rather than a mood or greeting.");
+        Require(contentHandler.BatchRequests.Count == 1 && contentHandler.BatchRequests[0].Limit == 1
+            && contentHandler.BatchRequests[0].Types.ToHashSet().SetEquals(["math", "trivia", "riddle"]),
+            "The real quiz button fetches exactly one signed online question with quiz-only types.");
         Require(controller.Journal.GetAllTimeSummary().QuizzesAnswered == before.QuizzesAnswered, "Merely displaying a quiz does not count as answering.");
         Capture(pet, output, "daily-10-quiz");
         var answer = ChoiceButtons(pet).Single(button => ((PetInteractionChoice)button.Tag).Value == "1");
@@ -139,6 +137,33 @@ internal static class DailyFlowChecks
         await Settle(pet);
         Require(!pet.IsInteractionVisible && controller.Journal.GetAllTimeSummary().QuizzesAnswered == answered.QuizzesAnswered,
             "Closing the answer finishes the interaction without a second quiz record.");
+
+        contentHandler.Items = [RealtimeContentHandler.Question("math.daily-online-update", prompt: "【后台刚更新的模拟题】2 + 2 等于多少？")];
+        controller.StartQuizInteraction();
+        await Settle(pet);
+        Require(contentHandler.BatchRequests.Count == 2 && pet.IsInteractionVisible
+            && contentHandler.BatchRequests[1].ExcludeIds.Contains("math.daily-smoke-only"),
+            "The next manual interaction requests current content and excludes the previously shown question.");
+        Require(((TextBlock)pet.FindName("InteractionMessage")).Text.Contains("后台刚更新"),
+            "The real card displays the newly returned prompt without restarting or prefetching.");
+        pet.DismissCurrentInteraction();
+        pet.HideSpeech();
+
+        var beforeFailure = controller.Journal.GetAllTimeSummary().QuizzesAnswered;
+        contentHandler.FailureStatus = System.Net.HttpStatusCode.ServiceUnavailable;
+        controller.StartQuizInteraction();
+        await Settle(pet);
+        Require(!pet.IsInteractionVisible && ((TextBlock)pet.FindName("SpeechText")).Text.Contains("模拟联网失败"),
+            "A failed live request dismisses loading and explains the network failure without showing old content.");
+        contentHandler.FailureStatus = null;
+        contentHandler.Items = [];
+        controller.StartQuizInteraction();
+        await Settle(pet);
+        Require(!pet.IsInteractionVisible && ((TextBlock)pet.FindName("SpeechText")).Text.Contains("线上暂时没有"),
+            "An empty online library shows an empty-state message and no cached question.");
+        Require(controller.Journal.GetAllTimeSummary().QuizzesAnswered == beforeFailure,
+            "Empty and failed requests do not create quiz answers.");
+        await CheckCancelledLiveRequest(controller, pet, contentHandler);
     }
 
     private static async Task CheckLocalPreviewIsolation(AppController controller, Func<string[]> requests)
@@ -160,25 +185,44 @@ internal static class DailyFlowChecks
         Require(rejected && requests().Length == before, "Trial visitor playback is rejected before consuming a server-side visit.");
     }
 
-    private static void CheckCachedQuizSelection(string output)
+    private static async Task CheckCancelledLiveRequest(AppController controller, PetWindow pet,
+        RealtimeContentHandler contentHandler)
     {
-        // This local fixture checks selection only; it is never installed into the running pet's content cache.
-        var store = new SettingsStore(Path.Combine(output, "selection-check"));
-        new InteractionCacheStore(store.InteractionsPath).Save(new InteractionCacheDocument
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        contentHandler.Items = [RealtimeContentHandler.Question("math.cancelled-response")];
+        contentHandler.IgnoreCancellation = true;
+        contentHandler.BeforeContentResponse = async _ =>
         {
-            LastPromptType = "math",
-            Items =
-            [
-                new() { Id = "math.local-check", Type = "math", Revision = 1, Prompt = "2 + 2 等于多少？", Answer = "4", Choices = ["3", "4"] },
-                new() { Id = "joke.local-check", Type = "joke", Revision = 1, Prompt = "仅供选择逻辑检查的笑话", Answer = "测试回答" }
-            ]
-        });
-        using var license = new LicenseService(store.DataDirectory);
-        using var service = new InteractionService(store, license);
-        Require(service.TakeNextContent(["math", "trivia", "riddle"])?.Type == "math", "Quiz selection remains a quiz even when the previous type was the same.");
-        Require(service.TakeNextContent(["math", "trivia", "riddle"]) is null && service.CachedContentCount == 1,
-            "An empty quiz subset cannot fall back to or consume a cached joke.");
-        Require(service.TakeNextContent()?.Type == "joke", "Ordinary random interaction can still select non-quiz content.");
+            started.TrySetResult();
+            await release.Task;
+        };
+        controller.StartQuizInteraction();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Settle(pet);
+        Require(pet.IsInteractionVisible && ((TextBlock)pet.FindName("InteractionTitle")).Text == "线上互动"
+            && ChoiceButtons(pet).Any(button => ((PetInteractionChoice)button.Tag).Value == "cancel"),
+            "A pending online request displays a cancellable loading card.");
+        var requestsWhileLoading = contentHandler.BatchRequests.Count;
+        controller.StartQuizInteraction();
+        await Settle(pet);
+        Require(contentHandler.BatchRequests.Count == requestsWhileLoading,
+            "Repeated clicks while loading cannot start duplicate content requests.");
+        ClickChoice(pet, "cancel");
+        await Settle(pet);
+        Require(!pet.IsInteractionVisible, "Cancelling a pending live request closes its loading card.");
+        release.TrySetResult();
+        await Settle(pet);
+        Require(!pet.IsInteractionVisible, "A response arriving after cancellation must not reopen or replace a card.");
+        contentHandler.BeforeContentResponse = null;
+        contentHandler.IgnoreCancellation = false;
+        controller.StartQuizInteraction();
+        await Settle(pet);
+        Require(pet.IsInteractionVisible && contentHandler.BatchRequests.Count == requestsWhileLoading + 1
+            && !contentHandler.BatchRequests[^1].ExcludeIds.Contains("math.cancelled-response"),
+            "After cancellation the next request succeeds, and a never-shown response was not marked as history.");
+        pet.DismissCurrentInteraction();
+        pet.HideSpeech();
     }
 
     private static async Task CheckFrequencyRemainsStable(AppController controller)

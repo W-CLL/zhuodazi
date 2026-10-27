@@ -436,7 +436,7 @@ final class PetWindowController {
         Task { @MainActor [weak self] in await self?.presentRandomInteraction(manual: true) }
     }
 
-    private func presentRandomInteraction(manual: Bool, quizOnly: Bool = false) async {
+    private func presentRandomInteraction(manual: Bool, quizOnly: Bool = false, contentOnly: Bool = false) async {
         interactionTimer?.invalidate()
         interactionTimer = nil
         guard hasPremiumAccess else { return }
@@ -456,37 +456,62 @@ final class PetWindowController {
         interactionStartEntryCount = interactions.journalEntries.count
         interactionGeneration += 1
         let generation = interactionGeneration
+        let scope = interactions.dailyScope
         ensureDailyScope()
         do {
             if !manual, !quizOnly, tryShowWorkCheckIn() { return }
-            let moodDue = !quizOnly && dailyMoodDue(manual: manual)
-            if moodDue, interactions.cachedContentCount == 0 || Int.random(in: 0..<4) == 0 {
+            let moodDue = !manual && !quizOnly && !contentOnly && dailyMoodDue(manual: manual)
+            if moodDue, Int.random(in: 0..<4) == 0 {
                 showMoodInteraction(manual: manual)
                 return
             }
-            if quizOnly ? interactions.cachedQuizCount == 0 : interactions.cachedContentCount == 0 {
-                _ = try await interactions.refill(quizOnly: quizOnly)
+            if manual {
+                showInteraction(title: "正在获取线上内容", message: "正在联网取来这一题，请稍候。", choices: []) { [weak self] _ in
+                    self?.finishInteraction(countUnanswered: false)
+                }
             }
+            let item = try await interactions.fetchNextContent(quizOnly: quizOnly)
             guard generation == interactionGeneration else { return }
-            guard window.isVisible, theaterTask == nil, interactionActive,
-                  !isTeaching, manual || (!isQuiet && !settings.clickThrough && settings.randomInteractionsEnabled) else {
-                finishInteraction()
+            guard scope == interactions.dailyScope, hasPremiumAccess, window.isVisible,
+                  theaterTask == nil, interactionActive, !isTeaching,
+                  manual || (!isQuiet && !isGentle && !settings.clickThrough && settings.randomInteractionsEnabled) else {
+                finishInteraction(countUnanswered: false)
                 return
             }
-            guard let item = interactions.takeNextContent(quizOnly: quizOnly) else {
-                if moodDue {
-                    showMoodInteraction(manual: manual)
-                } else {
-                    if manual { showBubble("这会儿还没找到合适的小乐趣，稍后再来找我吧。") }
-                    finishInteraction()
-                }
+            guard let item else {
+                showContentUnavailable(manual: manual, quizOnly: quizOnly,
+                    message: "线上内容库暂时没有可用的新内容，稍后再来试试吧。")
                 return
             }
             showContentInteraction(item)
+            if interactionPanel.window?.isVisible == true {
+                interactions.recordContentShown(item)
+            } else {
+                finishInteraction(countUnanswered: false)
+            }
         } catch {
             guard generation == interactionGeneration else { return }
-            if manual { showBubble(error.localizedDescription) }
-            finishInteraction()
+            guard scope == interactions.dailyScope, hasPremiumAccess, window.isVisible, interactionActive, !isTeaching else {
+                finishInteraction(countUnanswered: false)
+                return
+            }
+            showContentUnavailable(manual: manual, quizOnly: quizOnly,
+                message: "这次没能获取线上内容，请检查网络连接后重试。\n\n\(error.localizedDescription)")
+        }
+    }
+
+    private func showContentUnavailable(manual: Bool, quizOnly: Bool, message: String) {
+        guard manual else { finishInteraction(countUnanswered: false); return }
+        showInteraction(title: "暂时没能取到内容", message: message,
+            choices: [PetInteractionChoice("联网重试", "retry", isPrimary: true), PetInteractionChoice("稍后再来", "later")]
+        ) { [weak self] choice in
+            guard let self else { return }
+            finishInteraction(countUnanswered: false)
+            if choice?.value == "retry" {
+                Task { @MainActor [weak self] in
+                    await self?.presentRandomInteraction(manual: true, quizOnly: quizOnly, contentOnly: true)
+                }
+            }
         }
     }
 
@@ -775,12 +800,13 @@ final class PetWindowController {
             .caseInsensitiveCompare(answer.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
-    private func finishInteraction() {
+    private func finishInteraction(countUnanswered: Bool = true) {
         guard interactionActive else { return }
         interactionGeneration += 1
+        interactionPanel.dismiss(notifying: false)
         interactionActive = false
         if interactions.journalEntries.count > interactionStartEntryCount { unansweredInteractions = 0 }
-        else if !interactionWasManual { unansweredInteractions += 1 }
+        else if countUnanswered && !interactionWasManual { unansweredInteractions += 1 }
         if unansweredInteractions >= 2 {
             nextInteractionAllowedAt = Date().addingTimeInterval(30 * 60)
             unansweredInteractions = 0
@@ -1033,7 +1059,6 @@ final class PetWindowController {
                 )
                 applyInteractionProfile(profile)
                 try await interactions.flushEvents()
-                _ = try await interactions.refill()
             } catch {
                 // Periodic synchronization retries without interrupting the desktop pet.
             }

@@ -1,5 +1,7 @@
 # Windows 离线界面验收
 
+实时互动回归：`dotnet run --project windows/tests/ZhuoDazi.UiPreview -c Release -- --daily-smoke <输出目录>`。通过真实控制器和测试专用 Ed25519 签名的内存 HTTP 响应，验证每次互动请求一条线上内容、题型与历史排除、实时更新、断网/空库/无效签名不回退旧题、取消后迟到响应不显示，以及后台同步不阻塞取题。保留日常记录、答题计数和周月总结界面回归；输出 `daily-flow-results.txt`、`realtime-content-results.txt` 与界面截图。全部请求都由测试处理器拦截，不访问线上服务。
+
 激活页回归：`dotnet run --project windows/tests/ZhuoDazi.UiPreview -c Release -- --activation-check <输出目录>`。使用离屏真实 WPF 激活窗口和内存模拟后台，验证动态文案、微信号、设备码、内置二维码回退及指定设备授权同步，输出 `activation-window.png` 与 `activation-check.txt`，完成后自动退出；不读取正式授权或请求生产服务。
 
 运行 `dotnet run --project windows/tests/ZhuoDazi.UiPreview -c Release`。验收结束时，在此验收进程的托盘菜单点击“退出桌搭子”；设置窗口右上角的关闭按钮只隐藏窗口，不结束进程。

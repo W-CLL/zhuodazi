@@ -24,7 +24,6 @@ enum InteractionError: LocalizedError {
 final class InteractionService {
     private struct ProfileEnvelope: Decodable { let profile: InteractionProfile }
     private struct ProfileUpdate: Encodable { let mode: String; let promptsEnabled: Bool }
-    private struct BatchRequest: Encodable { let types: [String]; let limit: Int; let excludeIds: [String] }
     private struct EventBatch: Encodable { let events: [InteractionEventRecord] }
     private struct ErrorEnvelope: Decodable { let error: String?; let message: String? }
 
@@ -34,7 +33,6 @@ final class InteractionService {
     private static let publicKeySPKI = DeskPetApi.signingPublicKeySPKI
     private static let maximumResponseBytes = 20 * 1024 * 1024
     private static let maximumSignedPayloadBytes = 16 * 1024 * 1024
-    private static let targetCacheSize = 60
     private static let eventBatchSize = 50
 
     private let licenses: LicenseService
@@ -64,15 +62,6 @@ final class InteractionService {
 
     deinit { session.invalidateAndCancel() }
 
-    var cachedContentCount: Int {
-        switchAccountIfNeeded()
-        return state.items.count
-    }
-    var cachedQuizCount: Int {
-        switchAccountIfNeeded()
-        return state.items.filter { ["math", "trivia", "riddle"].contains($0.type) }.count
-    }
-
     var pendingEventCount: Int {
         switchAccountIfNeeded()
         return state.pendingEvents.count
@@ -96,20 +85,14 @@ final class InteractionService {
         save()
     }
 
-    func takeNextContent(quizOnly: Bool = false) -> InteractionContentItem? {
+    func recordContentShown(_ item: InteractionContentItem) {
+        guard InteractionRules.isValidItem(item) else { return }
         switchAccountIfNeeded()
-        guard !state.items.isEmpty else { return nil }
-        let eligible = state.items.filter { !quizOnly || ["math", "trivia", "riddle"].contains($0.type) }
-        var candidates = eligible.filter { $0.type != state.lastPromptType }
-        if candidates.isEmpty { candidates = eligible }
-        guard let selected = candidates.randomElement() else { return nil }
-        state.items.removeAll { $0.id == selected.id }
-        state.shown.removeAll { $0.id == selected.id }
-        state.shown.insert(InteractionShownContent(id: selected.id), at: 0)
-        state.lastPromptType = selected.type
-        addEvent(InteractionEventRecord(type: "content_shown", contentId: selected.id))
+        state.shown.removeAll { $0.id == item.id }
+        state.shown.insert(InteractionShownContent(id: item.id), at: 0)
+        state.lastPromptType = item.type
+        addEvent(InteractionEventRecord(type: "content_shown", contentId: item.id))
         save()
-        return selected
     }
 
     @discardableResult func recordMood(_ mood: String) -> Bool {
@@ -179,35 +162,32 @@ final class InteractionService {
         }
     }
 
-    func refill(quizOnly: Bool = false) async throws -> Int {
-        await acquireNetwork()
-        defer { releaseNetwork() }
+    func fetchNextContent(quizOnly: Bool = false) async throws -> InteractionContentItem? {
+        // Fetch independently of background profile/event sync, never from an item cache.
         switchAccountIfNeeded()
         let accountKey = activeAccountKey
-        var totalAdded = 0
-
-        for _ in 0..<2 {
-            guard quizOnly ? cachedQuizCount < 15 : state.items.count < Self.targetCacheSize else { break }
-            let exclusions = Array(Set(state.items.map(\.id) + state.shown.map(\.id))).prefix(500).map { $0 }
-            var request = URLRequest(url: Self.batchURL)
-            request.httpMethod = "POST"
-            request.timeoutInterval = 35
-            request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try encoder.encode(BatchRequest(
-                types: quizOnly ? ["math", "trivia", "riddle"] : InteractionRules.contentTypes,
-                limit: 30,
-                excludeIds: exclusions
-            ))
-            try authorize(&request)
-            let envelope: SignedContentEnvelope = try await send(request)
-            let payload = try validate(envelope, expectedKind: "batch")
-            switchAccountIfNeeded()
-            guard activeAccountKey == accountKey else { return totalAdded }
-            let added = apply(payload, replacing: false)
-            totalAdded += added
-            if added == 0 { break }
+        state = InteractionRules.normalizeCache(state)
+        let body = RealtimeContentRequest(quizOnly: quizOnly, shown: state.shown, lastPromptType: state.lastPromptType)
+        var request = URLRequest(url: Self.batchURL, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 35
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        try authorize(&request)
+        let envelope: SignedContentEnvelope = try await send(request)
+        let payload = try validate(envelope, expectedKind: "batch")
+        switchAccountIfNeeded()
+        guard activeAccountKey == accountKey, !Task.isCancelled else { throw CancellationError() }
+        guard InteractionRules.isValidRealtimePayload(payload, request: body),
+              payload.catalogVersion >= state.catalogVersion else {
+            throw InteractionError.invalidContent("互动内容目录格式或版本无效")
         }
-        return totalAdded
+        state.catalogVersion = payload.catalogVersion
+        state.catalogUpdatedAt = payload.catalogUpdatedAt
+        save()
+        return payload.items.first {
+            !payload.disabledIds.contains($0.id) && !body.excludeIds.contains($0.id)
+        }
     }
 
     @discardableResult func recordDailyEntry(_ entry: DailyEntry) -> Bool {
@@ -237,28 +217,6 @@ final class InteractionService {
             state.pendingEvents.removeAll { sentIds.contains($0.eventId.lowercased()) }
             save()
         }
-    }
-
-    private func apply(_ payload: SignedContentPayload, replacing: Bool) -> Int {
-        guard payload.catalogVersion >= state.catalogVersion else { return 0 }
-        let disabled = Set(payload.disabledIds)
-        let shown = Set(state.shown.map(\.id))
-        var existing: [String: InteractionContentItem] = replacing ? [:] : Dictionary(uniqueKeysWithValues: state.items
-            .filter { !disabled.contains($0.id) }.map { ($0.id, $0) })
-        var added = 0
-        for item in payload.items where !disabled.contains(item.id) && !shown.contains(item.id) {
-            if let current = existing[item.id] {
-                if item.revision > current.revision { existing[item.id] = item }
-            } else {
-                existing[item.id] = item
-                added += 1
-            }
-        }
-        state.items = existing.values.sorted { ($0.type, $0.id) < ($1.type, $1.id) }
-        state.catalogVersion = payload.catalogVersion
-        state.catalogUpdatedAt = payload.catalogUpdatedAt
-        save()
-        return added
     }
 
     private func validate(_ envelope: SignedContentEnvelope, expectedKind: String) throws -> SignedContentPayload {
@@ -332,6 +290,7 @@ final class InteractionService {
         activeJournal = DailyJournal(url: url.deletingLastPathComponent().appendingPathComponent("daily-" + url.lastPathComponent))
         cacheStore = store
         state = store.load()
+        save()
     }
 
     private static func cacheURL(for accountKey: String) throws -> URL {
