@@ -215,8 +215,10 @@ internal static class DailyFlowChecks
             requestsWhileLoading = contentHandler.BatchRequests.Count;
             controller.StartQuizInteraction();
             await Settle(pet);
-            Require(contentHandler.BatchRequests.Count == requestsWhileLoading,
-                "Repeated clicks while loading cannot start duplicate content requests.");
+            Require(contentHandler.BatchRequests.Count == requestsWhileLoading && pet.IsInteractionVisible
+                && ((TextBlock)pet.FindName("InteractionTitle")).Text == "线上互动"
+                && ChoiceButtons(pet).Any(button => ((PetInteractionChoice)button.Tag).Value == "cancel"),
+                "Repeated clicks while loading preserve the cancellable loading card without duplicate content requests.");
             ClickChoice(pet, "cancel");
             await Settle(pet);
             Require(!pet.IsInteractionVisible, "Cancelling a pending live request closes its loading card.");

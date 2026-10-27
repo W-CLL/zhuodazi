@@ -196,6 +196,9 @@ public sealed partial class AppController
     private bool PrepareManualScene()
     {
         if (IsGuideActive) { _guideWindow?.Activate(); return false; }
+        // The loading card already offers cancellation. Repeated entry clicks
+        // must leave it usable instead of opening a blocking busy dialog.
+        if (_interactionFetchCancellation is not null) return false;
         if (_interactionActive || _theaterActive || _visitorQueue.IsShowing || GuideBusy)
         {
             ShowActionMessage("先玩完这一轮吧。");
