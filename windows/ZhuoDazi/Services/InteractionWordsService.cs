@@ -71,6 +71,14 @@ public static class InteractionWordsService
         return result;
     }
 
+    internal static Dictionary<string, List<string>> ParseContent(string content)
+    {
+        var words = ParseJson(content);
+        if (words.Sum(item => item.Value.Count) == 0)
+            throw new InvalidOperationException("词包中没有识别到可用台词。");
+        return words;
+    }
+
     private static Dictionary<string, List<string>> ParseText(string content)
     {
         var result = NewDictionary();

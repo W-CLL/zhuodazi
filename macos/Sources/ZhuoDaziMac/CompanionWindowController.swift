@@ -6,6 +6,7 @@ final class CompanionWindowController: NSWindowController {
     private let sendCurrentGIF: () async throws -> Void
     private let currentGIFURL: () -> URL?
     private let isActivated: () -> Bool
+    private let isSendingCurrentGIF: () -> Bool
     private let stateChanged: () -> Void
     private let status = NSTextField(wrappingLabelWithString: "正在连接搭子服务…")
     private let nameField = NSTextField(string: "")
@@ -16,11 +17,12 @@ final class CompanionWindowController: NSWindowController {
     private let unpairButton = NSButton(title: "解除绑定", target: nil, action: nil)
     private var loading = false
 
-    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, currentGIFURL: @escaping () -> URL?, isActivated: @escaping () -> Bool, stateChanged: @escaping () -> Void) {
+    init(service: CompanionService, sendCurrentGIF: @escaping () async throws -> Void, currentGIFURL: @escaping () -> URL?, isActivated: @escaping () -> Bool, isSendingCurrentGIF: @escaping () -> Bool, stateChanged: @escaping () -> Void) {
         self.service = service
         self.sendCurrentGIF = sendCurrentGIF
         self.currentGIFURL = currentGIFURL
         self.isActivated = isActivated
+        self.isSendingCurrentGIF = isSendingCurrentGIF
         self.stateChanged = stateChanged
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 600, height: 450),
@@ -117,12 +119,20 @@ final class CompanionWindowController: NSWindowController {
         }
     }
 
+    func refreshState() { render() }
+
     private func render() {
         let profile = service.profile
         nameField.stringValue = profile?.displayName ?? nameField.stringValue
         codeField.stringValue = profile?.pairingCode ?? ""
         if let partner = profile?.partner {
-            status.stringValue = "已和 \(partner.displayName) 绑定"
+            let presence: String
+            switch partner.online {
+            case true?: presence = "在线"
+            case false?: presence = "当前不在线"
+            case nil: presence = "在线状态暂不可用"
+            }
+            status.stringValue = "已和 \(partner.displayName) 绑定 · \(presence)"
             pairField.isHidden = true
             pairButton.isHidden = true
             sendButton.isHidden = false
@@ -139,7 +149,7 @@ final class CompanionWindowController: NSWindowController {
         for control in [nameField, codeField, pairField, pairButton, sendButton, unpairButton] {
             control.isEnabled = !loading && isActivated()
         }
-        sendButton.isEnabled = !loading && isActivated() && currentGIFURL() != nil
+        sendButton.isEnabled = !loading && !isSendingCurrentGIF() && isActivated() && currentGIFURL() != nil
     }
 
     private func run<T>(_ action: @escaping @MainActor () async throws -> T) {
@@ -154,6 +164,8 @@ final class CompanionWindowController: NSWindowController {
                 stateChanged()
             }
             do { _ = try await action() }
+            catch is CancellationError { }
+            catch let error as URLError where error.code == .cancelled { }
             catch { presentFriendlyError(error, title: "搭子联机") }
         }
     }

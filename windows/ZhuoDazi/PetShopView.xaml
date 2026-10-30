@@ -1,0 +1,30 @@
+<UserControl x:Class="ZhuoDazi.PetShopView"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Background="#F7F9F8">
+ <UserControl.Resources>
+  <Style x:Key="ShopTab" TargetType="RadioButton">
+   <Setter Property="Cursor" Value="Hand"/><Setter Property="Margin" Value="0,0,10,0"/>
+   <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RadioButton">
+    <Border x:Name="Chip" CornerRadius="9" Padding="18,10" Background="White" BorderBrush="#D9E3DF" BorderThickness="1">
+     <ContentPresenter/>
+    </Border>
+    <ControlTemplate.Triggers><Trigger Property="IsChecked" Value="True">
+     <Setter TargetName="Chip" Property="Background" Value="#DDF1E9"/>
+     <Setter TargetName="Chip" Property="BorderBrush" Value="#78B9A7"/>
+     <Setter Property="Foreground" Value="#126452"/><Setter Property="FontWeight" Value="SemiBold"/>
+    </Trigger></ControlTemplate.Triggers>
+   </ControlTemplate></Setter.Value></Setter>
+  </Style>
+ </UserControl.Resources>
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+  <WrapPanel Margin="24,18,24,0">
+   <RadioButton Content="桌宠图鉴" Tag="pets" GroupName="ShopSections" IsChecked="True" Style="{StaticResource ShopTab}" Checked="Section_Checked"/>
+   <RadioButton Content="小剧场 / 互动词库" Tag="resources" GroupName="ShopSections" Style="{StaticResource ShopTab}" Checked="Section_Checked"/>
+  </WrapPanel>
+  <Grid Grid.Row="1">
+   <ContentControl x:Name="PetsContent"/>
+   <ContentControl x:Name="ResourcesContent" Visibility="Collapsed"/>
+  </Grid>
+ </Grid>
+</UserControl>

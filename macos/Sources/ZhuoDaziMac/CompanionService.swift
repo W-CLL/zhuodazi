@@ -4,6 +4,8 @@ import Foundation
 struct CompanionPartner: Decodable {
     let displayName: String
     let pairedAt: String?
+    // Older servers omit private presence; absence must not be treated as offline.
+    let online: Bool?
 }
 
 struct CompanionProfile: Decodable {

@@ -7,6 +7,11 @@ on:
         required: false
         type: string
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing draft release tag receiving the verified macOS packages
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -39,7 +44,8 @@ jobs:
 
       - name: Test macOS core logic
         run: |
-          swift test --package-path macos
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          swift test --package-path macos --arch "${{ matrix.arch }}"
           bash macos/scripts/test-device-heartbeat.sh
 
       - name: Read application version
@@ -51,12 +57,11 @@ jobs:
           ARCH_LABEL: ${{ matrix.arch }}
         run: bash macos/scripts/build-app.sh
 
-      - name: Verify package architecture
-        run: |
-          file "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/MacOS/ZhuoDazi"
-          codesign --verify --deep --strict "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app"
-          python3 scripts/check-default-pets.py --root "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/Resources/Pets/default"
-          test ! -d "macos/dist/ZhuoDazi-macOS-${APP_VERSION}-${{ matrix.arch }}.app/Contents/Resources/Pets/yuexinmiao"
+      - name: Verify application, uninstall helper, and archived package
+        env:
+          BUILD_ARCH: ${{ matrix.arch }}
+          ARCH_LABEL: ${{ matrix.arch }}
+        run: bash macos/scripts/verify-app.sh
 
       - name: Upload macOS package to platform draft release
         if: github.event_name != 'pull_request'

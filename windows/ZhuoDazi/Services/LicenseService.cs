@@ -8,6 +8,8 @@ namespace ZhuoDazi.Services;
 
 public sealed record TrialStatus(bool Allowed, int RemainingSeconds);
 
+internal sealed record InstallEventIdentity(string InstallationId, string Credential);
+
 public sealed class LicenseService : IDisposable
 {
     private const string ActivationUrl = DeskPetApi.Activate;
@@ -29,7 +31,9 @@ public sealed class LicenseService : IDisposable
     public bool IsTrialActive => !IsActivated && _trialActive && RemainingTrialSeconds > 0;
     public bool HasPremiumAccess => IsActivated || IsTrialActive;
     public string LicenseId => IsActivated ? _record.LicenseId! : string.Empty;
+    public string AccountId => IsActivated && Guid.TryParse(_record.AccountId, out _) ? _record.AccountId! : string.Empty;
     public string InstallationId => _record.InstallationId;
+    internal InstallEventIdentity InstallEventIdentity => new(_record.InstallationId, _record.Credential);
     internal string DataDirectory => Path.GetDirectoryName(_licensePath)!;
     public int RemainingTrialSeconds
     {
@@ -52,13 +56,29 @@ public sealed class LicenseService : IDisposable
         dataDirectory ??= Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "poko-desktop-pet");
         _licensePath = Path.Combine(dataDirectory, "license.dat");
-        _record = Load() ?? CreatePendingRecord();
+        _record = Load(_licensePath) ?? CreatePendingRecord();
         if (!IsValid(_record))
         {
             _record = CreatePendingRecord();
         }
         RestorePersistedTrial();
         Save();
+    }
+
+    private LicenseService(string licensePath, LicenseRecord record)
+    {
+        _licensePath = licensePath;
+        _record = record;
+        RestorePersistedTrial();
+    }
+
+    internal static LicenseService? TryOpenExisting(string? dataDirectory = null)
+    {
+        dataDirectory ??= Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "poko-desktop-pet");
+        var licensePath = Path.Combine(dataDirectory, "license.dat");
+        var record = Load(licensePath);
+        return record is not null && IsValid(record) ? new LicenseService(licensePath, record) : null;
     }
 
     public async Task ActivateAsync(
@@ -109,6 +129,7 @@ public sealed class LicenseService : IDisposable
             if (result is null || !Guid.TryParse(result.LicenseId, out _))
                 throw new InvalidOperationException("激活服务返回的授权无效。");
             candidate.LicenseId = result.LicenseId;
+            candidate.AccountId = Guid.TryParse(result.AccountId, out _) ? result.AccountId : null;
             candidate.ActivatedAt = result.ActivatedAt;
             candidate.TrialExpiresAt = null;
             DeviceCount = result.DeviceCount is > 0 and <= 2 ? result.DeviceCount : 1;
@@ -154,10 +175,21 @@ public sealed class LicenseService : IDisposable
             var result = JsonSerializer.Deserialize<TrialResponse>(responseBytes, JsonOptions);
             if (result is null) throw new InvalidOperationException("试用服务返回的数据无效。");
             // An activation can finish while the background trial request is in flight.
-            if (IsActivated) return new TrialStatus(false, 0);
+            if (IsActivated)
+            {
+                if (result.License is { } current
+                    && current.LicenseId.Equals(LicenseId, StringComparison.OrdinalIgnoreCase)
+                    && Guid.TryParse(current.AccountId, out _))
+                {
+                    _record.AccountId = current.AccountId;
+                    Save();
+                }
+                return new TrialStatus(false, 0);
+            }
             if (result.License is { } license && Guid.TryParse(license.LicenseId, out _))
             {
                 _record.LicenseId = license.LicenseId;
+                _record.AccountId = Guid.TryParse(license.AccountId, out _) ? license.AccountId : null;
                 _record.ActivatedAt = license.ActivatedAt;
                 _record.TrialExpiresAt = null;
                 DeviceCount = license.DeviceCount is > 0 and <= 2 ? license.DeviceCount : 1;
@@ -220,12 +252,22 @@ public sealed class LicenseService : IDisposable
         request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
     }
 
-    private LicenseRecord? Load()
+    internal bool AcceptSignedAccountId(string accountId)
+    {
+        if (!IsActivated || !Guid.TryParse(accountId, out _)) return false;
+        if (!string.IsNullOrWhiteSpace(_record.AccountId))
+            return _record.AccountId.Equals(accountId, StringComparison.OrdinalIgnoreCase);
+        _record.AccountId = accountId;
+        Save();
+        return true;
+    }
+
+    private static LicenseRecord? Load(string licensePath)
     {
         try
         {
-            if (!File.Exists(_licensePath)) return null;
-            var protectedBytes = File.ReadAllBytes(_licensePath);
+            if (!File.Exists(licensePath)) return null;
+            var protectedBytes = File.ReadAllBytes(licensePath);
             var json = ProtectedData.Unprotect(protectedBytes, OptionalEntropy, DataProtectionScope.CurrentUser);
             return JsonSerializer.Deserialize<LicenseRecord>(json, JsonOptions);
         }
@@ -313,7 +355,8 @@ public sealed class LicenseService : IDisposable
         if (record.Version != 1 || record.InstallationId.Length != 32 || record.Credential.Length != 43) return false;
         if (!record.InstallationId.All(Uri.IsHexDigit)) return false;
         if (!record.Credential.All(character => char.IsLetterOrDigit(character) || character is '-' or '_')) return false;
-        return string.IsNullOrWhiteSpace(record.LicenseId) || Guid.TryParse(record.LicenseId, out _);
+        return (string.IsNullOrWhiteSpace(record.LicenseId) || Guid.TryParse(record.LicenseId, out _))
+            && (string.IsNullOrWhiteSpace(record.AccountId) || Guid.TryParse(record.AccountId, out _));
     }
 
     private static string Base64UrlEncode(byte[] value) => Convert.ToBase64String(value)
@@ -347,6 +390,9 @@ public sealed class LicenseService : IDisposable
         [JsonPropertyName("licenseId")]
         public string? LicenseId { get; set; }
 
+        [JsonPropertyName("accountId")]
+        public string? AccountId { get; set; }
+
         [JsonPropertyName("activatedAt")]
         public string? ActivatedAt { get; set; }
 
@@ -358,6 +404,9 @@ public sealed class LicenseService : IDisposable
     {
         [JsonPropertyName("licenseId")]
         public string LicenseId { get; set; } = string.Empty;
+
+        [JsonPropertyName("accountId")]
+        public string AccountId { get; set; } = string.Empty;
 
         [JsonPropertyName("activatedAt")]
         public string? ActivatedAt { get; set; }

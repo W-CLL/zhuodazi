@@ -25,6 +25,8 @@ jobs:
       - name: Run Windows checks
         shell: pwsh
         run: |
+          python scripts/check-release-consistency.py
+          if ($LASTEXITCODE -ne 0) { throw "Release metadata checks failed" }
           dotnet run --project windows/tests/DeviceHeartbeat.Checks/DeviceHeartbeat.Checks.csproj --configuration Release
           if ($LASTEXITCODE -ne 0) { throw "Device heartbeat checks failed" }
           dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
@@ -33,6 +35,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Daily journal checks failed" }
           dotnet run --project windows/tests/DailySummary.Checks/DailySummary.Checks.csproj --configuration Release
           if ($LASTEXITCODE -ne 0) { throw "Daily summary checks failed" }
+          $featureChecks = @(
+            'AppPreview.Checks', 'CompanionSend.Checks', 'ContentSelection.Checks',
+            'ConversationPresentation.Checks', 'PetMarketClient.Checks',
+            'PetMarketInstaller.Checks', 'PetMarketView.Checks', 'UninstallLifecycle.Checks'
+          )
+          foreach ($check in $featureChecks) {
+            dotnet run --project "windows/tests/$check/$check.csproj" --configuration Release
+            if ($LASTEXITCODE -ne 0) { throw "$check failed" }
+          }
           dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --library-check
           if ($LASTEXITCODE -ne 0) { throw "Default pet upgrade checks failed" }
           dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --daily-smoke "$env:RUNNER_TEMP/daily-smoke"
@@ -61,27 +72,20 @@ jobs:
             throw "Legacy default pets must not be packaged"
           }
 
-      - name: Smoke test installed application
+      - name: Verify installed application with isolated preview
         shell: pwsh
         run: |
           $installDirectory = Join-Path $env:RUNNER_TEMP "ZhuoDazi-install-smoke"
           $installer = Resolve-Path "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION.exe"
           $installProcess = Start-Process `
             -FilePath $installer `
-            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/DIR=$installDirectory", "/MERGETASKS=!desktopicon" `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOAPPSTART", "/DIR=$installDirectory", "/MERGETASKS=!desktopicon" `
             -PassThru
           $installProcess.WaitForExit()
 
           if ($installProcess.ExitCode -ne 0) {
             throw "Installer failed with exit code $($installProcess.ExitCode)"
           }
-
-          Start-Sleep -Seconds 3
-          $launchedApplication = Get-Process -Name "ZhuoDazi" -ErrorAction SilentlyContinue
-          if (-not $launchedApplication) {
-            throw "Silent installer did not restart the application"
-          }
-          $launchedApplication | Stop-Process -Force
 
           $application = Join-Path $installDirectory "app/ZhuoDazi.exe"
           if (-not (Test-Path -LiteralPath $application)) {
@@ -95,35 +99,13 @@ jobs:
             throw "Unexpected entries in the installation root: $names"
           }
 
-          $process = Start-Process -FilePath $application -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 5
-          $process.Refresh()
+          ./windows/scripts/test-package-offline.ps1 -ApplicationPath $application -DataDirectory "$env:RUNNER_TEMP/installed-preview"
 
-          if ($process.HasExited -and $process.ExitCode -ne 0) {
-            $hexExitCode = "{0:X8}" -f ($process.ExitCode -band 0xffffffff)
-            throw "Installed application exited during startup: $($process.ExitCode) / 0x$hexExitCode"
-          }
-
-          if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-          }
-
-      - name: Smoke test published application
+      - name: Verify published application with isolated preview
         shell: pwsh
         run: |
           $application = Resolve-Path "windows/publish/win-x64/ZhuoDazi.exe"
-          $process = Start-Process -FilePath $application -PassThru -WindowStyle Hidden
-          Start-Sleep -Seconds 5
-          $process.Refresh()
-
-          if ($process.HasExited -and $process.ExitCode -ne 0) {
-            $hexExitCode = "{0:X8}" -f ($process.ExitCode -band 0xffffffff)
-            throw "Published application exited during startup: $($process.ExitCode) / 0x$hexExitCode"
-          }
-
-          if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-          }
+          ./windows/scripts/test-package-offline.ps1 -ApplicationPath $application -DataDirectory "$env:RUNNER_TEMP/published-preview"
 
       - name: Build portable archive
         shell: pwsh

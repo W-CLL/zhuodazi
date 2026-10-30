@@ -19,9 +19,11 @@ public partial class SettingsWindow : Window
     private bool _feedbackLoading;
     private bool _companionLoading;
     private bool _hallLoading;
+    private bool _sourceSelectionBusy;
     private DateTimeOffset _hallSendAllowedAt;
     private readonly System.Windows.Threading.DispatcherTimer _hallClock = new() { Interval = TimeSpan.FromSeconds(1) };
     private string? _editingReminderId;
+    private PetShopView? _petMarketView;
 
     public SettingsWindow(AppController controller)
     {
@@ -39,7 +41,14 @@ public partial class SettingsWindow : Window
         Closing += OnClosing;
         _hallClock.Tick += (_, _) => { RefreshHallSendButton(); RefreshDailySummaryClock(); };
         _hallClock.Start();
-        Closed += (_, _) => _hallClock.Stop();
+        Closed += (_, _) =>
+        {
+            _hallClock.Stop();
+            _petMarketView?.Dispose();
+            _controller.StateChanged -= Controller_StateChanged;
+            _controller.TrialClockChanged -= Controller_TrialClockChanged;
+            _controller.Updates.StateChanged -= Updates_StateChanged;
+        };
         var nextReminder = ReminderSchedule.DefaultTime(DateTime.Now);
         ReminderDatePicker.SelectedDate = nextReminder.Date;
         ReminderHourCombo.ItemsSource = Enumerable.Range(0, 24)
@@ -52,7 +61,7 @@ public partial class SettingsWindow : Window
 
     public void ShowInteractionTab()
     {
-        MainTabs.SelectedIndex = 1;
+        MainTabs.SelectedItem = InteractionTab;
         Show();
         Activate();
     }
@@ -60,6 +69,13 @@ public partial class SettingsWindow : Window
     public void ShowHallTab()
     {
         MainTabs.SelectedItem = HallTab;
+        Show();
+        Activate();
+    }
+
+    public void ShowPetMarketTab()
+    {
+        MainTabs.SelectedItem = PetMarketTab;
         Show();
         Activate();
     }
@@ -171,48 +187,47 @@ public partial class SettingsWindow : Window
         PetList.SelectedItem = settings.Pets.FirstOrDefault(item => item.Id == settings.ActivePetId);
         PetCountText.Text = $"已添加 {settings.Pets.Count}/3 个自定义桌宠";
 
+        var selectedLibraryId = (LibraryList.SelectedItem as LibraryListItem)?.Id;
         var libraryItems = new List<LibraryListItem>
         {
-            new(null, "默认桌宠", "内置桌宠图鉴", true)
+            new(null, "默认桌宠", "使用内置图鉴，停用其他来源", true, _controller.EnabledPetSourceCount == 0)
         };
         libraryItems.AddRange(settings.Libraries.Select(item => new LibraryListItem(
-            item.Id, item.Name, item.Path, false)));
+            item.Id, item.Name, "本地桌宠", false, settings.EnabledLibraryIds?.Contains(item.Id) == true)));
+        libraryItems.AddRange(settings.PetMarketInstallations.Select(item => new LibraryListItem(
+            item.ProductId, item.Title, $"小铺桌宠 · {item.Files.Count} 个动作", false,
+            _controller.IsMarketProductEnabled(item.ProductId), true)));
         LibraryList.ItemsSource = libraryItems;
-        // 配置里的 ActiveLibraryId 可能指向已被删除的目录，此时回落到内置图鉴，
-        // 不能用 First()——找不到会抛 InvalidOperationException 打断整个刷新。
-        LibraryList.SelectedItem = premium
-            ? libraryItems.FirstOrDefault(item => item.Id == settings.ActiveLibraryId) ?? libraryItems[0]
-            : libraryItems[0];
+        LibraryList.SelectedItem = libraryItems.FirstOrDefault(item => item.Id == selectedLibraryId) ?? libraryItems[0];
         LibrarySummary.Text = premium
-            ? $"已绑定 {settings.Libraries.Count}/3 个目录 · 当前 {_controller.LibraryName} · {_controller.LibraryCount} 个 GIF"
+            ? $"已启用 {_controller.EnabledPetSourceCount}/3 个来源 · {_controller.LibraryCount} 个 GIF 参与切换"
             : $"正在使用内置图鉴 · {_controller.LibraryCount} 个 GIF";
-        LibraryPathText.Text = _controller.LibraryPath;
-        DeleteLibraryButton.IsEnabled = settings.ActiveLibraryId is not null;
+        DeleteLibraryButton.IsEnabled = LibraryList.SelectedItem is LibraryListItem { IsBuiltIn: false, IsMarket: false };
         RandomPetCheck.IsChecked = settings.RandomPetEnabled;
         foreach (var item in RandomIntervalCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == settings.RandomPetIntervalSeconds.ToString(CultureInfo.InvariantCulture)) item.IsSelected = true;
 
+        var selectedWordPackId = (WordPackList.SelectedItem as WordPackListItem)?.Id;
         var wordPackItems = new List<WordPackListItem>
         {
-            new(null, "日常悄悄话", "小搭子的问候与碎碎念", true)
+            new(null, "日常悄悄话", "仅使用内置台词，停用其他词库", true, _controller.EnabledInteractionWordPacks.Count == 0)
         };
         wordPackItems.AddRange(settings.InteractionWordPacks.Select(item => new WordPackListItem(
-            item.Id, item.Name, $"{item.WordCount} 条互动台词", false)));
+            item.Id, item.Name, $"{item.WordCount} 条互动台词 · {(item.Enabled ? "已启用" : "待启用")}", false,
+            item.Enabled || item.Id == settings.ActiveInteractionWordPackId)));
         WordPackList.ItemsSource = wordPackItems;
-        WordPackList.SelectedItem = premium
-            ? wordPackItems.FirstOrDefault(item => item.Id == settings.ActiveInteractionWordPackId) ?? wordPackItems[0]
-            : wordPackItems[0];
-        WordPackSummary.Text = $"已收藏 {settings.InteractionWordPacks.Count}/5 套 · 当前 {(_controller.ActiveInteractionWordPack?.Name ?? "日常悄悄话")}";
-        DeleteWordPackButton.IsEnabled = settings.ActiveInteractionWordPackId is not null;
+        WordPackList.SelectedItem = wordPackItems.FirstOrDefault(item => item.Id == selectedWordPackId) ?? wordPackItems[0];
+        WordPackSummary.Text = $"已收藏 {settings.InteractionWordPacks.Count} 套 · 已启用 {_controller.EnabledInteractionWordPacks.Count}/10 套";
+        DeleteWordPackButton.IsEnabled = WordPackList.SelectedItem is WordPackListItem { Id: not null };
 
         var selectedTheaterScriptId = (TheaterScriptList.SelectedItem as TheaterScriptListItem)?.Id;
         var theaterScriptItems = settings.TheaterScripts.Select(item => new TheaterScriptListItem(
-            item.Id, item.Name, $"{item.Scenes.Count} 轮对白")).ToList();
+            item.Id, item.Name, $"{item.Scenes.Count} 轮对白 · {(item.Enabled ? "已启用" : "待启用")}", item.Enabled)).ToList();
         TheaterScriptList.ItemsSource = theaterScriptItems;
         TheaterScriptList.SelectedItem = theaterScriptItems.FirstOrDefault(item => item.Id == selectedTheaterScriptId);
         TheaterScriptSummary.Text = settings.TheaterScripts.Count == 0
             ? "尚未导入剧本，演出将使用内置性格对白"
-            : $"已导入 {settings.TheaterScripts.Count}/10 个剧本 · 每次演出随机抽取";
+            : $"已收藏 {settings.TheaterScripts.Count} 个剧本 · 已启用 {settings.TheaterScripts.Count(item => item.Enabled)}/10 个";
         DeleteTheaterScriptButton.IsEnabled = TheaterScriptList.SelectedItem is not null;
 
         var selectedReminderId = _editingReminderId;
@@ -240,14 +255,14 @@ public partial class SettingsWindow : Window
                 ? $"已和 {partner.DisplayName} 绑定"
                 : "电脑和手机是同一对搭子码，不用重新绑定。分享给对方，或输入对方的搭子码";
         CompanionPartnerText.Text = companionProfile?.Partner is { } currentPartner
-            ? $"{currentPartner.DisplayName} · 收到的 GIF 会作为独立桌宠出现"
+            ? $"{currentPartner.DisplayName} · {currentPartner.Online switch { true => "在线", false => "离线", _ => "状态待确认" }} · 收到的 GIF 会作为独立桌宠出现"
             : "尚未绑定";
         CompanionEmptyHint.Visibility = companionProfile?.Partner is null ? Visibility.Visible : Visibility.Collapsed;
         var sendPreviewPath = _controller.CurrentPetPath();
         CompanionPreviewImage.FilePath = sendPreviewPath;
         CompanionSendPreview.Visibility = companionProfile?.Partner is not null && File.Exists(sendPreviewPath)
             ? Visibility.Visible : Visibility.Collapsed;
-        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading && !_controller.IsLocalPreview;
+        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading && !_controller.IsCompanionSending && !_controller.IsLocalPreview;
         CompanionNameText.IsEnabled = companionEnabled;
         SaveCompanionNameButton.IsEnabled = companionEnabled;
         CompanionCodeText.IsEnabled = companionEnabled;
@@ -449,7 +464,6 @@ public partial class SettingsWindow : Window
 
     private void ChooseLibrary_Click(object sender, RoutedEventArgs e)
     {
-        if (_controller.Settings.Libraries.Count >= 3) { WpfMessageBox.Show(this, "外部图鉴已满（3/3），请先删除一个目录。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("外部 GIF 资源库", this)) return;
         using var dialog = new Forms.FolderBrowserDialog { Description = "选择桌宠图鉴的 GIF 文件夹", UseDescriptionForTitle = true };
         if (dialog.ShowDialog() != Forms.DialogResult.OK) return;
@@ -459,12 +473,49 @@ public partial class SettingsWindow : Window
     private void LibraryList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_refreshing || LibraryList.SelectedItem is not LibraryListItem item) return;
-        RunUiAction(() => _controller.SelectLibrary(item.Id));
+        DeleteLibraryButton.IsEnabled = !item.IsBuiltIn && !item.IsMarket;
+    }
+
+    private async void LibraryEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing || sender is not System.Windows.Controls.CheckBox { Tag: LibraryListItem item } checkbox) return;
+        if (_sourceSelectionBusy) { RefreshAll(); return; }
+        _sourceSelectionBusy = true;
+        try
+        {
+            var enable = checkbox.IsChecked == true;
+            if (!item.IsMarket) _controller.SetLibraryEnabled(item.Id, enable);
+            else if (item.Id is { } productId)
+            {
+                if (!enable) _controller.DisableMarketProduct(productId);
+                else if (_controller.FindMarketInstallation(productId) is { } installation)
+                    await _controller.UseMarketProductAsync(installation, CancellationToken.None);
+            }
+        }
+        catch (Exception error)
+        {
+            WpfMessageBox.Show(this, NetworkConnectionErrors.ForUser(error, "桌宠启用未完成，请重试。"), "未完成", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        finally { _sourceSelectionBusy = false; RefreshAll(); }
+    }
+
+    private void WordPackEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing || sender is not System.Windows.Controls.CheckBox { Tag: WordPackListItem item } checkbox) return;
+        RunUiAction(() => _controller.SetInteractionWordPackEnabled(item.Id, checkbox.IsChecked == true));
+        RefreshAll();
+    }
+
+    private void TheaterEnabled_Click(object sender, RoutedEventArgs e)
+    {
+        if (_refreshing || sender is not System.Windows.Controls.CheckBox { Tag: TheaterScriptListItem item } checkbox) return;
+        RunUiAction(() => _controller.SetTheaterScriptEnabled(item.Id, checkbox.IsChecked == true));
+        RefreshAll();
     }
 
     private void DeleteLibrary_Click(object sender, RoutedEventArgs e)
     {
-        if (LibraryList.SelectedItem is not LibraryListItem { Id: not null } item) return;
+        if (LibraryList.SelectedItem is not LibraryListItem { Id: not null, IsMarket: false } item) return;
         if (WpfMessageBox.Show(this, $"删除资源库“{item.Name}”？", "删除资源库",
             MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         RunUiAction(() => _controller.DeleteLibrary(item.Id));
@@ -489,9 +540,8 @@ public partial class SettingsWindow : Window
 
     private void ImportWords_Click(object sender, RoutedEventArgs e)
     {
-        if (_controller.Settings.InteractionWordPacks.Count >= 5) { WpfMessageBox.Show(this, "词包已满（5/5），请先删除一套。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("互动词包导入", this)) return;
-        var dialog = new WpfOpenFileDialog { Title = $"导入互动词包（还可添加 {5 - _controller.Settings.InteractionWordPacks.Count} 套）", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = true };
+        var dialog = new WpfOpenFileDialog { Title = "批量导入互动词库（导入后手动勾选启用）", Filter = "词包 (*.json;*.txt)|*.json;*.txt", Multiselect = true };
         if (dialog.ShowDialog(this) != true) return;
         RunUiAction(() => _controller.ImportInteractionWords(dialog.FileNames));
     }
@@ -499,7 +549,7 @@ public partial class SettingsWindow : Window
     private void WordPackList_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_refreshing || WordPackList.SelectedItem is not WordPackListItem item) return;
-        RunUiAction(() => _controller.SelectInteractionWordPack(item.Id));
+        DeleteWordPackButton.IsEnabled = item.Id is not null;
     }
 
     private void DeleteWordPack_Click(object sender, RoutedEventArgs e)
@@ -515,11 +565,10 @@ public partial class SettingsWindow : Window
 
     private void ImportTheaterScript_Click(object sender, RoutedEventArgs e)
     {
-        if (_controller.Settings.TheaterScripts.Count >= 10) { WpfMessageBox.Show(this, "剧本已满（10/10），请先删除一个剧本。", "已达到容量上限"); return; }
         if (!_controller.RequestPremiumAccess("小剧场剧本导入", this)) return;
         var dialog = new WpfOpenFileDialog
         {
-            Title = $"导入小剧场剧本（还可添加 {10 - _controller.Settings.TheaterScripts.Count} 个）",
+            Title = "批量导入小剧场（导入后手动勾选启用）",
             Filter = "小剧场剧本 (*.json)|*.json",
             Multiselect = true
         };
@@ -666,7 +715,12 @@ public partial class SettingsWindow : Window
     private async void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
-        if (MainTabs.SelectedItem == FeedbackTab) await LoadFeedbackAsync();
+        if (MainTabs.SelectedItem == PetMarketTab)
+        {
+            _petMarketView ??= new PetShopView(_controller);
+            PetMarketContent.Content = _petMarketView;
+        }
+        else if (MainTabs.SelectedItem == FeedbackTab) await LoadFeedbackAsync();
         else if (MainTabs.SelectedItem == CompanionTab) await LoadCompanionAsync();
         else if (MainTabs.SelectedItem == HallTab) await LoadHallAsync();
         else if (MainTabs.SelectedItem == DailyJournalTab) RefreshDailyJournal();
@@ -760,7 +814,7 @@ public partial class SettingsWindow : Window
         {
             await _controller.SendCurrentGifToHallAsync(person.Id, CompanionHallMessageText.Text);
             CompanionHallMessageText.Clear();
-            _hallSendAllowedAt = DateTimeOffset.UtcNow.AddSeconds(30);
+            _hallSendAllowedAt = DateTimeOffset.UtcNow.AddSeconds(15);
             HallResultText.Text = $"已发出，正在投递给 {person.DisplayName}。这不代表对方已经查看。";
             HallResultText.Visibility = Visibility.Visible;
         });
@@ -796,7 +850,14 @@ public partial class SettingsWindow : Window
         => await RunCompanionActionAsync(() => _controller.PairCompanionAsync(PairCodeText.Text), clearPairCode: true, success: "已完成配对，可以把当前 GIF 发给搭子了。");
 
     private async void SendCompanionGif_Click(object sender, RoutedEventArgs e)
-        => await RunCompanionActionAsync(() => _controller.SendCurrentGifToCompanionAsync(), success: "GIF 已发出，等待对方设备接收；这不代表对方已经查看。");
+        => await RunCompanionActionAsync(async () =>
+        {
+            if (await _controller.SendCurrentGifToCompanionAsync())
+            {
+                CompanionResultText.Text = "GIF 已发出，等待对方设备接收；这不代表对方已经查看。";
+                CompanionResultText.Visibility = Visibility.Visible;
+            }
+        });
 
     private async void UnpairCompanion_Click(object sender, RoutedEventArgs e)
     {
@@ -1096,7 +1157,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private sealed record LibraryListItem(string? Id, string Name, string Detail, bool IsBuiltIn);
-    private sealed record WordPackListItem(string? Id, string Name, string Detail, bool IsBuiltIn);
-    private sealed record TheaterScriptListItem(string Id, string Name, string Detail);
+    private sealed record LibraryListItem(string? Id, string Name, string Detail, bool IsBuiltIn, bool Enabled, bool IsMarket = false);
+    private sealed record WordPackListItem(string? Id, string Name, string Detail, bool IsBuiltIn, bool Enabled);
+    private sealed record TheaterScriptListItem(string Id, string Name, string Detail, bool Enabled);
 }

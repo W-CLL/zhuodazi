@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../ZhuoDazi/AppController.ContentSelection.cs" Link="AppController.ContentSelection.cs" />
+    <Compile Include="../../ZhuoDazi/Models/AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="../../ZhuoDazi/Models/PetMarketModels.cs" Link="PetMarketModels.cs" />
+    <Compile Include="../../ZhuoDazi/Models/OnboardingProgress.cs" Link="OnboardingProgress.cs" />
+  </ItemGroup>
+</Project>

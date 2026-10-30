@@ -14,7 +14,12 @@ public static class TheaterScriptService
         if (new FileInfo(filePath).Length > MaxFileBytes)
             throw new InvalidOperationException("小剧场剧本不能超过 256 KB。");
 
-        using var document = JsonDocument.Parse(File.ReadAllText(filePath));
+        return ParseContent(File.ReadAllText(filePath), Path.GetFileNameWithoutExtension(filePath));
+    }
+
+    internal static TheaterScriptDefinition ParseContent(string content, string fallbackName)
+    {
+        using var document = JsonDocument.Parse(content);
         var root = document.RootElement;
         if (root.ValueKind != JsonValueKind.Object
             || !root.TryGetProperty("scenes", out var scenesElement)
@@ -35,7 +40,7 @@ public static class TheaterScriptService
             throw new InvalidOperationException("剧本至少需要 3 组有效的 main/companion 对白。");
 
         var name = root.TryGetProperty("name", out var nameElement) ? CleanName(nameElement.ToString()) : string.Empty;
-        if (name.Length == 0) name = CleanName(Path.GetFileNameWithoutExtension(filePath));
+        if (name.Length == 0) name = CleanName(fallbackName);
         return new TheaterScriptDefinition { Name = name.Length > 0 ? name : "小剧场剧本", Scenes = scenes };
     }
 

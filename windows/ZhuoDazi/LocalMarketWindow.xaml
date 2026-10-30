@@ -1,0 +1,130 @@
+<Window x:Class="ZhuoDazi.LocalMarketWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="桌搭子 · 本地付款调试" Width="880" Height="800" MinWidth="760" MinHeight="640"
+        WindowStartupLocation="CenterScreen" Background="#F5F8F7" UseLayoutRounding="True"
+        FontFamily="Microsoft YaHei UI" TextOptions.TextFormattingMode="Display"
+        Icon="pack://application:,,,/ZhuoDazi;component/assets/app-icon.png"
+        Loaded="Window_Loaded" Closed="Window_Closed">
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="15,8" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#202323" />
+            <Setter Property="BorderBrush" Value="#D9DEDC" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#167D6C" />
+            <Setter Property="BorderBrush" Value="#167D6C" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#202323" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </Window.Resources>
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="28">
+            <TextBlock Text="本地 0.01 元收款测试" FontSize="25" FontWeight="SemiBold" />
+            <TextBlock Text="Windows 桌宠市场 · 下单 → 备注短码 → 订单确认 → 下载测试包"
+                       Foreground="#687470" Margin="0,7,0,6" />
+            <TextBlock x:Name="ConnectionText" Text="正在连接本机测试服务…" Foreground="#167D6C" />
+
+            <Border Background="White" BorderBrush="#DFE6E3" BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,20,0,0">
+                <StackPanel>
+                    <TextBlock x:Name="ProductTitleText" Text="桌宠角色包（本地测试）" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="商品规划：同一角色包含 25+ 动作或表情；普通款 ¥2.80，复杂或热门款 ¥5.80。"
+                               Foreground="#687470" Margin="0,7,0,0" />
+                    <TextBlock Text="本次仅测试 ¥0.01 付款和下载流程，下载内容为隔离测试包。" Margin="0,6,0,14" Foreground="#167D6C" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <TextBlock Text="付款方式" VerticalAlignment="Center" Margin="0,0,12,0" />
+                        <ComboBox x:Name="PaymentMethodBox" SelectedIndex="1" Width="180" MinHeight="32"
+                                  VerticalContentAlignment="Center" SelectionChanged="PaymentMethod_SelectionChanged">
+                            <ComboBoxItem Content="收款码" />
+                            <ComboBoxItem Content="好友转账" />
+                        </ComboBox>
+                    </StackPanel>
+                    <TextBlock x:Name="PaymentMethodHintText" Text="选择收款码图片后下单，扫码时填写订单短码。"
+                               Foreground="#687470" Margin="0,0,0,12" />
+                    <WrapPanel>
+                        <Button x:Name="ChooseQrButton" Content="选择本地收款码图片" Click="ChooseQr_Click" Margin="0,0,10,0" />
+                        <Button x:Name="CreateOrderButton" Content="下单 · ¥0.01" Style="{StaticResource PrimaryButton}"
+                                Click="CreateOrder_Click" IsEnabled="False" Margin="0,0,10,0" />
+                        <Button x:Name="ReconnectButton" Content="刷新连接" Click="Reconnect_Click" />
+                    </WrapPanel>
+                    <TextBlock x:Name="QrFileText" Text="请先选择你生成的 0.01 元收款码（PNG / JPG）。" Foreground="#687470" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="PaymentPanel" Visibility="Collapsed" Background="White" BorderBrush="#B8DACE"
+                    BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,16,0,0">
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="230"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <StackPanel x:Name="QrVisualPanel">
+                        <Border Background="White" BorderBrush="#EDF0EE" BorderThickness="1" Padding="8">
+                            <Image x:Name="QrImage" Width="208" Height="208" Stretch="Uniform" />
+                        </Border>
+                        <TextBlock Text="请核对收款人和金额 ¥0.01" HorizontalAlignment="Center" Foreground="#687470" Margin="0,8,0,0" />
+                    </StackPanel>
+                    <Border x:Name="TransferInstructionsPanel" Visibility="Collapsed" Background="#F0F7F4"
+                            CornerRadius="8" Padding="16" VerticalAlignment="Top">
+                        <StackPanel>
+                            <TextBlock Text="好友转账测试" FontSize="17" FontWeight="SemiBold" Margin="0,0,0,12" />
+                            <TextBlock Text="1. 在微信打开当前收款方的聊天。&#x0a;&#x0a;2. 发起 ¥0.01 转账，将转账说明直接填写为右侧短码。&#x0a;&#x0a;3. 本地服务识别并匹配后，自动确认订单，开放测试包下载。&#x0a;&#x0a;桌搭子不会加好友或发送消息。"
+                                       Foreground="#53665E" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="24,0,0,0">
+                        <TextBlock x:Name="ReferencePromptText" Text="付款前，请在微信备注中输入" FontSize="14" />
+                        <TextBlock x:Name="ReferenceText" FontFamily="Consolas" FontSize="46" FontWeight="Bold" Foreground="#167D6C" Margin="0,8,0,2" />
+                        <WrapPanel>
+                            <Button Content="复制短码" Click="CopyReference_Click" Padding="12,5" />
+                            <TextBlock Text="3 个数字 + 2 个英文字母&#x0a;不区分大小写" Foreground="#687470" Margin="12,1,0,0" />
+                        </WrapPanel>
+                        <TextBlock x:Name="CountdownText" FontSize="18" FontWeight="SemiBold" Margin="0,17,0,0" />
+                        <TextBlock x:Name="PaymentInstructionsText" Text="到账核对后将开放下载。15 分钟未支付，订单自动过期并关闭此收款面板。"
+                                   Foreground="#687470" Margin="0,8,0,12" />
+                        <Button x:Name="CancelOrderButton" Content="取消本次订单" Click="CancelOrder_Click" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border x:Name="PaidPanel" Visibility="Collapsed" Background="#EAF6EF" BorderBrush="#BFDDCB"
+                    BorderThickness="1" CornerRadius="12" Padding="20" Margin="0,16,0,0">
+                <StackPanel>
+                    <TextBlock Text="订单已确认，可以下载测试资源包" FontSize="17" FontWeight="SemiBold" Foreground="#216540" />
+                    <TextBlock Text="当前提供的是流程测试 ZIP，不包含完整 25+ 桌宠素材，也不会自动安装。"
+                               Foreground="#53665E" Margin="0,8,0,0" />
+                    <Button x:Name="DownloadButton" Content="下载本地测试包" Click="Download_Click" HorizontalAlignment="Left" Margin="0,12,0,0" />
+                    <TextBox x:Name="DownloadPathText" Visibility="Collapsed" IsReadOnly="True" TextWrapping="Wrap"
+                             BorderThickness="0" Background="Transparent" Foreground="#216540" Margin="0,10,0,0" />
+                </StackPanel>
+            </Border>
+
+            <TextBlock x:Name="OrderInfoText" Foreground="#687470" Margin="0,14,0,0" />
+            <TextBlock x:Name="StatusText" Text="选择收款码后即可创建本地测试订单。" Margin="0,8,0,0" Foreground="#167D6C" />
+
+            <Expander x:Name="AdminSection" Header="本地开发 · 支付识别记录" Visibility="Collapsed" Margin="0,22,0,0">
+                <Border Background="White" BorderBrush="#DFE6E3" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,10,0,0">
+                    <StackPanel>
+                        <TextBlock Text="好友转账的金额、短码和订单匹配后，由本地服务自动确认订单；异常记录留待核对。收款码通知仍需人工核实到账。" Foreground="#687470" />
+                        <ListBox x:Name="PaymentEventsList" Height="170" Margin="0,12,0,10" SelectionChanged="PaymentEvents_SelectionChanged"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate><TextBlock Text="{Binding}" TextWrapping="Wrap" Padding="4" /></DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <WrapPanel>
+                            <Button x:Name="RefreshEventsButton" Content="刷新支付候选" Click="RefreshEvents_Click" Margin="0,0,10,0" />
+                            <Button x:Name="ConfirmPaymentButton" Content="确认已到账（仅本地测试）" Click="ConfirmPayment_Click" IsEnabled="False" Visibility="Collapsed" />
+                        </WrapPanel>
+                        <TextBlock x:Name="AdminStatusText" Text="好友转账按服务端匹配结果开放下载；收款码通知保留人工核对。" Foreground="#687470" Margin="0,10,0,0" />
+                    </StackPanel>
+                </Border>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</Window>

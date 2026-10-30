@@ -9,7 +9,8 @@ namespace ZhuoDazi.Services;
 
 public sealed record CompanionPartner(
     [property: JsonPropertyName("displayName")] string DisplayName,
-    [property: JsonPropertyName("pairedAt")] string? PairedAt);
+    [property: JsonPropertyName("pairedAt")] string? PairedAt,
+    [property: JsonPropertyName("online")] bool? Online = null);
 
 public sealed record CompanionProfile(
     [property: JsonPropertyName("displayName")] string DisplayName,
@@ -69,8 +70,11 @@ public sealed class CompanionService : IDisposable
 
     public async Task<CompanionProfile> RefreshProfileAsync(CancellationToken cancellationToken = default)
     {
+        var identity = InboxIdentity;
         using var request = CreateRequest(HttpMethod.Get, CompanionUrl);
-        Profile = await SendJsonAsync<CompanionProfile>(request, cancellationToken);
+        var profile = await SendJsonAsync<CompanionProfile>(request, cancellationToken);
+        EnsureInboxIdentity(identity);
+        Profile = profile;
         return Profile;
     }
 

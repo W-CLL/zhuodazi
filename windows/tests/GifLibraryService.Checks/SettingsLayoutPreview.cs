@@ -56,7 +56,7 @@ internal static class SettingsLayoutPreview
             if (scroll.ExtentWidth > scroll.ViewportWidth + 1) throw new InvalidOperationException("Hall layout requires horizontal scrolling.");
             scroll.ScrollToEnd();
             Render(root, width, height, Path.Combine(directory, $"hall-{width}-send.png"));
-            tabs.SelectedIndex = 1;
+            tabs.SelectedItem = (TabItem)root.FindName("InteractionTab");
             ((TextBlock)root.FindName("QuietStatusText")).Text = "已暂停主动打扰，18:30 恢复";
             ((Button)root.FindName("PauseCompanionshipButton")).Content = "恢复主动陪伴";
             Render(root, width, height, Path.Combine(directory, $"quiet-{width}.png"));

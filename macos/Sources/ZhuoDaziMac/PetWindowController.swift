@@ -2,6 +2,20 @@ import AppKit
 import QuartzCore
 import ZhuoDaziCore
 
+enum ContentSelectionError: LocalizedError {
+    case missing(String)
+    case premiumRequired(String)
+    case limitReached(String)
+    case invalidInstallation(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .missing(let message), .premiumRequired(let message),
+             .limitReached(let message), .invalidInstallation(let message): return message
+        }
+    }
+}
+
 @MainActor
 final class PetWindowController {
     var mouseInteractionEnabled: Bool {
@@ -40,13 +54,24 @@ final class PetWindowController {
         set { interactions.dailyChanged = newValue }
     }
     var hasPremiumAccess: Bool { premiumAccess() }
+    var enabledPetSourceCount: Int {
+        (settings.enabledLibraryIds?.count ?? 0) + (settings.enabledMarketProductIds?.count ?? 0)
+    }
     var currentGIFURL: URL? { currentPetURL }
     var currentPetSummary: String {
         let name = currentPetURL?.deletingPathExtension().lastPathComponent ?? "内置桌宠"
         let source: String
         if settings.pets.contains(where: { $0.id == settings.activePetId }) { source = "我的 GIF" }
-        else if hasPremiumAccess, let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }),
-                let url = currentPetURL, url.path.hasPrefix(library.path + "/") { source = library.name }
+        else if hasPremiumAccess, let url = currentPetURL,
+                let installation = settings.petMarketInstallations.first(where: {
+                    settings.enabledMarketProductIds?.contains($0.productId) == true
+                        && $0.files.contains(url.path)
+                }) { source = "\(installation.title) · 小铺桌宠" }
+        else if hasPremiumAccess, let url = currentPetURL,
+                let library = settings.libraries.first(where: {
+                    settings.enabledLibraryIds?.contains($0.id) == true
+                        && url.path.hasPrefix($0.path + "/")
+                }) { source = "\(library.name) · 本地桌宠" }
         else { source = "默认桌宠" }
         return "\(name) · 来自\(source)"
     }
@@ -59,11 +84,13 @@ final class PetWindowController {
     private let petView: PetCanvasView
     private let interactions: InteractionService
     private let premiumAccess: () -> Bool
+    private let marketInstallationUsable: (PetMarketInstallation) -> Bool
     private let petBag = RandomBag<URL>()
     private var petURLs: [URL] = []
     private var currentPetURL: URL?
     private var movementTimer: Timer?
     private var randomPetTimer: Timer?
+    private var marketAuthorizationTimer: Timer?
     private var theaterTimer: Timer?
     private var interactionTimer: Timer?
     private var interactionSyncTimer: Timer?
@@ -104,6 +131,7 @@ final class PetWindowController {
         settings: AppSettings,
         interactions: InteractionService,
         premiumAccess: @escaping () -> Bool,
+        marketInstallationUsable: @escaping (PetMarketInstallation) -> Bool,
         settingsChanged: @escaping (AppSettings) -> Void
     ) {
         var normalized = settings
@@ -111,6 +139,7 @@ final class PetWindowController {
         self.settings = normalized
         self.interactions = interactions
         self.premiumAccess = premiumAccess
+        self.marketInstallationUsable = marketInstallationUsable
         self.settingsChanged = settingsChanged
         self.interactionPanel = PetInteractionPanelController()
 
@@ -153,6 +182,7 @@ final class PetWindowController {
     deinit {
         movementTimer?.invalidate()
         randomPetTimer?.invalidate()
+        marketAuthorizationTimer?.invalidate()
         theaterTimer?.invalidate()
         interactionTimer?.invalidate()
         interactionSyncTimer?.invalidate()
@@ -260,20 +290,25 @@ final class PetWindowController {
         guideTheaterTask = Task { @MainActor [weak self] in
             guard let self else { return }
             var completedLines = 0
-            var bubbleToken: PresentationLifetime.Token?
             for (main, guest) in lines {
                 guard !Task.isCancelled, window.isVisible, isTeaching else { break }
-                bubbleToken = petView.showBubble(main, duration: 2.2)
-                do { try await Task.sleep(for: .seconds(2)) } catch { break }
+                petView.dismissBubble()
+                companion.view.dismissBubble()
+                let mainDuration = ConversationPresentationTiming.theaterLine(main)
+                petView.showBubble(main, duration: mainDuration)
+                do { try await Task.sleep(for: .seconds(mainDuration)) } catch { break }
+                petView.dismissBubble()
                 guard !Task.isCancelled, window.isVisible, isTeaching else { break }
-                companion.view.showBubble(guest, duration: 2.2)
-                do { try await Task.sleep(for: .seconds(2)) } catch { break }
+                let guestDuration = ConversationPresentationTiming.theaterLine(guest)
+                companion.view.showBubble(guest, duration: guestDuration)
+                do { try await Task.sleep(for: .seconds(guestDuration)) } catch { break }
+                companion.view.dismissBubble()
                 completedLines += 1
             }
             companion.window.orderOut(nil)
             if companionWindow === companion.window { companionWindow = nil }
             guideTheaterTask = nil
-            if let bubbleToken { petView.dismissBubble(ifCurrent: bubbleToken) }
+            petView.dismissBubble()
             completion(completedLines == lines.count && !Task.isCancelled && window.isVisible && isTeaching)
             drainReminderQueue()
         }
@@ -345,9 +380,11 @@ final class PetWindowController {
         positionCompanion(visitor.window)
         visitor.window.orderFrontRegardless()
         let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
-        visitor.view.showBubble(text.isEmpty ? "\(senderName) 来串门啦" : "\(senderName)：\(text)", duration: 5)
+        let displayText = text.isEmpty ? "\(senderName) 来串门啦" : "\(senderName)：\(text)"
+        let displayDuration = ConversationPresentationTiming.hallVisit(displayText)
+        visitor.view.showBubble(displayText, duration: displayDuration)
         var completed = true
-        for _ in 0..<40 {
+        for _ in 0..<Int(ceil(displayDuration / 0.25)) {
             if generation != visitorGeneration { break }
             if Task.isCancelled || isTeaching || !canPresent() || !window.isVisible || (!manual && (isQuiet || settings.clickThrough)) {
                 completed = false
@@ -389,6 +426,10 @@ final class PetWindowController {
         normalized.normalize()
         let sourcesChanged = settings.activePetId != normalized.activePetId
             || settings.activeLibraryId != normalized.activeLibraryId
+            || settings.activeMarketProductId != normalized.activeMarketProductId
+            || settings.enabledLibraryIds != normalized.enabledLibraryIds
+            || settings.enabledMarketProductIds != normalized.enabledMarketProductIds
+            || settings.petMarketInstallations != normalized.petMarketInstallations
             || settings.pets != normalized.pets
             || settings.libraries != normalized.libraries
         let interactionChanged = settings.randomInteractionsEnabled != normalized.randomInteractionsEnabled
@@ -424,6 +465,221 @@ final class PetWindowController {
         var next = settings
         mutation(&next)
         apply(next)
+    }
+
+    func isMarketProductEnabled(_ productId: String) -> Bool {
+        settings.enabledMarketProductIds?.contains(productId) == true
+    }
+
+    func setLibraryEnabled(_ id: String?, enabled: Bool) throws {
+        if id == nil {
+            guard enabled else { return }
+            update {
+                $0.enabledLibraryIds = []
+                $0.enabledMarketProductIds = []
+                $0.activeLibraryId = nil
+                $0.activeMarketProductId = nil
+                $0.activePetId = nil
+            }
+            return
+        }
+        guard let id, settings.libraries.contains(where: { $0.id == id }) else {
+            throw ContentSelectionError.missing("所选本地图鉴不存在。")
+        }
+        if enabled && !hasPremiumAccess {
+            throw ContentSelectionError.premiumRequired("正式激活后才可以启用外部 GIF 图鉴。")
+        }
+        var ids = settings.enabledLibraryIds ?? []
+        if enabled && !ids.contains(id) {
+            guard enabledPetSourceCount < ContentSelectionPolicy.maximumEnabledPetSources else {
+                throw ContentSelectionError.limitReached("本地目录和小铺桌宠合计最多同时启用 3 个来源，请先停用一个。")
+            }
+            ids.append(id)
+        } else if !enabled {
+            ids.removeAll { $0 == id }
+        }
+        update {
+            $0.enabledLibraryIds = ids
+            $0.activeLibraryId = ids.first
+            $0.activePetId = nil
+            $0.randomPetEnabled = true
+        }
+    }
+
+    func registerMarketInstallation(_ installation: PetMarketInstallation) {
+        let wasEnabled = isMarketProductEnabled(installation.productId)
+        update {
+            $0.petMarketInstallations.removeAll { $0.productId == installation.productId }
+            $0.petMarketInstallations.append(installation)
+            if wasEnabled {
+                $0.enabledMarketProductIds?.removeAll { $0 == installation.productId }
+                $0.activeMarketProductId = $0.enabledMarketProductIds?.first
+            }
+        }
+    }
+
+    func refreshMarketInstallation(_ installation: PetMarketInstallation) {
+        guard let current = settings.petMarketInstallations.first(where: {
+            $0.productId == installation.productId && $0.version == installation.version
+        }) else { return }
+        guard current.directory == installation.directory,
+              current.manifestSha256 == installation.manifestSha256 else { return }
+        update {
+            guard let index = $0.petMarketInstallations.firstIndex(where: {
+                $0.productId == installation.productId && $0.version == installation.version
+            }) else { return }
+            $0.petMarketInstallations[index] = installation
+        }
+    }
+
+    func setMarketProductEnabled(_ productId: String, enabled: Bool) throws {
+        guard let installation = settings.petMarketInstallations.first(where: { $0.productId == productId }) else {
+            throw ContentSelectionError.missing("所选小铺桌宠尚未安装。")
+        }
+        if enabled {
+            guard hasPremiumAccess else {
+                throw ContentSelectionError.premiumRequired("正式激活后才可以使用小铺桌宠。")
+            }
+            guard marketInstallationUsable(installation) else {
+                throw ContentSelectionError.invalidInstallation("小铺桌宠的本机文件或使用授权无效，请重新验证后启用。")
+            }
+        }
+        var ids = settings.enabledMarketProductIds ?? []
+        if enabled && !ids.contains(productId) {
+            guard enabledPetSourceCount < ContentSelectionPolicy.maximumEnabledPetSources else {
+                throw ContentSelectionError.limitReached("本地目录和小铺桌宠合计最多同时启用 3 个来源，请先停用一个。")
+            }
+            ids.append(productId)
+        } else if !enabled {
+            ids.removeAll { $0 == productId }
+        }
+        update {
+            $0.enabledMarketProductIds = ids
+            $0.activeMarketProductId = ids.first
+            $0.activePetId = nil
+            $0.randomPetEnabled = true
+        }
+    }
+
+    func disableMarketProduct(_ productId: String) {
+        guard isMarketProductEnabled(productId) else { return }
+        try? setMarketProductEnabled(productId, enabled: false)
+    }
+
+    func resourcePackState(packId: String, sha256: String) -> String {
+        let words = settings.interactionWordPacks.filter {
+            $0.sourceResourcePackId == packId
+                && $0.sourceResourcePackSha256?.caseInsensitiveCompare(sha256) == .orderedSame
+        }
+        let scripts = settings.theaterScripts.filter {
+            $0.sourceResourcePackId == packId
+                && $0.sourceResourcePackSha256?.caseInsensitiveCompare(sha256) == .orderedSame
+        }
+        let enabled = words.map(\.enabled) + scripts.map(\.enabled)
+        if enabled.isEmpty { return "not-installed" }
+        return enabled.allSatisfy { $0 } ? "enabled" : "installed-disabled"
+    }
+
+    func installResourcePack(_ parsed: ParsedResourcePack) throws {
+        guard !parsed.words.isEmpty || !parsed.scripts.isEmpty else {
+            throw ContentSelectionError.invalidInstallation("资源包没有可安装的内容。")
+        }
+        update {
+            $0.interactionWordPacks.removeAll { $0.sourceResourcePackId == parsed.packId }
+            $0.theaterScripts.removeAll { $0.sourceResourcePackId == parsed.packId }
+            $0.interactionWordPacks.append(contentsOf: parsed.words.map { item in
+                var installed = item
+                installed.sourceResourcePackId = parsed.packId
+                installed.sourceResourcePackSha256 = parsed.sha256
+                installed.enabled = false
+                return installed
+            })
+            $0.theaterScripts.append(contentsOf: parsed.scripts.map { item in
+                var installed = item
+                installed.sourceResourcePackId = parsed.packId
+                installed.sourceResourcePackSha256 = parsed.sha256
+                installed.enabled = false
+                return installed
+            })
+        }
+    }
+
+    func toggleResourcePack(_ packId: String) throws {
+        let wordIndexes = settings.interactionWordPacks.indices.filter {
+            settings.interactionWordPacks[$0].sourceResourcePackId == packId
+        }
+        let scriptIndexes = settings.theaterScripts.indices.filter {
+            settings.theaterScripts[$0].sourceResourcePackId == packId
+        }
+        guard !wordIndexes.isEmpty || !scriptIndexes.isEmpty else {
+            throw ContentSelectionError.missing("所选资源包尚未安装。")
+        }
+        let states = wordIndexes.map { settings.interactionWordPacks[$0].enabled }
+            + scriptIndexes.map { settings.theaterScripts[$0].enabled }
+        let enabling = states.contains(false)
+        if enabling && !hasPremiumAccess {
+            throw ContentSelectionError.premiumRequired("正式激活后才可以启用互动词库和小剧场。")
+        }
+        if enabling {
+            let enabledWordsOutside = settings.interactionWordPacks.indices.filter {
+                settings.interactionWordPacks[$0].enabled && !wordIndexes.contains($0)
+            }.count
+            let enabledScriptsOutside = settings.theaterScripts.indices.filter {
+                settings.theaterScripts[$0].enabled && !scriptIndexes.contains($0)
+            }.count
+            guard ContentSelectionPolicy.canEnable(
+                currentEnabledCount: enabledWordsOutside,
+                additionalCount: wordIndexes.count,
+                maximum: ContentSelectionPolicy.maximumEnabledContent
+            ) else {
+                throw ContentSelectionError.limitReached("互动词库最多同时启用 10 套，请先停用一些词库。")
+            }
+            guard ContentSelectionPolicy.canEnable(
+                currentEnabledCount: enabledScriptsOutside,
+                additionalCount: scriptIndexes.count,
+                maximum: ContentSelectionPolicy.maximumEnabledContent
+            ) else {
+                throw ContentSelectionError.limitReached("小剧场最多同时启用 10 个，请先停用一些剧本。")
+            }
+        }
+        update {
+            for index in wordIndexes { $0.interactionWordPacks[index].enabled = enabling }
+            for index in scriptIndexes { $0.theaterScripts[index].enabled = enabling }
+        }
+    }
+
+    func setInteractionWordPackEnabled(_ id: String, enabled: Bool) throws {
+        guard let index = settings.interactionWordPacks.firstIndex(where: { $0.id == id }) else {
+            throw ContentSelectionError.missing("所选互动词库不存在。")
+        }
+        if enabled {
+            guard hasPremiumAccess else {
+                throw ContentSelectionError.premiumRequired("正式激活后才可以启用互动词库。")
+            }
+            let enabledCount = settings.interactionWordPacks.filter(\.enabled).count
+            guard settings.interactionWordPacks[index].enabled
+                    || enabledCount < ContentSelectionPolicy.maximumEnabledContent else {
+                throw ContentSelectionError.limitReached("互动词库最多同时启用 10 套，请先停用一些词库。")
+            }
+        }
+        update { $0.interactionWordPacks[index].enabled = enabled }
+    }
+
+    func setTheaterScriptEnabled(_ id: String, enabled: Bool) throws {
+        guard let index = settings.theaterScripts.firstIndex(where: { $0.id == id }) else {
+            throw ContentSelectionError.missing("所选小剧场不存在。")
+        }
+        if enabled {
+            guard hasPremiumAccess else {
+                throw ContentSelectionError.premiumRequired("正式激活后才可以启用小剧场。")
+            }
+            let enabledCount = settings.theaterScripts.filter(\.enabled).count
+            guard settings.theaterScripts[index].enabled
+                    || enabledCount < ContentSelectionPolicy.maximumEnabledContent else {
+                throw ContentSelectionError.limitReached("小剧场最多同时启用 10 个，请先停用一些剧本。")
+            }
+        }
+        update { $0.theaterScripts[index].enabled = enabled }
     }
 
     func startRandomInteraction() {
@@ -836,7 +1092,8 @@ final class PetWindowController {
         if manual, !prepareManualActivity("小剧场") { return false }
         guard !isTeaching, manual || (!isQuiet && !isGentle) else { return false }
         guard window.isVisible, !isBusyWithScene else { return false }
-        let scripts = settings.theaterScripts.isEmpty ? Self.builtInScripts : settings.theaterScripts
+        let enabledScripts = settings.theaterScripts.filter(\.enabled)
+        let scripts = enabledScripts.isEmpty ? Self.builtInScripts : enabledScripts
         guard let script = scripts.randomElement(), !script.scenes.isEmpty else { return false }
         let originalOrigin = window.frame.origin
         let companion = makeCompanionWindow()
@@ -856,14 +1113,22 @@ final class PetWindowController {
             )
             for (index, scene) in script.scenes.enumerated() {
                 guard !Task.isCancelled else { break }
-                petView.showBubble(scene.main, duration: 4.4)
-                try? await Task.sleep(for: .seconds(2.1))
+                petView.dismissBubble()
+                companionView.dismissBubble()
+                let mainDuration = ConversationPresentationTiming.theaterLine(scene.main)
+                petView.showBubble(scene.main, duration: mainDuration)
+                do { try await Task.sleep(for: .seconds(mainDuration)) } catch { break }
+                petView.dismissBubble()
                 guard !Task.isCancelled else { break }
-                companionView.showBubble(scene.companion, duration: 4.4)
-                try? await Task.sleep(for: .seconds(1.1))
+                let companionDuration = ConversationPresentationTiming.theaterLine(scene.companion)
+                companionView.showBubble(scene.companion, duration: companionDuration)
+                do { try await Task.sleep(for: .seconds(companionDuration)) } catch { break }
+                companionView.dismissBubble()
                 guard !Task.isCancelled else { break }
                 await performTheaterMotion(step: index, companion: companion.window)
-                if index < script.scenes.count - 1 { try? await Task.sleep(for: .seconds(1.2)) }
+                if index < script.scenes.count - 1 {
+                    do { try await Task.sleep(for: .milliseconds(300)) } catch { break }
+                }
             }
             if !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1.8))
@@ -967,19 +1232,36 @@ final class PetWindowController {
     private func showReaction(_ action: String, proactive: Bool = false) {
         guard !isTeaching, theaterTask == nil, guideTheaterTask == nil, reminderExpressionTask == nil else { return }
         if proactive && (!settings.dailySpeechEnabled || isQuiet || isGentle) { return }
-        let imported = hasPremiumAccess
-            ? settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId })?.words[action]
-            : nil
-        let text = imported?.randomElement() ?? Self.defaultWords[action]?.randomElement() ?? "我在这里。"
+        let imported = hasPremiumAccess ? ContentSelectionPolicy.mergedWords(
+            from: settings.interactionWordPacks.filter(\.enabled).map(\.words),
+            action: action
+        ) : []
+        let text = imported.randomElement() ?? Self.defaultWords[action]?.randomElement() ?? "我在这里。"
         petView.showBubble(text)
     }
 
     private func reloadPetSources(forceSelection: Bool) {
         if let pet = settings.pets.first(where: { $0.id == settings.activePetId }) {
             petURLs = [URL(fileURLWithPath: pet.path)]
-        } else if hasPremiumAccess,
-                  let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
-            petURLs = Self.scanPetURLs(in: URL(fileURLWithPath: library.path, isDirectory: true))
+        } else if hasPremiumAccess {
+            let enabledLibraries = settings.libraries.filter {
+                settings.enabledLibraryIds?.contains($0.id) == true
+            }
+            let localURLs = enabledLibraries.flatMap {
+                Self.scanPetURLs(in: URL(fileURLWithPath: $0.path, isDirectory: true))
+            }
+            let marketURLs = settings.petMarketInstallations.filter {
+                settings.enabledMarketProductIds?.contains($0.productId) == true
+                    && marketInstallationUsable($0)
+            }.flatMap { installation in
+                let directory = URL(fileURLWithPath: installation.directory, isDirectory: true)
+                return installation.files.map { directory.appendingPathComponent($0) }
+                    .filter { FileManager.default.fileExists(atPath: $0.path) }
+            }
+            var seen = Set<String>()
+            petURLs = (localURLs + marketURLs).filter {
+                seen.insert($0.standardizedFileURL.path).inserted
+            }
         } else {
             petURLs = Self.builtInPetURLs()
         }
@@ -993,8 +1275,10 @@ final class PetWindowController {
     private func restartTimers() {
         randomPetTimer?.invalidate()
         theaterTimer?.invalidate()
+        marketAuthorizationTimer?.invalidate()
         randomPetTimer = nil
         theaterTimer = nil
+        marketAuthorizationTimer = nil
         if settings.randomPetEnabled, canRandomizePet {
             let timer = Timer(timeInterval: TimeInterval(settings.randomPetIntervalSeconds), repeats: true) { [weak self] _ in
                 Task { @MainActor [weak self] in
@@ -1011,6 +1295,13 @@ final class PetWindowController {
             }
             RunLoop.main.add(timer, forMode: .common)
             theaterTimer = timer
+        }
+        if !(settings.enabledMarketProductIds?.isEmpty ?? true) {
+            let timer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.removeExpiredMarketSources() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            marketAuthorizationTimer = timer
         }
     }
 
@@ -1258,11 +1549,23 @@ final class PetWindowController {
     }
 
     private func finishTheater(announce: Bool = true) {
+        petView.dismissBubble()
         companionWindow?.orderOut(nil)
         companionWindow = nil
         theaterTask = nil
         if announce { showReaction("theater_finish") }
         drainReminderQueue()
+    }
+
+    private func removeExpiredMarketSources() {
+        let valid = Set(settings.petMarketInstallations.filter(marketInstallationUsable).map(\.productId))
+        let current = settings.enabledMarketProductIds ?? []
+        let filtered = current.filter { valid.contains($0) }
+        guard filtered != current else { return }
+        update {
+            $0.enabledMarketProductIds = filtered
+            $0.activeMarketProductId = filtered.first
+        }
     }
 
     private func installClickThroughShortcut() {

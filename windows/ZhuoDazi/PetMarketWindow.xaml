@@ -1,0 +1,9 @@
+<Window x:Class="ZhuoDazi.PetMarketWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="桌搭子 · 桌宠小铺" Width="940" Height="720" MinWidth="780" MinHeight="600"
+        WindowStartupLocation="CenterOwner" Background="#F7F9F8" UseLayoutRounding="True"
+        FontFamily="Microsoft YaHei UI" TextOptions.TextFormattingMode="Display"
+        Icon="pack://application:,,,/ZhuoDazi;component/assets/app-icon.png">
+    <ContentControl x:Name="ShopContent" />
+</Window>

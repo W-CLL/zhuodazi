@@ -25,6 +25,7 @@ public sealed class SettingsStore
     public string UpdatesDirectory => Path.Combine(DataDirectory, "updates-native");
     public string InteractionsPath => Path.Combine(DataDirectory, "interactions.json");
     public string CompanionDirectory => Path.Combine(DataDirectory, "companion");
+    public string PetMarketDirectory => Path.Combine(DataDirectory, "pet-market");
 
     public AppSettings Load()
     {

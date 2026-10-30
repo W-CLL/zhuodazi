@@ -296,7 +296,9 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Border Background="{StaticResource NavBrush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0">
-                            <TabPanel IsItemsHost="True" Margin="0,16,0,0" />
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <TabPanel IsItemsHost="True" Margin="0,16,0,16" />
+                            </ScrollViewer>
                         </Border>
                         <Border Grid.Column="1" Background="{TemplateBinding Background}">
                             <ContentPresenter x:Name="PART_SelectedContentHost" ContentSource="SelectedContent" TextElement.FontWeight="Normal" />
@@ -350,7 +352,7 @@
                                     </StackPanel>
                                     <Grid Grid.Column="1" VerticalAlignment="Center">
                                         <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="62"/></Grid.ColumnDefinitions>
-                                        <Slider x:Name="SizeSlider" Height="30" Minimum="140" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True" ValueChanged="SizeSlider_ValueChanged" />
+                                        <Slider x:Name="SizeSlider" Height="30" Minimum="60" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True" ValueChanged="SizeSlider_ValueChanged" />
                                         <TextBlock x:Name="SizeValue" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
                                     </Grid>
                                 </Grid>
@@ -428,7 +430,11 @@
                 </ScrollViewer>
             </TabItem>
 
-            <TabItem>
+            <TabItem x:Name="PetMarketTab" Header="桌宠小铺">
+                <ContentControl x:Name="PetMarketContent" />
+            </TabItem>
+
+            <TabItem x:Name="InteractionTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal"><TextBlock Text="陪伴日常"/></StackPanel>
                 </TabItem.Header>
@@ -593,29 +599,27 @@
                             <Button Grid.Column="1" Content="添加 GIF 文件夹" Style="{StaticResource PrimaryButton}" Click="ChooseLibrary_Click" VerticalAlignment="Center" />
                         </Grid>
                         <TextBlock Text="我的图鉴" Style="{StaticResource SectionTitle}" />
+                        <TextBlock Text="勾选参与切换的目录或小铺桌宠，合计最多 3 个；未勾选的资源保留。" Style="{StaticResource Hint}" Margin="0,0,0,8" />
                         <ListBox x:Name="LibraryList" Height="208" Margin="0,0,0,14"
                                  SelectionChanged="LibraryList_SelectionChanged">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <Grid>
+                                    <Grid Margin="0,2">
+                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                        <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}" Tag="{Binding}" Click="LibraryEnabled_Click" Margin="0,0,12,0" VerticalAlignment="Center" ToolTip="启用或停用这个桌宠来源" />
+                                        <Grid Grid.Column="1">
                                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                         <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                                                    Foreground="{StaticResource InkBrush}" TextTrimming="CharacterEllipsis" />
                                         <TextBlock Grid.Row="1" Text="{Binding Detail}" Margin="0,3,0,0"
                                                    Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" />
+                                        </Grid>
                                     </Grid>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="当前目录" Style="{StaticResource FieldLabel}" />
-                                <TextBox x:Name="LibraryPathText" IsReadOnly="True" />
-                            </StackPanel>
-                            <Button x:Name="DeleteLibraryButton" Grid.Column="1" Content="删除所选" Style="{StaticResource DangerButton}"
-                                    Margin="12,23,0,0" VerticalAlignment="Top" Click="DeleteLibrary_Click" />
-                        </Grid>
+                        <Button x:Name="DeleteLibraryButton" Content="删除所选" Style="{StaticResource DangerButton}"
+                                HorizontalAlignment="Left" Click="DeleteLibrary_Click" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -640,16 +644,21 @@
                             <StackPanel Margin="0,0,22,0">
                                 <TextBlock Text="悄悄话" Style="{StaticResource SectionTitle}" />
                                 <TextBlock x:Name="WordPackSummary" Style="{StaticResource Hint}" Margin="0,0,0,12" />
+                                <TextBlock Text="勾选可同时使用，最多启用 10 套。" Style="{StaticResource Hint}" Margin="0,0,0,8" />
                                 <ListBox x:Name="WordPackList" Height="344" Margin="0,0,0,14"
                                          SelectionChanged="WordPackList_SelectionChanged">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}" Tag="{Binding}" Click="WordPackEnabled_Click" Margin="0,0,10,0" VerticalAlignment="Center" ToolTip="启用或停用这套词库" />
+                                                <Grid Grid.Column="1">
                                                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                                 <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                                                            Foreground="{StaticResource InkBrush}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Row="1" Text="{Binding Detail}" Margin="0,3,0,0"
                                                            Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" />
+                                                </Grid>
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -668,16 +677,21 @@
                             <StackPanel Grid.Column="2" Margin="22,0,0,0">
                                 <TextBlock Text="小剧场 · 自编故事" Style="{StaticResource SectionTitle}" />
                                 <TextBlock x:Name="TheaterScriptSummary" Style="{StaticResource Hint}" Margin="0,0,0,12" />
+                                <TextBlock Text="勾选加入演出候选，最多启用 10 个。" Style="{StaticResource Hint}" Margin="0,0,0,8" />
                                 <ListBox x:Name="TheaterScriptList" Height="344" Margin="0,0,0,14"
                                          SelectionChanged="TheaterScriptList_SelectionChanged">
                                     <ListBox.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid>
+                                            <Grid Margin="0,2">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                <CheckBox IsChecked="{Binding Enabled, Mode=OneWay}" Tag="{Binding}" Click="TheaterEnabled_Click" Margin="0,0,10,0" VerticalAlignment="Center" ToolTip="启用或停用这个剧本" />
+                                                <Grid Grid.Column="1">
                                                 <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                                                 <TextBlock Text="{Binding Name}" FontSize="13" FontWeight="SemiBold"
                                                            Foreground="{StaticResource InkBrush}" TextTrimming="CharacterEllipsis" />
                                                 <TextBlock Grid.Row="1" Text="{Binding Detail}" Margin="0,3,0,0"
                                                            Style="{StaticResource Hint}" TextTrimming="CharacterEllipsis" />
+                                                </Grid>
                                             </Grid>
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
@@ -880,7 +894,7 @@
                                     <TextBlock x:Name="HallSendTargetText" Text="先选择一位在线用户" Style="{StaticResource SectionTitle}"/>
                                     <TextBlock x:Name="HallPetNameText" Style="{StaticResource Hint}" Margin="0,0,0,10"/>
                                     <TextBox x:Name="CompanionHallMessageText" MaxLength="120" AcceptsReturn="True" TextWrapping="Wrap" Height="68" VerticalScrollBarVisibility="Auto" ToolTip="可选留言，最多 120 个字符"/>
-                                    <TextBlock Text="可选留言，最多 120 字。发送后冷却 30 秒；对方最多积压 3 条，未收取的投递保留 24 小时。" Style="{StaticResource Hint}" Margin="0,8,0,12"/>
+                                    <TextBlock Text="可选留言，最多 120 字。发送后冷却 15 秒；对方最多积压 3 条，未收取的投递保留 24 小时。" Style="{StaticResource Hint}" Margin="0,8,0,12"/>
                                     <Button x:Name="SendHallButton" Content="发送这只 GIF" Style="{StaticResource PrimaryButton}" HorizontalAlignment="Left" Click="SendHall_Click"/>
                                 </StackPanel>
                             </Grid>

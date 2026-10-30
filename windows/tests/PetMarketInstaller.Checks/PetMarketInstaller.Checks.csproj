@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseWPF>true</UseWPF>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\ZhuoDazi\Services\GifImportValidator.cs" Link="GifImportValidator.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\PetMarketInstaller.cs" Link="PetMarketInstaller.cs" />
+    <None Include="..\..\assets\pet-libraries\yuexinmiao\017-90d741d6.gif" Link="assets\valid.gif" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

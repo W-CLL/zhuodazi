@@ -10,6 +10,7 @@ using ZhuoDazi.Behaviors;
 using ZhuoDazi.Controls;
 using ZhuoDazi.Interop;
 using ZhuoDazi.Physics;
+using ZhuoDazi.Services;
 using Activity = ZhuoDazi.Behaviors.PetBehaviorStateMachine.Activity;
 using Forms = System.Windows.Forms;
 using WpfBrushes = System.Windows.Media.Brushes;
@@ -67,6 +68,7 @@ public partial class PetWindow : Window
     private int _interactionVersion;
     private int _speechVersion;
     private string? _pendingReaction;
+    private TimeSpan? _pendingReactionDuration;
 
     public PetWindow(AppController controller, bool isCompanion = false)
     {
@@ -127,6 +129,9 @@ public partial class PetWindow : Window
     }
 
     public void ShowReaction(string message)
+        => ShowReaction(message, ConversationPresentationTiming.DefaultSpeech);
+
+    internal void ShowReaction(string message, TimeSpan duration)
     {
         if (string.IsNullOrWhiteSpace(message) || !IsVisible) return;
         _speechVersion++;
@@ -135,12 +140,17 @@ public partial class PetWindow : Window
             // Keep the latest short status until the card closes. Reposting to the
             // dispatcher here spins continuously and lets old text overwrite new scenes.
             _pendingReaction = message;
+            _pendingReactionDuration = duration;
             return;
         }
         _pendingReaction = null;
+        _pendingReactionDuration = null;
         SpeechText.Text = message;
         SpeechBubble.Visibility = Visibility.Visible;
         _speechTimer.Stop();
+        _speechTimer.Interval = duration > TimeSpan.Zero
+            ? duration
+            : ConversationPresentationTiming.DefaultSpeech;
         _speechTimer.Start();
     }
 
@@ -148,6 +158,7 @@ public partial class PetWindow : Window
     {
         _speechVersion++;
         _pendingReaction = null;
+        _pendingReactionDuration = null;
         _speechTimer.Stop();
         SpeechBubble.Visibility = Visibility.Collapsed;
     }
@@ -223,14 +234,16 @@ public partial class PetWindow : Window
         var callback = _interactionCallback;
         _interactionCallback = null;
         var pending = _pendingReaction;
+        var pendingDuration = _pendingReactionDuration;
         var speechVersion = _speechVersion;
         _pendingReaction = null;
+        _pendingReactionDuration = null;
         InteractionCard.Visibility = Visibility.Collapsed;
         InteractionChoicePanel.Children.Clear();
         SetInteractionExpanded(false);
         callback?.Invoke(choice);
         if (speechVersion == _speechVersion && !IsInteractionVisible && pending is not null)
-            ShowReaction(pending);
+            ShowReaction(pending, pendingDuration ?? ConversationPresentationTiming.DefaultSpeech);
     }
 
     private void SetInteractionExpanded(bool expanded, double? anchoredBottom = null)

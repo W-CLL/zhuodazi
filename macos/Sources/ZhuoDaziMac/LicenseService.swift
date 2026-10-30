@@ -8,6 +8,7 @@ private struct LicenseRecord: Codable {
     var licenseId: String?
     var activatedAt: String?
     var trialExpiresAt: String?
+    var accountId: String?
 }
 
 private struct ActivationResponse: Decodable {
@@ -15,6 +16,7 @@ private struct ActivationResponse: Decodable {
     let activatedAt: String?
     let deviceCount: Int?
     let alreadyActivated: Bool?
+    let accountId: String?
 }
 
 struct TrialStatus {
@@ -52,6 +54,7 @@ final class LicenseService {
     private let service = Bundle.main.bundleIdentifier ?? "com.zhuodazi.desktop-pet"
     private let account = "device-license"
     private var record: LicenseRecord
+    private let previewConfiguration: PetShopPreviewConfiguration?
     private var trialActive = false
     private var trialExpiresAt: Date?
     private(set) var deviceCount = 1
@@ -87,8 +90,24 @@ final class LicenseService {
     var installationId: String {
         record.installationId
     }
+    var installationCredential: String { record.credential }
+    var marketLicenseId: String? { record.licenseId }
 
-    init() throws {
+    // Call only after validating a signed envelope bound to this license/device.
+    func acceptMarketAccount(_ accountId: String) -> Bool {
+        guard !accountId.isEmpty else { return false }
+        if let existing = record.accountId { return existing == accountId }
+        record.accountId = accountId
+        do { try save(); return true } catch { record.accountId = nil; return false }
+    }
+
+    init(preview: PetShopPreviewConfiguration? = nil) throws {
+        previewConfiguration = preview
+        if let preview {
+            record = LicenseRecord(installationId: preview.installationId, credential: preview.credential,
+                licenseId: preview.licenseId, accountId: preview.accountId)
+            return
+        }
         if let stored = try Self.readKeychain(service: service, account: account),
            let decoded = try? JSONDecoder().decode(LicenseRecord.self, from: stored),
            Self.isValid(decoded) {
@@ -101,6 +120,7 @@ final class LicenseService {
     }
 
     func activate(_ activationCode: String, replacingExisting: Bool = false) async throws {
+        guard previewConfiguration == nil else { throw LicenseError.server("本地预览请在独立配置中设置测试授权") }
         let code = activationCode.uppercased().unicodeScalars
             .filter { CharacterSet.alphanumerics.contains($0) }
             .map(String.init)
@@ -137,6 +157,7 @@ final class LicenseService {
         record = candidate
         record.licenseId = result.licenseId
         record.activatedAt = result.activatedAt
+        record.accountId = result.accountId
         record.trialExpiresAt = nil
         if let count = result.deviceCount, (1...2).contains(count) {
             deviceCount = count
@@ -149,6 +170,7 @@ final class LicenseService {
     }
 
     func checkTrial() async throws -> TrialStatus {
+        guard previewConfiguration == nil else { return TrialStatus(allowed: false, remainingSeconds: 0) }
         let payload: [String: String] = [
             "installationId": record.installationId,
             "credential": record.credential,
@@ -178,6 +200,7 @@ final class LicenseService {
             guard UUID(uuidString: license.licenseId) != nil else { throw LicenseError.invalidResponse }
             record.licenseId = license.licenseId
             record.activatedAt = license.activatedAt
+            record.accountId = license.accountId
             record.trialExpiresAt = nil
             deviceCount = license.deviceCount.flatMap { (1...2).contains($0) ? $0 : nil } ?? 1
             alreadyActivated = true
@@ -199,6 +222,7 @@ final class LicenseService {
 
     // This proves the saved device identity only; an expired trial stays expired.
     func sendHeartbeat() async {
+        guard previewConfiguration == nil else { return }
         let identity = record
         var request = URLRequest(url: DeskPetApi.deviceHeartbeat)
         request.httpMethod = "POST"
@@ -237,6 +261,7 @@ final class LicenseService {
     }
 
     private func save() throws {
+        guard previewConfiguration == nil else { return }
         let data = try JSONEncoder().encode(record)
         try Self.writeKeychain(data, service: service, account: account)
     }

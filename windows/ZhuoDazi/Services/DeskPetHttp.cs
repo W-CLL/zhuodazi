@@ -7,19 +7,20 @@ internal static class DeskPetHttp
 {
     // The offline UI harness injects an in-memory transport before constructing any service.
     internal static Func<HttpMessageHandler>? HandlerFactory { get; set; }
-    internal static SocketsHttpHandler CreateHandler()
+    internal static SocketsHttpHandler CreateHandler(bool allowAutoRedirect = true)
     {
         return new SocketsHttpHandler
         {
+            AllowAutoRedirect = allowAutoRedirect,
             UseProxy = false,
             ConnectTimeout = TimeSpan.FromSeconds(20),
             PooledConnectionLifetime = TimeSpan.FromMinutes(5)
         };
     }
 
-    internal static HttpClient CreateClient(TimeSpan timeout)
+    internal static HttpClient CreateClient(TimeSpan timeout, bool allowAutoRedirect = true)
     {
-        return new HttpClient(HandlerFactory?.Invoke() ?? CreateHandler())
+        return new HttpClient(HandlerFactory?.Invoke() ?? CreateHandler(allowAutoRedirect))
         {
             Timeout = timeout,
             DefaultRequestVersion = HttpVersion.Version20,

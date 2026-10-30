@@ -17,6 +17,22 @@ public sealed class AppSettings
     [JsonPropertyName("activePetId")]
     public string? ActivePetId { get; set; }
 
+    [JsonPropertyName("petMarketInstallations")]
+    public List<PetMarketInstallation> PetMarketInstallations { get; set; } = [];
+
+    [JsonPropertyName("activeMarketProductId")]
+    public string? ActiveMarketProductId { get; set; }
+
+    [JsonPropertyName("enabledMarketProductIds")]
+    public List<string>? EnabledMarketProductIds { get; set; }
+
+    [JsonPropertyName("enabledLibraryIds")]
+    public List<string>? EnabledLibraryIds { get; set; }
+
+    public const int MaxEnabledPetSources = 3;
+    public const int MaxEnabledContent = 10;
+    public const int MinimumPetSize = 60;
+
     [JsonPropertyName("size")]
     public int Size { get; set; } = 140;
 
@@ -134,7 +150,8 @@ public sealed class AppSettings
         Onboarding.Normalize();
         Pets = (Pets ?? []).Where(item => !string.IsNullOrWhiteSpace(item.Id)
             && !string.IsNullOrWhiteSpace(item.Path) && File.Exists(item.Path)).Take(3).ToList();
-        Size = Math.Clamp(Size, 140, 300);
+        NormalizePetMarketInstallations();
+        Size = Math.Clamp(Size, MinimumPetSize, 300);
         Opacity = Math.Clamp(Opacity, 20, 100);
         ClickThrough = false;
         Personality = Personality is "lively" or "shy" or "clingy" or "chaotic"
@@ -151,9 +168,34 @@ public sealed class AppSettings
         RandomPetIntervalSeconds = RandomPetIntervalSeconds is 30 or 60 or 300 or 600 or 1800
             ? RandomPetIntervalSeconds : 30;
         NormalizeLibraries();
+        NormalizeEnabledPetSources();
         NormalizeInteractionWordPacks();
         Reminders = (Reminders ?? []).Take(20).ToList();
         if (ActivePetId is not null && !Pets.Any(item => item.Id == ActivePetId)) ActivePetId = Pets.FirstOrDefault()?.Id;
+    }
+
+    private void NormalizePetMarketInstallations()
+    {
+        PetMarketInstallations ??= [];
+        var unique = new List<PetMarketInstallation>();
+        foreach (var item in PetMarketInstallations.Where(item => item is not null))
+        {
+            item.ProductId = (item.ProductId ?? string.Empty).Trim();
+            item.Version = (item.Version ?? string.Empty).Trim();
+            item.Title = CleanName(item.Title, item.ProductId);
+            item.Directory = (item.Directory ?? string.Empty).Trim();
+            item.ManifestSha256 = (item.ManifestSha256 ?? string.Empty).Trim().ToLowerInvariant();
+            item.Files = (item.Files ?? []).Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).Take(256).ToList();
+            if (item.ProductId.Length == 0 || item.Version.Length == 0 || item.Files.Count == 0
+                || !Directory.Exists(item.Directory) || item.ManifestSha256.Length != 64
+                || !item.ManifestSha256.All(Uri.IsHexDigit)) continue;
+            if (unique.Any(existing => existing.ProductId.Equals(item.ProductId, StringComparison.OrdinalIgnoreCase))) continue;
+            unique.Add(item);
+        }
+        PetMarketInstallations = unique;
+        if (ActiveMarketProductId is not null
+            && !PetMarketInstallations.Any(item => item.ProductId.Equals(ActiveMarketProductId, StringComparison.OrdinalIgnoreCase)))
+            ActiveMarketProductId = null;
     }
 
     private void NormalizeLibraries()
@@ -179,13 +221,25 @@ public sealed class AppSettings
             library.Name = CleanName(library.Name, DirectoryName(path));
             library.Path = path;
             unique.Add(library);
-            if (unique.Count == 3) break;
         }
         Libraries = unique;
 
         if (!Libraries.Any(item => item.Id == ActiveLibraryId))
             ActiveLibraryId = Libraries.FirstOrDefault(item => legacyDirectory is not null && SamePath(item.Path, legacyDirectory))?.Id;
         LibraryDirectory = null;
+    }
+
+    private void NormalizeEnabledPetSources()
+    {
+        EnabledMarketProductIds ??= ActiveMarketProductId is null ? [] : [ActiveMarketProductId];
+        EnabledLibraryIds ??= ActiveLibraryId is null || EnabledMarketProductIds.Count > 0 ? [] : [ActiveLibraryId];
+        EnabledMarketProductIds = EnabledMarketProductIds.Where(id => PetMarketInstallations.Any(item =>
+            item.ProductId.Equals(id, StringComparison.OrdinalIgnoreCase)))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Take(MaxEnabledPetSources).ToList();
+        EnabledLibraryIds = EnabledLibraryIds.Where(id => Libraries.Any(item => item.Id == id))
+            .Distinct().Take(MaxEnabledPetSources - EnabledMarketProductIds.Count).ToList();
+        ActiveMarketProductId = EnabledMarketProductIds.FirstOrDefault();
+        ActiveLibraryId = EnabledLibraryIds.FirstOrDefault();
     }
 
     private void NormalizeInteractionWordPacks()
@@ -213,7 +267,6 @@ public sealed class AppSettings
             pack.Name = CleanName(pack.Name, "互动词包");
             pack.Words = words;
             normalized.Add(pack);
-            if (normalized.Count == 5) break;
         }
         InteractionWordPacks = normalized;
 
@@ -225,6 +278,11 @@ public sealed class AppSettings
         }
         InteractionWords = null;
         InteractionWordPackName = null;
+        foreach (var pack in InteractionWordPacks)
+            if (pack.Id == ActiveInteractionWordPackId) pack.Enabled = true;
+        foreach (var pack in InteractionWordPacks.Where(item => item.Enabled).Skip(MaxEnabledContent))
+            pack.Enabled = false;
+        ActiveInteractionWordPackId = null;
     }
 
     private void NormalizeTheaterScripts()
@@ -248,9 +306,10 @@ public sealed class AppSettings
             script.Name = CleanName(script.Name, "小剧场剧本");
             script.Scenes = scenes;
             normalized.Add(script);
-            if (normalized.Count == 10) break;
         }
         TheaterScripts = normalized;
+        foreach (var script in TheaterScripts.Where(item => item.Enabled).Skip(MaxEnabledContent))
+            script.Enabled = false;
     }
 
     private static Dictionary<string, List<string>> NormalizeWords(Dictionary<string, List<string>>? source)
@@ -345,6 +404,15 @@ public sealed class LibraryDefinition
 
 public sealed class InteractionWordPackDefinition
 {
+    [JsonPropertyName("sourceResourcePackId")]
+    public string? SourceResourcePackId { get; set; }
+
+    [JsonPropertyName("sourceResourcePackSha256")]
+    public string? SourceResourcePackSha256 { get; set; }
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; }
+
     [JsonPropertyName("id")]
     public string Id { get; set; } = $"words-{Guid.NewGuid():N}";
 
@@ -360,6 +428,15 @@ public sealed class InteractionWordPackDefinition
 
 public sealed class TheaterScriptDefinition
 {
+    [JsonPropertyName("sourceResourcePackId")]
+    public string? SourceResourcePackId { get; set; }
+
+    [JsonPropertyName("sourceResourcePackSha256")]
+    public string? SourceResourcePackSha256 { get; set; }
+
+    [JsonPropertyName("enabled")]
+    public bool Enabled { get; set; } = true;
+
     [JsonPropertyName("id")]
     public string Id { get; set; } = $"theater-{Guid.NewGuid():N}";
 

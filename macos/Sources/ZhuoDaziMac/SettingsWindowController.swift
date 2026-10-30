@@ -37,6 +37,7 @@ final class SettingsWindowController: NSWindowController {
     private let remoteConfig: () -> RemoteConfig
     private let refreshDailyConfig: () async -> Bool
     private let feedbackService: FeedbackService
+    private let uninstallFeedbackService: UninstallFeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private let openCompanion: () -> Void
     private let openHall: () -> Void
@@ -52,7 +53,7 @@ final class SettingsWindowController: NSWindowController {
     private var feedbackLoading = false
     private var feedbackItems: [FeedbackItem] = []
 
-    private let sizeSlider = NSSlider(value: 140, minValue: 140, maxValue: 300, target: nil, action: nil)
+    private let sizeSlider = NSSlider(value: 140, minValue: 60, maxValue: 300, target: nil, action: nil)
     private let sizeValue = NSTextField(labelWithString: "220")
     private let opacitySlider = NSSlider(value: 100, minValue: 20, maxValue: 100, target: nil, action: nil)
     private let opacityValue = NSTextField(labelWithString: "100%")
@@ -76,13 +77,16 @@ final class SettingsWindowController: NSWindowController {
     private let petsDetail = NSTextField(labelWithString: "")
     private let librariesPopup = NSPopUpButton()
     private let libraryDetail = NSTextField(labelWithString: "")
+    private let libraryEnabledCheckbox = NSButton(checkboxWithTitle: "启用所选来源", target: nil, action: nil)
     private let randomPetCheckbox = NSButton(checkboxWithTitle: "自动随机切换桌宠", target: nil, action: nil)
     private let randomIntervalPopup = NSPopUpButton()
 
     private let wordPacksPopup = NSPopUpButton()
     private let wordPackDetail = NSTextField(labelWithString: "")
+    private let wordPackEnabledCheckbox = NSButton(checkboxWithTitle: "启用所选词库", target: nil, action: nil)
     private let scriptsPopup = NSPopUpButton()
     private let scriptDetail = NSTextField(labelWithString: "")
+    private let scriptEnabledCheckbox = NSButton(checkboxWithTitle: "启用所选剧本", target: nil, action: nil)
     private let companionButton = NSButton(title: "", target: nil, action: nil)
     private let companionStatusIcon = NSImageView()
     private let companionStatusLabel = NSTextField(labelWithString: "")
@@ -103,6 +107,13 @@ final class SettingsWindowController: NSWindowController {
     private let feedbackReloadButton = NSButton(title: "刷新", target: nil, action: nil)
     private let feedbackSubmitButton = NSButton(title: "提交反馈", target: nil, action: nil)
 
+    private let uninstallReasonPopup = NSPopUpButton()
+    private let uninstallComment = NSTextField(string: "")
+    private let uninstallSubmitButton = NSButton(title: "提交反馈并卸载", target: nil, action: nil)
+    private let uninstallSkipButton = NSButton(title: "跳过反馈并卸载", target: nil, action: nil)
+    private let uninstallGuideButton = NSButton(title: "查看手动卸载说明", target: nil, action: nil)
+    private let uninstallStatus = NSTextField(wrappingLabelWithString: "")
+
     private let autoUpdateCheckbox = NSButton(checkboxWithTitle: "自动检查更新", target: nil, action: nil)
     private let activationLabel = NSTextField(labelWithString: "")
     private let updateLabel = NSTextField(labelWithString: "")
@@ -122,6 +133,7 @@ final class SettingsWindowController: NSWindowController {
     private var dailyPage: DailyPageController?
     private let theaterIntervals = [60, 180, 300, 600, 1800]
     private let randomIntervals = [30, 60, 300, 600, 1800]
+    private let petShopController: NSViewController?
     init(
         petController: PetWindowController,
         licenses: LicenseService,
@@ -133,7 +145,8 @@ final class SettingsWindowController: NSWindowController {
         openHall: @escaping () -> Void,
         showUsageGuide: @escaping () -> Void,
         openExperienceGuide: @escaping () -> Void,
-        openFakeAd: @escaping () -> Void
+        openFakeAd: @escaping () -> Void,
+        petShopController: NSViewController? = nil
     ) {
         self.petController = petController
         self.licenses = licenses
@@ -141,12 +154,14 @@ final class SettingsWindowController: NSWindowController {
         self.remoteConfig = remoteConfig
         self.refreshDailyConfig = refreshDailyConfig
         self.feedbackService = FeedbackService(licenses: licenses)
+        self.uninstallFeedbackService = UninstallFeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
         self.openHall = openHall
         self.showUsageGuide = showUsageGuide
         self.openExperienceGuide = openExperienceGuide
         self.openFakeAd = openFakeAd
+        self.petShopController = petShopController
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -187,11 +202,16 @@ final class SettingsWindowController: NSWindowController {
         petController.dailyChanged = { [weak daily] in daily?.refresh() }
         tabs.addChild(buildPetsPage())
         tabs.addChild(buildLibrariesPage())
+        if let petShopController {
+            petShopController.title = "桌宠小铺"
+            tabs.addChild(petShopController)
+        }
         tabs.addChild(buildContentPage())
         tabs.addChild(buildCompanionPage())
         tabs.addChild(buildHallPage())
         tabs.addChild(buildRemindersPage())
         tabs.addChild(buildFeedbackPage())
+        tabs.addChild(buildUninstallPage())
         tabs.addChild(buildUpdatePage())
         window.contentViewController = tabs
     }
@@ -339,13 +359,15 @@ final class SettingsWindowController: NSWindowController {
     private func buildLibrariesPage() -> NSViewController {
         let (page, stack) = makePage("桌宠图鉴")
         addTitle("桌宠图鉴", to: stack)
-        stack.addArrangedSubview(hint("让一整个文件夹的小搭子轮流来陪你。最多可添加 3 个 GIF 文件夹，也能随时回到内置图鉴。"))
+        stack.addArrangedSubview(hint("本地 GIF 文件夹与小铺桌宠合计最多同时启用 3 个来源；未启用的图鉴会继续保留。"))
         librariesPopup.target = self
         librariesPopup.action = #selector(librarySelectionChanged(_:))
         stack.addArrangedSubview(labeledRow("选择图鉴", controls: [librariesPopup]))
         libraryDetail.textColor = .secondaryLabelColor
-        libraryDetail.lineBreakMode = .byTruncatingMiddle
         stack.addArrangedSubview(libraryDetail)
+        libraryEnabledCheckbox.target = self
+        libraryEnabledCheckbox.action = #selector(libraryEnabledChanged(_:))
+        stack.addArrangedSubview(libraryEnabledCheckbox)
         let bind = NSButton(title: "添加 GIF 文件夹", target: self, action: #selector(addLibrary))
         let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedLibrary))
         stack.addArrangedSubview(buttonRow([bind, delete]))
@@ -373,6 +395,9 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(labeledRow("选择悄悄话", controls: [wordPacksPopup]))
         wordPackDetail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(wordPackDetail)
+        wordPackEnabledCheckbox.target = self
+        wordPackEnabledCheckbox.action = #selector(wordPackEnabledChanged(_:))
+        stack.addArrangedSubview(wordPackEnabledCheckbox)
         let importWords = NSButton(title: "带来新台词", target: self, action: #selector(importWordPack))
         let deleteWords = NSButton(title: "删除所选", target: self, action: #selector(deleteWordPack))
         let wordGuide = NSButton(title: "怎么写悄悄话", target: self, action: #selector(showWordGuide))
@@ -384,6 +409,9 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(labeledRow("可用剧本", controls: [scriptsPopup]))
         scriptDetail.textColor = .secondaryLabelColor
         stack.addArrangedSubview(scriptDetail)
+        scriptEnabledCheckbox.target = self
+        scriptEnabledCheckbox.action = #selector(scriptEnabledChanged(_:))
+        stack.addArrangedSubview(scriptEnabledCheckbox)
         let importScript = NSButton(title: "导入剧本", target: self, action: #selector(importScriptFile))
         let deleteScript = NSButton(title: "删除所选", target: self, action: #selector(deleteScript))
         let scriptGuide = NSButton(title: "怎么写小故事", target: self, action: #selector(showScriptGuide))
@@ -463,6 +491,40 @@ final class SettingsWindowController: NSWindowController {
         feedbackSubmitButton.target = self
         feedbackSubmitButton.action = #selector(submitFeedback)
         stack.addArrangedSubview(feedbackSubmitButton)
+        return page
+    }
+
+    private func buildUninstallPage() -> NSViewController {
+        let (page, stack) = makePage("卸载与反馈")
+        addTitle("卸载与反馈", to: stack)
+        stack.addArrangedSubview(hint("原因和说明都可以跳过。点击卸载后，桌搭子会退出并由独立卸载助手移到废纸篓；确认移除成功后才会上报完成。取消不会卸载。"))
+        uninstallReasonPopup.addItem(withTitle: "不选择原因")
+        for reason in UninstallReason.allCases {
+            uninstallReasonPopup.addItem(withTitle: reason.title)
+            uninstallReasonPopup.lastItem?.representedObject = reason.rawValue
+        }
+        uninstallReasonPopup.target = self
+        uninstallReasonPopup.action = #selector(uninstallReasonChanged(_:))
+        stack.addArrangedSubview(labeledRow("可选原因", controls: [uninstallReasonPopup]))
+        uninstallComment.placeholderString = "选择“其他”后可补充说明（最多 500 字）"
+        uninstallComment.widthAnchor.constraint(equalToConstant: 500).isActive = true
+        uninstallComment.isEnabled = false
+        stack.addArrangedSubview(labeledRow("补充说明", controls: [uninstallComment]))
+        uninstallSubmitButton.target = self
+        uninstallSubmitButton.action = #selector(submitUninstallIntent)
+        uninstallSkipButton.target = self
+        uninstallSkipButton.action = #selector(uninstallWithoutFeedback)
+        stack.addArrangedSubview(buttonRow([uninstallSubmitButton, uninstallSkipButton]))
+        uninstallGuideButton.target = self
+        uninstallGuideButton.action = #selector(showUninstallGuideOnly)
+        stack.addArrangedSubview(uninstallGuideButton)
+        uninstallStatus.textColor = .secondaryLabelColor
+        uninstallStatus.maximumNumberOfLines = 0
+        uninstallStatus.widthAnchor.constraint(equalToConstant: 620).isActive = true
+        stack.addArrangedSubview(uninstallStatus)
+        stack.addArrangedSubview(separator())
+        addSection("macOS 卸载方式", to: stack)
+        stack.addArrangedSubview(hint("也可以退出桌搭子后，在 Finder 的“应用程序”中手动移到废纸篓。macOS 无法保证这种删除发生时应用还能运行，所以手动删除不会冒充“已报告卸载”；以后重新下载并联网启动时会继续记录实际活跃状态。"))
         return page
     }
 
@@ -660,54 +722,83 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func refreshLibraries(_ settings: AppSettings) {
+        let selected = librariesPopup.selectedItem?.representedObject as? String
         librariesPopup.removeAllItems()
-        librariesPopup.addItem(withTitle: "默认桌宠")
+        librariesPopup.addItem(withTitle: "内置图鉴")
         for library in settings.libraries {
-            librariesPopup.addItem(withTitle: library.name)
+            let enabled = settings.enabledLibraryIds?.contains(library.id) == true
+            librariesPopup.addItem(withTitle: "\(enabled ? "✓ " : "")\(library.name) · 本地桌宠")
             librariesPopup.lastItem?.representedObject = library.id
         }
-        if licenses.hasPremiumAccess, let active = settings.activeLibraryId {
-            select(popup: librariesPopup, id: active)
+        if let selected, settings.libraries.contains(where: { $0.id == selected }) {
+            select(popup: librariesPopup, id: selected)
         } else {
             librariesPopup.selectItem(at: 0)
         }
-        if let library = settings.libraries.first(where: { $0.id == settings.activeLibraryId }) {
-            libraryDetail.stringValue = library.path
+        if let id = librariesPopup.selectedItem?.representedObject as? String,
+           let library = settings.libraries.first(where: { $0.id == id }) {
+            let enabled = settings.enabledLibraryIds?.contains(id) == true
+            libraryDetail.stringValue = "\(library.name) · 本地桌宠 · \(enabled ? "已启用" : "待启用")。已启用来源 \(petController.enabledPetSourceCount)/3。"
+            libraryEnabledCheckbox.title = "启用所选来源"
+            libraryEnabledCheckbox.state = enabled ? .on : .off
+            libraryEnabledCheckbox.isEnabled = true
         } else {
-            libraryDetail.stringValue = "正在由内置图鉴里的小搭子陪你"
+            let usingBuiltIn = petController.enabledPetSourceCount == 0
+            libraryDetail.stringValue = usingBuiltIn
+                ? "正在由内置图鉴里的小搭子陪你。"
+                : "启用内置图鉴会停用当前全部本地与小铺来源。"
+            libraryEnabledCheckbox.title = "使用内置图鉴"
+            libraryEnabledCheckbox.state = usingBuiltIn ? .on : .off
+            libraryEnabledCheckbox.isEnabled = !usingBuiltIn
         }
     }
 
     private func refreshContent(_ settings: AppSettings) {
+        let selectedWords = wordPacksPopup.selectedItem?.representedObject as? String
         wordPacksPopup.removeAllItems()
         wordPacksPopup.addItem(withTitle: "内置悄悄话")
         for pack in settings.interactionWordPacks {
-            wordPacksPopup.addItem(withTitle: pack.name)
+            wordPacksPopup.addItem(withTitle: "\(pack.enabled ? "✓ " : "")\(pack.name)")
             wordPacksPopup.lastItem?.representedObject = pack.id
         }
-        if licenses.hasPremiumAccess, let active = settings.activeInteractionWordPackId {
-            select(popup: wordPacksPopup, id: active)
+        if let selectedWords, settings.interactionWordPacks.contains(where: { $0.id == selectedWords }) {
+            select(popup: wordPacksPopup, id: selectedWords)
         } else {
             wordPacksPopup.selectItem(at: 0)
         }
-        if let pack = settings.interactionWordPacks.first(where: { $0.id == settings.activeInteractionWordPackId }) {
-            wordPackDetail.stringValue = "\(pack.wordCount) 句悄悄话"
+        let enabledWordCount = settings.interactionWordPacks.filter(\.enabled).count
+        if let id = wordPacksPopup.selectedItem?.representedObject as? String,
+           let pack = settings.interactionWordPacks.first(where: { $0.id == id }) {
+            wordPackDetail.stringValue = "\(pack.wordCount) 句悄悄话 · \(pack.enabled ? "已启用" : "待启用") · 已启用 \(enabledWordCount)/10"
+            wordPackEnabledCheckbox.state = pack.enabled ? .on : .off
+            wordPackEnabledCheckbox.isEnabled = true
         } else {
-            wordPackDetail.stringValue = "正在说内置悄悄话"
+            wordPackDetail.stringValue = enabledWordCount == 0
+                ? "正在说内置悄悄话"
+                : "\(enabledWordCount) 套词库会按动作合并、去重后随机取词；没有匹配内容时回退内置台词。"
+            wordPackEnabledCheckbox.state = .off
+            wordPackEnabledCheckbox.isEnabled = false
         }
         let selectedScript = scriptsPopup.selectedItem?.representedObject as? String
         scriptsPopup.removeAllItems()
         scriptsPopup.addItem(withTitle: "内置小剧场（3 套）")
         for script in settings.theaterScripts {
-            scriptsPopup.addItem(withTitle: script.name)
+            scriptsPopup.addItem(withTitle: "\(script.enabled ? "✓ " : "")\(script.name)")
             scriptsPopup.lastItem?.representedObject = script.id
         }
         select(popup: scriptsPopup, id: selectedScript)
+        let enabledScriptCount = settings.theaterScripts.filter(\.enabled).count
         if let id = scriptsPopup.selectedItem?.representedObject as? String,
            let script = settings.theaterScripts.first(where: { $0.id == id }) {
-            scriptDetail.stringValue = "\(script.scenes.count) 轮对话"
+            scriptDetail.stringValue = "\(script.scenes.count) 轮对话 · \(script.enabled ? "已启用" : "待启用") · 已启用 \(enabledScriptCount)/10"
+            scriptEnabledCheckbox.state = script.enabled ? .on : .off
+            scriptEnabledCheckbox.isEnabled = true
         } else {
-            scriptDetail.stringValue = "内置长对话剧本会参与随机上演"
+            scriptDetail.stringValue = enabledScriptCount == 0
+                ? "没有启用自定义剧本时，内置长对话剧本会参与随机上演。"
+                : "已启用 \(enabledScriptCount)/10 个自定义剧本；自动演出仍由小剧场总开关控制。"
+            scriptEnabledCheckbox.state = .off
+            scriptEnabledCheckbox.isEnabled = false
         }
     }
 
@@ -909,7 +1000,14 @@ final class SettingsWindowController: NSWindowController {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         do {
             let pet = try ContentStorage.importPet(from: url)
-            petController.update { $0.pets.append(pet); $0.activePetId = pet.id; $0.activeLibraryId = nil }
+            petController.update {
+                $0.pets.append(pet)
+                $0.activePetId = pet.id
+                $0.enabledLibraryIds = []
+                $0.enabledMarketProductIds = []
+                $0.activeLibraryId = nil
+                $0.activeMarketProductId = nil
+            }
             refresh()
         } catch { show(error) }
     }
@@ -917,18 +1015,24 @@ final class SettingsWindowController: NSWindowController {
     @objc private func petSelectionChanged(_ sender: NSPopUpButton) {
         if let id = sender.selectedItem?.representedObject as? String,
            let pet = petController.currentSettings.pets.first(where: { $0.id == id }) {
-            petsDetail.stringValue = pet.path
+            petsDetail.stringValue = "\(pet.name) · 本地桌宠。选好后点“让它陪我”。"
         }
     }
 
     @objc private func useSelectedPet() {
         guard let id = petsPopup.selectedItem?.representedObject as? String else { return }
-        petController.update { $0.activePetId = id; $0.activeLibraryId = nil }
+        petController.update {
+            $0.activePetId = id
+            $0.enabledLibraryIds = []
+            $0.enabledMarketProductIds = []
+            $0.activeLibraryId = nil
+            $0.activeMarketProductId = nil
+        }
         refresh()
     }
 
     @objc private func useDefaultPet() {
-        petController.update { $0.activePetId = nil; $0.activeLibraryId = nil }
+        try? petController.setLibraryEnabled(nil, enabled: true)
         refresh()
     }
 
@@ -942,7 +1046,6 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func addLibrary() {
         guard requirePremium("自选桌宠图鉴") else { return }
-        guard petController.currentSettings.libraries.count < 3 else { show(ContentImportError.limitReached("最多可添加 3 个 GIF 文件夹")); return }
         let panel = NSOpenPanel()
         panel.title = "为桌宠图鉴选择 GIF 文件夹"
         panel.canChooseFiles = false
@@ -951,22 +1054,38 @@ final class SettingsWindowController: NSWindowController {
         guard gifCount(in: url) > 0 else { show(ContentImportError.unsupportedGIF); return }
         if petController.currentSettings.libraries.contains(where: { $0.path.standardizedPath == url.path.standardizedPath }) { return }
         let library = LibraryDefinition(name: url.lastPathComponent.cleaned(limit: 40), path: url.path)
-        petController.update { $0.libraries.append(library); $0.activeLibraryId = library.id; $0.activePetId = nil }
+        petController.update { $0.libraries.append(library) }
         refresh()
+        select(popup: librariesPopup, id: library.id)
+        refreshLibraries(petController.currentSettings)
     }
 
     @objc private func librarySelectionChanged(_ sender: NSPopUpButton) {
         guard !refreshing else { return }
-        let id = sender.selectedItem?.representedObject as? String
-        if id != nil, !requirePremium("自选桌宠图鉴") { refresh(); return }
-        petController.update { $0.activeLibraryId = id; $0.activePetId = nil }
-        refresh()
+        refreshLibraries(petController.currentSettings)
+    }
+
+    @objc private func libraryEnabledChanged(_ sender: NSButton) {
+        guard !refreshing else { return }
+        let id = librariesPopup.selectedItem?.representedObject as? String
+        let enabled = sender.state == .on
+        if id != nil, enabled, !requirePremium("自选桌宠图鉴", continuation: { [weak self] in
+            guard let self else { return }
+            do { try self.petController.setLibraryEnabled(id, enabled: true); self.refresh() }
+            catch { self.show(error) }
+        }) { refresh(); return }
+        do { try petController.setLibraryEnabled(id, enabled: enabled); refresh() }
+        catch { show(error); refresh() }
     }
 
     @objc private func deleteSelectedLibrary() {
         guard let id = librariesPopup.selectedItem?.representedObject as? String,
               let library = petController.currentSettings.libraries.first(where: { $0.id == id }), confirmDelete(library.name) else { return }
-        petController.update { $0.libraries.removeAll { $0.id == id }; if $0.activeLibraryId == id { $0.activeLibraryId = nil } }
+        petController.update {
+            $0.libraries.removeAll { $0.id == id }
+            $0.enabledLibraryIds?.removeAll { $0 == id }
+            if $0.activeLibraryId == id { $0.activeLibraryId = $0.enabledLibraryIds?.first }
+        }
         refresh()
     }
 
@@ -982,33 +1101,39 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func importWordPack() {
         guard requirePremium("自选悄悄话") else { return }
-        guard petController.currentSettings.interactionWordPacks.count < 5 else { show(ContentImportError.limitReached("最多可导入 5 套悄悄话")); return }
         let panel = NSOpenPanel()
         panel.title = "导入悄悄话（JSON 或 TXT）"
         panel.allowedFileTypes = ["json", "txt"]
         panel.allowsMultipleSelection = true
         guard panel.runModal() == .OK else { return }
         do {
-            let remaining = 5 - petController.currentSettings.interactionWordPacks.count
-            guard panel.urls.count <= remaining else { throw ContentImportError.limitReached("最多可导入 5 套悄悄话") }
             let packs = try panel.urls.map { try InteractionWordPackImporter.load(from: $0) }
-            petController.update { $0.interactionWordPacks.append(contentsOf: packs); $0.activeInteractionWordPackId = packs.last?.id }
+            petController.update { $0.interactionWordPacks.append(contentsOf: packs) }
             refresh()
         } catch { show(error) }
     }
 
     @objc private func wordPackSelectionChanged(_ sender: NSPopUpButton) {
         guard !refreshing else { return }
-        let id = sender.selectedItem?.representedObject as? String
-        if id != nil, !requirePremium("悄悄话") { refresh(); return }
-        petController.update { $0.activeInteractionWordPackId = id }
-        refresh()
+        refreshContent(petController.currentSettings)
+    }
+
+    @objc private func wordPackEnabledChanged(_ sender: NSButton) {
+        guard !refreshing, let id = wordPacksPopup.selectedItem?.representedObject as? String else { return }
+        let enabled = sender.state == .on
+        if enabled, !requirePremium("互动词库", continuation: { [weak self] in
+            guard let self else { return }
+            do { try self.petController.setInteractionWordPackEnabled(id, enabled: true); self.refresh() }
+            catch { self.show(error) }
+        }) { refresh(); return }
+        do { try petController.setInteractionWordPackEnabled(id, enabled: enabled); refresh() }
+        catch { show(error); refresh() }
     }
 
     @objc private func deleteWordPack() {
         guard let id = wordPacksPopup.selectedItem?.representedObject as? String,
               let pack = petController.currentSettings.interactionWordPacks.first(where: { $0.id == id }), confirmDelete(pack.name) else { return }
-        petController.update { $0.interactionWordPacks.removeAll { $0.id == id }; if $0.activeInteractionWordPackId == id { $0.activeInteractionWordPackId = nil } }
+        petController.update { $0.interactionWordPacks.removeAll { $0.id == id } }
         refresh()
     }
 
@@ -1016,15 +1141,12 @@ final class SettingsWindowController: NSWindowController {
 
     @objc private func importScriptFile() {
         guard requirePremium("小剧场剧本导入") else { return }
-        guard petController.currentSettings.theaterScripts.count < 10 else { show(ContentImportError.limitReached("最多只能导入 10 个小剧场剧本")); return }
         let panel = NSOpenPanel()
         panel.title = "导入小剧场剧本"
         panel.allowedFileTypes = ["json"]
         panel.allowsMultipleSelection = true
         guard panel.runModal() == .OK else { return }
         do {
-            let remaining = 10 - petController.currentSettings.theaterScripts.count
-            guard panel.urls.count <= remaining else { throw ContentImportError.limitReached("最多只能导入 10 个小剧场剧本") }
             let scripts = try panel.urls.map { try TheaterScriptImporter.load(from: $0) }
             petController.update { $0.theaterScripts.append(contentsOf: scripts) }
             refresh()
@@ -1032,6 +1154,18 @@ final class SettingsWindowController: NSWindowController {
     }
 
     @objc private func scriptSelectionChanged(_ sender: NSPopUpButton) { refreshContent(petController.currentSettings) }
+
+    @objc private func scriptEnabledChanged(_ sender: NSButton) {
+        guard !refreshing, let id = scriptsPopup.selectedItem?.representedObject as? String else { return }
+        let enabled = sender.state == .on
+        if enabled, !requirePremium("小剧场", continuation: { [weak self] in
+            guard let self else { return }
+            do { try self.petController.setTheaterScriptEnabled(id, enabled: true); self.refresh() }
+            catch { self.show(error) }
+        }) { refresh(); return }
+        do { try petController.setTheaterScriptEnabled(id, enabled: enabled); refresh() }
+        catch { show(error); refresh() }
+    }
 
     @objc private func deleteScript() {
         guard let id = scriptsPopup.selectedItem?.representedObject as? String,
@@ -1156,6 +1290,96 @@ final class SettingsWindowController: NSWindowController {
                 setFeedbackFormEnabled(true)
                 show(error)
             }
+        }
+    }
+
+    @objc private func submitUninstallIntent() {
+        let comment = uninstallComment.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard comment.unicodeScalars.count <= 500 else {
+            show(UninstallFeedbackError.invalidComment)
+            return
+        }
+        let reason = (uninstallReasonPopup.selectedItem?.representedObject as? String)
+            .flatMap(UninstallReason.init(rawValue:))
+        guard comment.isEmpty || reason == .other else {
+            show(UninstallFeedbackError.invalidCommentReason)
+            return
+        }
+        beginControlledUninstall(reason: reason, comment: comment)
+    }
+
+    @objc private func uninstallWithoutFeedback() {
+        beginControlledUninstall(reason: nil, comment: nil)
+    }
+
+    @objc private func uninstallReasonChanged(_ sender: NSPopUpButton) {
+        let allowsComment = (sender.selectedItem?.representedObject as? String) == UninstallReason.other.rawValue
+        uninstallComment.isEnabled = allowsComment
+        if !allowsComment { uninstallComment.stringValue = "" }
+    }
+
+    private func beginControlledUninstall(reason: UninstallReason?, comment: String?) {
+        let confirmation = NSAlert()
+        confirmation.messageText = "确认卸载桌搭子？"
+        confirmation.informativeText = "桌搭子将退出并移到废纸篓。卸载不会解除授权、删除购买权益或自动释放设备名额。网络异常不会阻止卸载，但可能无法在后台标记完成。"
+        confirmation.alertStyle = .warning
+        confirmation.addButton(withTitle: "卸载")
+        confirmation.addButton(withTitle: "取消")
+        guard confirmation.runModal() == .alertFirstButtonReturn else {
+            uninstallStatus.stringValue = "已取消，桌搭子仍保留在本机。"
+            return
+        }
+
+        let installBatchId = uninstallFeedbackService.currentInstallBatchId
+        setUninstallControlsEnabled(false)
+        uninstallStatus.stringValue = reason == nil && comment == nil ? "正在准备卸载…" : "正在提交可选反馈并准备卸载…"
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var receipt: UninstallIntentReceipt?
+            do {
+                receipt = try await uninstallFeedbackService.reportIntent(
+                    reason: reason,
+                    comment: comment,
+                    installBatchId: installBatchId
+                )
+            } catch {
+                uninstallStatus.stringValue = "网络记录未完成，仍将继续卸载；后台不会据此猜测完成状态。"
+            }
+            do {
+                try uninstallFeedbackService.launchControlledUninstall(
+                    receipt: receipt,
+                    installBatchId: installBatchId
+                )
+                NSApplication.shared.terminate(nil)
+            } catch {
+                setUninstallControlsEnabled(true)
+                uninstallStatus.stringValue = "未能启动受控卸载，应用仍保留；可以改用 Finder 手动移到废纸篓。"
+                show(error)
+            }
+        }
+    }
+
+    @objc private func showUninstallGuideOnly() {
+        showUninstallGuide()
+    }
+
+    private func setUninstallControlsEnabled(_ enabled: Bool) {
+        uninstallSubmitButton.isEnabled = enabled
+        uninstallSkipButton.isEnabled = enabled
+        uninstallGuideButton.isEnabled = enabled
+        uninstallReasonPopup.isEnabled = enabled
+        let otherSelected = (uninstallReasonPopup.selectedItem?.representedObject as? String) == UninstallReason.other.rawValue
+        uninstallComment.isEnabled = enabled && otherSelected
+    }
+
+    private func showUninstallGuide() {
+        let alert = NSAlert()
+        alert.messageText = "从 macOS 手动卸载桌搭子"
+        alert.informativeText = "先从菜单栏退出桌搭子，再在 Finder 中把应用移到废纸篓。手动删除通常无法可靠回传完成状态，因此后台不会仅凭离线推测你已卸载；以后重新下载并联网启动时会继续记录实际活跃状态。"
+        alert.addButton(withTitle: "在 Finder 中显示桌搭子")
+        alert.addButton(withTitle: "稍后处理")
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         }
     }
 

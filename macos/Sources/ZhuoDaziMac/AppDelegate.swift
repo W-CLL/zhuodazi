@@ -19,8 +19,8 @@ func presentFriendlyError(_ error: Error, title: String) {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let settingsStore = SettingsStore()
-    private let remoteConfig = RemoteConfigService()
+    private lazy var settingsStore = SettingsStore()
+    private lazy var remoteConfig = RemoteConfigService()
     private var settings = AppSettings()
     private var petController: PetWindowController!
     private var licenses: LicenseService!
@@ -28,6 +28,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var interactions: InteractionService!
     private var companions: CompanionService!
     private var updates: UpdateService!
+    private var marketClient: PetMarketClient!
+    private var petShopController: PetShopViewController?
+    private var shopPreview: PetShopPreviewHost?
+    private var marketGrantTimer: Timer?
+    private var refreshingMarketGrants = false
+    private var uninstallFeedback: UninstallFeedbackService?
     private var settingsWindow: SettingsWindowController?
     private var fakeAdWindow: FakeAdWindowController?
     private var companionWindow: CompanionWindowController?
@@ -59,12 +65,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var remoteConfigTimer: Timer?
     private var refreshingRemoteConfig = false
     private var companionPolling = false
+    private var companionSendInProgress = false
     private var deviceHeartbeat: DeviceHeartbeatLoop?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
+            if let configurationPath = ProcessInfo.processInfo.environment["ZHUODAZI_SHOP_PREVIEW_CONFIG"] {
+                shopPreview = try PetShopPreviewHost(configuration: PetShopPreviewConfiguration.load(configurationPath))
+                return
+            }
             settings = settingsStore.load()
             licenses = try LicenseService()
+            marketClient = try PetMarketClient(licenses: licenses)
+            uninstallFeedback = UninstallFeedbackService(licenses: licenses)
+            Task { [weak self] in await self?.uninstallFeedback?.reportInstalledStartIfNeeded() }
             startDeviceHeartbeat()
             analytics = AnalyticsService(licenses: licenses)
             interactions = InteractionService(licenses: licenses)
@@ -73,7 +87,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             petController = PetWindowController(
                 settings: settings,
                 interactions: interactions,
-                premiumAccess: { [weak self] in self?.licenses?.hasPremiumAccess ?? false }
+                premiumAccess: { [weak self] in self?.licenses?.hasPremiumAccess ?? false },
+                marketInstallationUsable: { [weak self] in self?.marketClient?.hasValidStoredUseGrant($0) ?? false }
             ) { [weak self] settings in
                     self?.settings = settings
                     self?.settingsStore.save(settings)
@@ -83,6 +98,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             applyDockVisibility(settings.dockIconVisible)
             configureStatusMenu()
+            startMarketAuthorizationRefresh()
 
             if !licenses.isActivated {
                 Task { @MainActor [weak self] in
@@ -125,16 +141,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if let shopPreview { shopPreview.show(); return true }
         deviceHeartbeat?.resume()
         showSettings()
         return true
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
+        shopPreview != nil
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        shopPreview?.stop()
+        petShopController?.stop()
+        marketGrantTimer?.invalidate()
         deviceHeartbeat?.stop()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         remoteConfigTimer?.invalidate()
@@ -373,7 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sendCompanionItem.isHidden = trial
         if let partner = companions?.profile?.partner {
             sendCompanionItem.title = "发送当前 GIF 给 \(partner.displayName)"
-            sendCompanionItem.isEnabled = licenses.isActivated && petController.currentGIFURL != nil
+            sendCompanionItem.isEnabled = !companionSendInProgress && licenses.isActivated && petController.currentGIFURL != nil
         } else {
             sendCompanionItem.title = "发送当前 GIF 给搭子（先绑定）"
             sendCompanionItem.isEnabled = false
@@ -387,7 +407,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showSettings(checkForUpdates: Bool = false) {
+        if let shopPreview { shopPreview.show(); return }
         if settingsWindow == nil {
+            petShopController = makePetShopController()
             settingsWindow = SettingsWindowController(
                 petController: petController,
                 licenses: licenses,
@@ -399,7 +421,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 openHall: { [weak self] in self?.openHall() },
                 showUsageGuide: { [weak self] in self?.replayUsageGuide() },
                 openExperienceGuide: { [weak self] in self?.openExperienceGuide() },
-                openFakeAd: { [weak self] in self?.openFishMode() }
+                openFakeAd: { [weak self] in self?.openFishMode() },
+                petShopController: petShopController
             )
         }
         settingsWindow?.showWindow(nil)
@@ -410,6 +433,45 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openSettings() {
         showSettings()
+    }
+
+    private func makePetShopController() -> PetShopViewController {
+        PetShopViewController(licenses: licenses, client: marketClient,
+            installedPets: { [weak self] in self?.petController.currentSettings.petMarketInstallations ?? [] },
+            onInstallPet: { [weak self] in self?.petController.registerMarketInstallation($0) },
+            onRefreshPet: { [weak self] in self?.petController.refreshMarketInstallation($0) },
+            isPetEnabled: { [weak self] in self?.petController.isMarketProductEnabled($0) ?? false },
+            onTogglePet: { [weak self] id, enabled in try self?.petController.setMarketProductEnabled(id, enabled: enabled) },
+            resourceState: { [weak self] id, hash in self?.petController.resourcePackState(packId: id, sha256: hash) ?? "not-installed" },
+            onInstallResources: { [weak self] in try self?.petController.installResourcePack($0) },
+            onToggleResources: { [weak self] in try self?.petController.toggleResourcePack($0) },
+            requestActivation: { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    if await ActivationPrompts.activate(licenses: licenses, required: false,
+                        statusMessage: "桌宠小铺需要正式激活后才能购买、领取和使用。激活后请再次点击。") {
+                        petController.refreshPremiumAccess(); settingsWindow?.refreshAccessState()
+                        deviceHeartbeat?.identityRefreshed()
+                    }
+                }
+            })
+    }
+
+    private func startMarketAuthorizationRefresh() {
+        marketGrantTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.refreshMarketGrants() }
+        }
+        Task { [weak self] in await self?.refreshMarketGrants() }
+    }
+
+    private func refreshMarketGrants() async {
+        guard !refreshingMarketGrants, licenses.isActivated else { return }
+        refreshingMarketGrants = true
+        defer { refreshingMarketGrants = false }
+        let enabled = petController.currentSettings.enabledMarketProductIds ?? []
+        for item in petController.currentSettings.petMarketInstallations where enabled.contains(item.productId) {
+            if let refreshed = try? await marketClient.authorizeUse(item) { petController.refreshMarketInstallation(refreshed) }
+        }
     }
 
     @objc private func checkUpdates() {
@@ -471,6 +533,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 },
                 currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
                 isActivated: { [weak self] in self?.licenses.isActivated == true },
+                isSendingCurrentGIF: { [weak self] in self?.companionSendInProgress == true },
                 stateChanged: { [weak self] in self?.refreshMenuState() }
             )
         }
@@ -563,16 +626,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do { try await sendCurrentGIF() }
+            catch is CancellationError { }
+            catch let error as URLError where error.code == .cancelled { }
             catch { presentFriendlyError(error, title: "发送失败") }
         }
     }
 
     private func sendCurrentGIF() async throws {
+        guard !companionSendInProgress else { return }
+        try Task.checkCancellation()
         guard licenses.isActivated else { throw LicenseError.inactive }
-        guard companions.profile?.partner != nil else { throw CompanionError.server("请先绑定搭子") }
+        // Capture the selected GIF before refreshing presence or asking the user.
         guard let url = petController.currentGIFURL else { throw CompanionError.server("当前没有可发送的 GIF") }
+        let sendAccountKey = licenses.interactionCacheKey
+        let sendInstallationId = licenses.installationId
+        let sendCredential = licenses.installationCredential
+        @MainActor func validateSendContext() throws {
+            try Task.checkCancellation()
+            guard licenses.isActivated,
+                  licenses.interactionCacheKey == sendAccountKey,
+                  licenses.installationId == sendInstallationId,
+                  licenses.installationCredential == sendCredential else {
+                throw CancellationError()
+            }
+        }
+        companionSendInProgress = true
+        refreshMenuState()
+        companionWindow?.refreshState()
+        defer {
+            companionSendInProgress = false
+            refreshMenuState()
+            companionWindow?.refreshState()
+        }
+
+        let profile = try await companions.refreshProfile()
+        try validateSendContext()
+        companionWindow?.refreshState()
+        guard let partner = profile.partner else { throw CompanionError.server("请先绑定搭子") }
+        if partner.online != true {
+            let alert = NSAlert()
+            alert.alertStyle = .informational
+            alert.messageText = partner.online == false
+                ? "对方当前不在线，是否继续发送？"
+                : "当前无法确认对方在线状态，是否继续发送？"
+            alert.informativeText = partner.online == false
+                ? "\(partner.displayName) 暂时不在线。继续发送后，这次 GIF 投递最多保留 24 小时，等待对方上线后接收。"
+                : "如果 \(partner.displayName) 当前不在线，这次 GIF 投递最多保留 24 小时，等待对方上线后接收。"
+            // Return cancels; sending always requires choosing the second button.
+            alert.addButton(withTitle: "取消")
+            alert.addButton(withTitle: "继续发送")
+            alert.buttons[0].keyEquivalent = "\r"
+            alert.buttons[1].keyEquivalent = ""
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertSecondButtonReturn else { return }
+        }
+        try validateSendContext()
         let recipient = try await companions.sendCurrentGIF(url)
-        petController.showBubble("已经去找 \(recipient) 啦。")
+        try validateSendContext()
+        petController.showBubble(partner.online == false
+            ? "已给 \(recipient) 留下投递，等待对方上线后接收。"
+            : "已经去找 \(recipient) 啦。")
     }
 
     @objc private func toggleVisibility(_ sender: NSMenuItem) {

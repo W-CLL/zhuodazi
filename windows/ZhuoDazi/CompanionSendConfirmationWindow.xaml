@@ -1,0 +1,22 @@
+<Window x:Class="ZhuoDazi.CompanionSendConfirmationWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="发给搭子" Width="440" SizeToContent="Height" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False"
+        Background="{StaticResource SurfaceBrush}" FontFamily="Microsoft YaHei UI"
+        UseLayoutRounding="True">
+    <StackPanel Margin="26,24">
+        <TextBlock x:Name="PromptText" FontSize="18" FontWeight="SemiBold"
+                   Foreground="{StaticResource InkBrush}" TextWrapping="Wrap" />
+        <TextBlock Margin="0,12,0,0" FontSize="13" LineHeight="23" TextWrapping="Wrap"
+                   Foreground="{StaticResource MutedBrush}"
+                   Text="继续后会保留这次投递，等待对方上线接收。未收取的投递保留 24 小时，发送成功不代表对方已经查看。" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,24,0,0">
+            <Button x:Name="CancelButton" Content="取消" IsCancel="True" IsDefault="True"
+                    MinWidth="90" Padding="16,9" Margin="0,0,10,0" />
+            <Button Content="继续发送" MinWidth="100" Padding="16,9"
+                    Background="{StaticResource AccentBrush}" Foreground="White"
+                    BorderBrush="{StaticResource AccentBrush}" Click="Continue_Click" />
+        </StackPanel>
+    </StackPanel>
+</Window>

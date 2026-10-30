@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\ZhuoDazi\Models\PetMarketModels.cs" Link="PetMarketModels.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\Ed25519SignatureVerifier.cs" Link="Ed25519SignatureVerifier.cs" />
+    <Compile Include="..\..\ZhuoDazi\Services\PetMarketClient.cs" Link="PetMarketClient.cs" />
+  </ItemGroup>
+</Project>

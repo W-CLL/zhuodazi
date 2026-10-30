@@ -156,7 +156,7 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
         sendButton.bezelStyle = .rounded
         sendButton.controlSize = .large
         composer.addArrangedSubview(sendButton)
-        composer.addArrangedSubview(label("每 30 秒可发送一次；对方最多保留 3 条待收取来访，24 小时未接收会过期。设备接收回执不代表对方已阅读。", secondary: true))
+        composer.addArrangedSubview(label("每 15 秒可发送一次；对方最多保留 3 条待收取来访，24 小时未接收会过期。设备接收回执不代表对方已阅读。", secondary: true))
 
         status.isSelectable = true
         status.maximumNumberOfLines = 0
@@ -334,7 +334,7 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
             let name = try await self.service.sendToHall(fileURL: file, recipientId: recipient, message: text)
             self.message.stringValue = ""
             self.resultText = "已发给 \(name)，等待对方设备接收。24 小时未接收会过期。"
-            self.cooldownUntil = Date().addingTimeInterval(30)
+            self.cooldownUntil = Date().addingTimeInterval(15)
             self.startCooldownTimer()
         }
     }

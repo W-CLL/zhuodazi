@@ -9,6 +9,7 @@ internal static class DeskPetApi
     public const string Activate = BaseUrl + "/api/activate";
     public const string Trial = BaseUrl + "/api/trial";
     public const string DeviceHeartbeat = BaseUrl + "/api/device/heartbeat";
+    public const string DeviceInstallEvents = BaseUrl + "/api/device/install-events";
     public const string Feedback = BaseUrl + "/api/feedback";
     public const string InteractionProfile = BaseUrl + "/api/interactions/profile";
     public const string InteractionEvents = BaseUrl + "/api/interactions/events";
@@ -22,5 +23,7 @@ internal static class DeskPetApi
     public const string AnalyticsEvents = BaseUrl + "/api/analytics/events";
     public const string UpdateLatest = BaseUrl + "/api/update/latest?platform=windows&architecture=x64";
     public const string SiteSettings = BaseUrl + "/api/public/site-settings";
+    public const string PetMarket = BaseUrl + "/api/pet-market";
+    public const string PetMarketCatalog = PetMarket + "/catalog";
     public const string DownloadPathPrefix = "/downloads/";
 }
