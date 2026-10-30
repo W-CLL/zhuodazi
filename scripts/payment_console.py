@@ -10,9 +10,10 @@ from pathlib import Path
 import subprocess
 import sys
 import time
+from types import SimpleNamespace
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from local_market_payments import ConfigError, SourceLock, load_config
+from local_market_payments import ConfigError, SourceLock, load_config, normalize_base_url
 
 
 def age_seconds(value):
@@ -22,7 +23,7 @@ def age_seconds(value):
         return None
 
 
-def dashboard(config, status, alive, restarts, exit_code=None):
+def dashboard(config, status, alive, restarts, exit_code=None, *, read_only=False):
     age = age_seconds(status.get("lastPollAt"))
     fresh = alive and status.get("running") and age is not None and age < 30
     heartbeat_age = age_seconds(status.get("lastHeartbeatAt"))
@@ -40,10 +41,12 @@ def dashboard(config, status, alive, restarts, exit_code=None):
     if not isinstance(error, str) or not re.fullmatch(r"[a-z0-9_]{0,64}", error):
         error = "status_unavailable"
     mode = "本地调试" if config.mode == "local" else "正式 HTTPS"
+    process_line = (f"监听状态：{'最近运行记录正常' if fresh else '未运行或状态已过期'}（只读观察）"
+                    if read_only else f"监听进程：{'运行中' if alive else '已停止'}    自动重启：{restarts} 次")
     return "\n".join([
         "桌搭子 · 微信收款监听", "=" * 62,
         f"环境：{mode}    后台：{config.base_url}",
-        f"监听进程：{'运行中' if alive else '已停止'}    自动重启：{restarts} 次",
+        process_line,
         f"微信收款通知：{source('notice')}",
         f"好友转账消息：{source('transfer')}",
         f"历史基线：{'已建立' if status.get('baselineReady') else '准备中'}",
@@ -53,9 +56,11 @@ def dashboard(config, status, alive, restarts, exit_code=None):
         f"订单已确认：{count('approvedCount')}    待后台核对：{count('reviewCount')}",
         f"需处理的上报：{count('attentionCount')}    最近错误：{error or '无'}",
         "", "已上报不等于订单已确认；迁移前的历史结果以后台订单为准。",
-        "保持电脑和微信在线，并保持本窗口运行。断网后待上报事件会重试。",
+        ("后台监听独立运行，本窗口只读取状态。电脑和微信仍需保持在线。" if read_only
+         else "保持电脑和微信在线，并保持本窗口运行。断网后待上报事件会重试。"),
         "超过订单有效期才送达的付款需要后台核对，不会直接放行。",
-        "按 Ctrl+C 安全停止；关闭窗口也会停止监听。",
+        ("关闭本窗口或按 Ctrl+C 只退出查看，不会停止后台监听。" if read_only
+         else "按 Ctrl+C 安全停止；关闭窗口也会停止监听。"),
         (f"进程退出码：{exit_code}，请修正配置后重新启动。" if exit_code in (2, 3) else ""),
     ])
 
@@ -70,12 +75,40 @@ def read_status(path):
         return {}
 
 
+def watch_status(root, profile):
+    # A viewer must work even when keys/dependencies are unavailable. Read only
+    # the safe endpoint fields; never validate keys, acquire a lock or own a worker.
+    stored_config = read_status(root / "config" / (profile + ".json"))
+    endpoint = "配置不可用（仅显示本地状态记录）"
+    try:
+        if stored_config.get("mode", "local") == profile:
+            endpoint = normalize_base_url(stored_config.get("baseUrl", ""), profile)
+    except (ConfigError, TypeError, ValueError, AttributeError):
+        pass
+    config = SimpleNamespace(mode=profile, base_url=endpoint)
+    status_path = root / "state" / profile / "bridge.status.json"
+    try:
+        while True:
+            status = read_status(status_path)
+            if sys.stdout.isatty():
+                os.system("cls" if os.name == "nt" else "clear")
+            print(dashboard(config, status, True, 0, read_only=True), flush=True)
+            time.sleep(2)
+    except KeyboardInterrupt:
+        print("\n状态查看已关闭；后台监听未停止。", flush=True)
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="桌搭子收款监听状态窗口")
     parser.add_argument("--profile", choices=("local", "production"), default="local")
-    parser.add_argument("--check", action="store_true", help="仅校验配置和依赖，不读取微信、不联网")
+    actions = parser.add_mutually_exclusive_group()
+    actions.add_argument("--check", action="store_true", help="仅校验配置和依赖，不读取微信、不联网")
+    actions.add_argument("--status", action="store_true", help="只读持续查看状态；关闭窗口不会停止后台监听")
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parent.parent
+    if args.status:
+        return watch_status(root, args.profile)
     config_path = root / "config" / (args.profile + ".json")
     try:
         config = load_config(config_path)
@@ -95,7 +128,7 @@ def main(argv=None):
     try:
         lock = SourceLock(hashlib.sha256((str(root).casefold() + args.profile).encode()).hexdigest())
     except ConfigError:
-        print("此环境的状态窗口已经打开，请使用已有窗口。")
+        print("此环境的监听已经运行。查看正式连接状态请打开 payment-status.bat。")
         return 2
     stop.unlink(missing_ok=True)
     command += ["--state-db", str(state / "bridge.sqlite3"), "--status-json", str(status_path), "--stop-file", str(stop)]

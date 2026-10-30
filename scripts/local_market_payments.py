@@ -1044,6 +1044,7 @@ class LocalEventSender:
             method="POST",
             headers={
                 "Accept": "application/json",
+                "User-Agent": "ZhuoDazi-PaymentMonitor/3.5.3",
                 "Authorization": f"Bearer {self.token}",
                 "Content-Type": "application/json",
             },

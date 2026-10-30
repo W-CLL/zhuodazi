@@ -59,7 +59,8 @@ def main():
     scripts.mkdir()
     for name in ("local_market_payments.py", "payment_console.py"):
         shutil.copy2(Path(__file__).with_name(name), scripts / name)
-    shutil.copy2(Path(__file__).with_name("start-payments.bat"), destination / "start-payments.bat")
+    for name in ("start-payments.bat", "start-production-payments.bat", "payment-status.bat"):
+        shutil.copy2(Path(__file__).with_name(name), destination / name)
     shutil.copy2(Path(__file__).parent.parent / "docs/payment-monitor-standalone.md", destination / "README.md")
     shutil.copy2(config["keysFile"], destination / "config/wechat-keys.json")
     config.update(wxlocalRoot=str(sdk), keysFile=str(destination / "config/wechat-keys.json"), mode="local")

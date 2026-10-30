@@ -1074,6 +1074,18 @@ class LocalMarketPaymentTests(unittest.TestCase):
 
 
 class ProductionBridgeTests(unittest.TestCase):
+    def test_official_sender_identifies_product_on_both_endpoints(self):
+        sender = payments.LocalEventSender("https://in.desktoppet.online", "fixture",
+                                          event_path=payments.MARKET_API_PATH, mode="production")
+        for endpoint in (sender.endpoint, sender.heartbeat_endpoint):
+            response = io.BytesIO(b'{}')
+            response.status = 200
+            with patch.object(sender.opener, "open", return_value=response) as opened:
+                self.assertEqual(sender._post(endpoint, {}), (True, ""))
+                request = opened.call_args.args[0]
+                self.assertEqual(request.get_header("User-agent"), "ZhuoDazi-PaymentMonitor/3.5.3")
+                self.assertEqual(request.full_url, endpoint)
+
     def test_production_is_explicit_and_official_https_only(self):
         url = "https://in.desktoppet.online"
         self.assertEqual(payments.normalize_base_url(url + ":443/", "production"), url)

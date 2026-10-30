@@ -2,6 +2,8 @@
 
 ## 启动与停止
 
+2026-10-30 发布状态：正式收款已接通，当前后台运行正式监听，目标为 `https://in.desktoppet.online`。查看连接状态使用 `payment-status.bat`；停止后或电脑重启后使用 `start-production-payments.bat` 启动正式监听。状态窗口仅查看，关闭它不会停止后台；启动监听的控制台关闭会停止监听。
+
 双击 `start-payments.bat`，默认运行本地配置。窗口持续显示微信收款通知、好友转账读取、后台心跳、待上报和已上报数量、订单确认/待核对结果以及错误码。不要关闭窗口，电脑不能睡眠，收款微信需要保持登录。
 
 按 Ctrl+C 安全停止；关闭窗口也会通知子进程停止。退出后后台心跳立即下线，异常断电或强制结束时最长 60 秒后过期。重新运行 BAT 会继续原来的队列，网络临时中断会自动重试。重复打开相同账号的监听会被拒绝。
@@ -15,20 +17,20 @@
 - `runtime/python/`：复制的 Python 运行时和读取所需依赖，不依赖原项目的虚拟环境。
 - `sdk/wxlocal/`：原 wxlocal 源码的独立副本和许可证。原项目保留。
 - `scripts/`：仅启动付款读取和最小事件上报，不启动聊天机器人、不发送消息、不点击收款。
-- `config/local.json` 与 `config/wechat-keys.json`：当前本地配置及已有读取密钥，限制为当前用户和 SYSTEM 访问。请勿提交、共享或上传。
-- `state/local/`：历史基线、去重记录、待发送队列和状态。保留这些文件可以继续监听。
+- `config/local.json`、`config/production.json` 与 `config/wechat-keys.json`：分别为本地和正式配置及已有读取密钥，限制为当前用户和 SYSTEM 访问。请勿提交、共享或上传。
+- `state/local/` 与 `state/production/`：分别保存历史基线、去重记录、待发送队列和状态。保留这些文件可以继续监听，不要互相复制或改绑。
 
 此工具仍需要读取本机微信正在使用的数据库目录。没有复制聊天数据库、聊天附件、邮箱配置或原项目自动回复配置；只识别付款通知及转账结构化字段。
 
 好友转账按当前产品规则：收到匹配账号、金额、五位备注码的有效转账消息即可确认订单，不等待手动点击收款；它表示观察到转账发起，不代表银行级结算保证。普通聊天文字不能作为支付凭证。支付备注是三位数字加两位英文，不区分大小写，只是匹配码，下载权限还依赖激活、订单和签名授权。
 
-## 以后连接正式后台
+## 正式后台连接
 
-本次只连接本地，没有部署或访问正式付款接口。正式链路为：微信本地读取 → Windows 监听通过 HTTPS 上报 → 后台匹配订单并授权 → Windows/macOS 客户端自动安装，用户自行启用。
+正式接口已部署，实际来源读取与 HTTPS 心跳已连接，后台已开启好友转账收款。链路为：微信本地读取 → Windows 监听通过 HTTPS 上报 → 后台匹配订单并授权 → Windows/macOS 客户端自动安装，用户自行启用。正式资源仍由用户自行上传和调整。
 
 后台需要部署配套接口并设置 `DESKPET_PET_MARKET_BRIDGE_TOKEN`、`DESKPET_PET_MARKET_COLLECTION_ACCOUNT_ID`。账号字段是监听中的收款账号内部标识，不能填展示微信号。监听使用同一密钥发送 Bearer 认证到 `/api/pet-market/payment-events` 和 `/api/pet-market/payment-heartbeat`。TLS 使用系统证书校验，拒绝跳转，不读取环境代理；服务端必须正确配置 HTTPS。
 
-准备上线时，将 `config/production.example.json` 复制成 `config/production.json`，填入独立正式令牌和确认过的账号/密钥配置，停止本地监听后通过 `start-payments.bat --profile production` 启动。仅允许 `https://in.desktoppet.online`，默认端口 443。该操作应在正式发布安排中执行。
+本机正式配置已创建，不要重新覆盖或生成令牌。日后部署到新机器时，依据 `config/production.example.json` 配置独立正式令牌和确认过的账号/密钥路径，停止旧监听后再启动。仅允许 `https://in.desktoppet.online`，默认端口 443。正式请求使用 `ZhuoDazi-PaymentMonitor/3.5.3` 产品标识，避免被线上入口的通用脚本标识规则拦截。
 
 正式环境自动使用新的 `state/production/`。禁止将 `state/local/` 的数据库复制过去；数据库绑定账号与目的地址，不允许改绑。首次启动建立历史基线，历史付款不会自动导入。不要同时监听同一账号的两个环境。
 
