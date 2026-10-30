@@ -85,16 +85,16 @@ final class PetShopPreviewHost {
                 state.scripts.removeAll { $0.sourceResourcePackId == parsed.packId }; state.scripts += parsed.scripts; save()
             }, onToggleResources: { [weak self] id in
                 guard let self else { return }
-                let indices = state.words.indices.filter { state.words[$0].sourceResourcePackId == id }
-                let scriptIndices = state.scripts.indices.filter { state.scripts[$0].sourceResourcePackId == id }
-                let enable = !(indices.allSatisfy { state.words[$0].enabled } && scriptIndices.allSatisfy { state.scripts[$0].enabled })
+                let indices = state.words.indices.filter { self.state.words[$0].sourceResourcePackId == id }
+                let scriptIndices = state.scripts.indices.filter { self.state.scripts[$0].sourceResourcePackId == id }
+                let enable = !(indices.allSatisfy { self.state.words[$0].enabled } && scriptIndices.allSatisfy { self.state.scripts[$0].enabled })
                 if enable {
                     guard state.words.filter({ $0.enabled && $0.sourceResourcePackId != id }).count + indices.count <= 10,
                           state.scripts.filter({ $0.enabled && $0.sourceResourcePackId != id }).count + scriptIndices.count <= 10 else {
                         throw PetMarketError.invalid("互动词库和小剧场分别最多启用10个")
                     }
                 }
-                indices.forEach { state.words[$0].enabled = enable }; scriptIndices.forEach { state.scripts[$0].enabled = enable }; save()
+                indices.forEach { self.state.words[$0].enabled = enable }; scriptIndices.forEach { self.state.scripts[$0].enabled = enable }; save()
             }, requestActivation: { presentFriendlyError(LicenseError.inactive, title: "需要本地测试授权") })
         window = NSWindow(contentViewController: controller)
         window.title = "桌宠小铺 · 本地独立预览"

@@ -13,7 +13,7 @@ private final class PetShopButton: NSButton {
 }
 
 @MainActor
-final class PetShopViewController: NSViewController, NSTextFieldDelegate {
+final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private let licenses: LicenseService
     private let client: PetMarketClient
     private let resources: ResourcePackClient

@@ -9,6 +9,7 @@
     <Compile Include="..\..\ZhuoDazi\Models\DailyJournalModels.cs" Link="DailyJournalModels.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\DailyJournalStore.cs" Link="DailyJournalStore.cs" />
     <Compile Include="..\..\ZhuoDazi\Models\AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\PetMarketModels.cs" Link="PetMarketModels.cs" />
     <Compile Include="..\..\ZhuoDazi\Models\OnboardingProgress.cs" Link="OnboardingProgress.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\DailyRoutineSchedule.cs" Link="DailyRoutineSchedule.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\InteractionScheduler.cs" Link="InteractionScheduler.cs" />
