@@ -223,7 +223,7 @@ struct AppSettings: Codable {
                   isDirectory.boolValue,
                   directoryURL.resolvingSymlinksInPath().standardizedFileURL.path == directoryURL.path,
                   PetMarketJSON.validHash(clean.manifestSha256),
-                  (1...80).contains(clean.files.count) else { return nil }
+                  (1...PetMarketLimits.maximumGIFCount).contains(clean.files.count) else { return nil }
             var seenFiles = Set<String>()
             guard clean.files.allSatisfy({ relativePath in
                 let key = relativePath.precomposedStringWithCanonicalMapping.lowercased()

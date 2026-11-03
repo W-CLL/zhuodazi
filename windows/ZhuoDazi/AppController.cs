@@ -324,7 +324,7 @@ public sealed partial class AppController : IDisposable
         var previousInbox = Companions.Inbox;
         var previousWasTrialIdentity = !_licenses.IsActivated;
         var previousInstallation = _licenses.InstallationId;
-        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status, trialEnded);
+        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status, trialEnded, _remoteConfig);
         if (owner is not null) activationWindow.Owner = owner;
         var activated = activationWindow.ShowDialog() == true;
         if (activated)

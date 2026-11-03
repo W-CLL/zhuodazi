@@ -185,8 +185,10 @@ public sealed class AppSettings
             item.Title = CleanName(item.Title, item.ProductId);
             item.Directory = (item.Directory ?? string.Empty).Trim();
             item.ManifestSha256 = (item.ManifestSha256 ?? string.Empty).Trim().ToLowerInvariant();
-            item.Files = (item.Files ?? []).Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase).Take(256).ToList();
+            item.Files = (item.Files ?? []).Where(File.Exists).Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(PetMarketPackageLimits.MaximumGifFiles + 1).ToList();
             if (item.ProductId.Length == 0 || item.Version.Length == 0 || item.Files.Count == 0
+                || item.Files.Count > PetMarketPackageLimits.MaximumGifFiles
                 || !Directory.Exists(item.Directory) || item.ManifestSha256.Length != 64
                 || !item.ManifestSha256.All(Uri.IsHexDigit)) continue;
             if (unique.Any(existing => existing.ProductId.Equals(item.ProductId, StringComparison.OrdinalIgnoreCase))) continue;

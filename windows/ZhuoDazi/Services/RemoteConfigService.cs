@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using ZhuoDazi.Models;
 
 namespace ZhuoDazi.Services;
@@ -43,6 +44,7 @@ internal sealed class RemoteConfigService
     private readonly SettingsStore _store;
     private readonly object _gate = new();
     private RemoteConfig _current = new();
+    private Task<bool>? _refreshTask;
 
     public RemoteConfigService(SettingsStore store)
     {
@@ -57,28 +59,49 @@ internal sealed class RemoteConfigService
 
     public event Action? Changed;
 
-    public async Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
+    public Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested) return Task.FromResult(false);
+        Task<bool> refresh;
+        lock (_gate)
+        {
+            // The controller and open activation cards share one refresh. A slower
+            // request cannot overwrite a later result or race the cache writer.
+            if (_refreshTask is null || _refreshTask.IsCompleted) _refreshTask = RefreshCoreAsync();
+            refresh = _refreshTask;
+        }
+        return AwaitRefreshAsync(refresh, cancellationToken);
+    }
+
+    private static async Task<bool> AwaitRefreshAsync(Task<bool> refresh, CancellationToken cancellationToken)
+    {
+        try { return await refresh.WaitAsync(cancellationToken).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return false; }
+    }
+
+    private async Task<bool> RefreshCoreAsync()
     {
         try
         {
             using var client = DeskPetHttp.CreateClient(TimeSpan.FromSeconds(8));
-            using var response = await client.GetAsync(PreviewSiteSettingsUri ?? new Uri(DeskPetApi.SiteSettings),
-                HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            using var request = new HttpRequestMessage(HttpMethod.Get, PreviewSiteSettingsUri ?? new Uri(DeskPetApi.SiteSettings));
+            request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
+            request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
+            using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode) return false;
             if (response.Content.Headers.ContentLength > MaximumConfigBytes) return false;
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
             using var body = new MemoryStream();
             var buffer = new byte[8192];
-            using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            readTimeout.CancelAfter(TimeSpan.FromSeconds(8));
+            using var readTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(8));
             int count;
-            while ((count = await stream.ReadAsync(buffer, readTimeout.Token)) != 0)
+            while ((count = await stream.ReadAsync(buffer, readTimeout.Token).ConfigureAwait(false)) != 0)
             {
                 if (body.Length + count > MaximumConfigBytes) return false;
                 body.Write(buffer, 0, count);
             }
             body.Position = 0;
-            using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: readTimeout.Token).ConfigureAwait(false);
             var next = Parse(document.RootElement);
             SaveCache(document.RootElement);
             lock (_gate) _current = next;
@@ -111,7 +134,7 @@ internal sealed class RemoteConfigService
         try
         {
             Directory.CreateDirectory(_store.DataDirectory);
-            var temporaryPath = $"{CachePath()}.{Environment.ProcessId}.tmp";
+            var temporaryPath = $"{CachePath()}.{Environment.ProcessId}.{Guid.NewGuid():N}.tmp";
             File.WriteAllText(temporaryPath, root.GetRawText());
             File.Move(temporaryPath, CachePath(), true);
         }
@@ -125,8 +148,12 @@ internal sealed class RemoteConfigService
 
     private static RemoteConfig Parse(JsonElement root)
     {
-        if (root.ValueKind != JsonValueKind.Object) return new RemoteConfig();
-        if (root.TryGetProperty("publicSiteSettings", out var nested) && nested.ValueKind == JsonValueKind.Object) root = nested;
+        if (root.ValueKind != JsonValueKind.Object) throw new JsonException("远程配置必须是 JSON 对象。");
+        if (root.TryGetProperty("publicSiteSettings", out var nested))
+        {
+            if (nested.ValueKind != JsonValueKind.Object) throw new JsonException("远程配置内容无效。");
+            root = nested;
+        }
         var features = root.TryGetProperty("features", out var featuresElement) ? featuresElement : default;
         var defaults = root.TryGetProperty("defaults", out var defaultsElement) ? defaultsElement : default;
         var personality = ReadString(defaults, "personality", "lively");

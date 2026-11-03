@@ -2,6 +2,16 @@ using System.Text.Json.Serialization;
 
 namespace ZhuoDazi.Models;
 
+internal static class PetMarketPackageLimits
+{
+    internal const long MaximumBytes = 300L * 1024 * 1024;
+    internal const int MaximumManifestBytes = 1024 * 1024;
+    // ZIP32 reserves 65,535 as a ZIP64 sentinel; one entry is the manifest.
+    internal const int MaximumArchiveEntries = 65_534;
+    internal const int MaximumGifFiles = MaximumArchiveEntries - 1;
+    internal const int MaximumGifDimension = 4096;
+}
+
 public sealed class PetMarketCatalog
 {
     [JsonPropertyName("generatedAt")]

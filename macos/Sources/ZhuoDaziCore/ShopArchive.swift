@@ -22,8 +22,11 @@ public enum ShopArchive {
         }
     }
 
-    public static func read(_ archive: Data, maxFiles: Int = 162, maxFileBytes: Int = 8 * 1024 * 1024,
-                            maxTotalBytes: Int = 64 * 1024 * 1024) throws -> [Entry] {
+    public static func read(_ archive: Data, maxFiles: Int = PetMarketLimits.maximumArchiveEntries,
+                            maxFileBytes: Int = PetMarketLimits.maximumFileBytes,
+                            maxTotalBytes: Int = PetMarketLimits.maximumTotalBytes,
+                            maxArchiveBytes: Int = PetMarketLimits.maximumArchiveBytes) throws -> [Entry] {
+        guard archive.count <= maxArchiveBytes else { throw ShopArchiveError.invalidArchive }
         let bytes = [UInt8](archive)
         func u16(_ offset: Int) throws -> Int {
             guard offset >= 0, offset + 2 <= bytes.count else { throw ShopArchiveError.invalidArchive }
@@ -77,7 +80,7 @@ public enum ShopArchive {
             guard String(data: try slice(local + 30, nameLength), encoding: .utf8) == raw else { throw ShopArchiveError.invalidArchive }
             try extras(local + 30 + nameLength, localExtra)
             let start = local + 30 + nameLength + localExtra, stop = start + compressed
-            guard stop <= centralStart, !spans.contains(where: { $0.overlaps(local..<stop) }) else { throw ShopArchiveError.invalidArchive }
+            guard stop <= centralStart else { throw ShopArchiveError.invalidArchive }
             spans.append(local..<stop)
             if directory {
                 guard size == 0, compressed == 0 else { throw ShopArchiveError.invalidArchive }
@@ -102,6 +105,12 @@ public enum ShopArchive {
             entries.append(Entry(path: name, data: output))
         }
         guard cursor == end else { throw ShopArchiveError.invalidArchive }
+        let orderedSpans = spans.sorted { $0.lowerBound < $1.lowerBound }
+        for index in 1..<orderedSpans.count {
+            guard orderedSpans[index - 1].upperBound <= orderedSpans[index].lowerBound else {
+                throw ShopArchiveError.invalidArchive
+            }
+        }
         // Reject a file masquerading as a parent directory of another entry.
         let fileNames = Set(entries.map { $0.path.precomposedStringWithCanonicalMapping.lowercased() })
         for path in names {
@@ -116,11 +125,8 @@ public enum ShopArchive {
     }
 
     public static func crc32(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xffffffff
-        for byte in data {
-            crc ^= UInt32(byte)
-            for _ in 0..<8 { crc = (crc >> 1) ^ ((crc & 1) == 1 ? 0xedb88320 : 0) }
+        data.withUnsafeBytes { bytes in
+            shop_crc32(bytes.bindMemory(to: UInt8.self).baseAddress, data.count)
         }
-        return crc ^ 0xffffffff
     }
 }

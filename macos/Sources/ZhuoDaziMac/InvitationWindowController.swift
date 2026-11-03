@@ -15,6 +15,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     private let licenses: LicenseService
     private let replacingExisting: Bool
     private var refreshTimer: Timer?
+    private var refreshTask: Task<Void, Never>?
     private var refreshing = false
     private var finished = false
     private(set) var activatedRemotely = false
@@ -43,18 +44,19 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
         window.makeFirstResponder(input)
         refreshTimer = Timer(timeInterval: 15, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in await self?.refreshActivation() }
+            MainActor.assumeIsolated { self?.requestRefresh() }
         }
         if let refreshTimer { RunLoop.main.add(refreshTimer, forMode: .modalPanel) }
+        requestRefresh()
         NSApp.runModal(for: window)
-        finished = true
-        refreshTimer?.invalidate()
+        finish()
         window.orderOut(nil)
         return result
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         result = nil
+        finish()
         NSApp.stopModal()
         return true
     }
@@ -126,9 +128,6 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
         contactBox.isHidden = false
         contactButton.isHidden = true
         stack.addArrangedSubview(contactBox)
-        Task { @MainActor [weak self] in
-            await self?.refreshActivation()
-        }
 
         let website = NSButton(title: trialEnded ? "去官网看看玩法" : "去官网看看", target: self, action: #selector(openWebsite))
         let cancel = NSButton(title: trialEnded ? "继续基础陪伴" : (required ? "先留下桌宠" : "取消"), target: self, action: #selector(cancelPrompt))
@@ -212,6 +211,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
                 guard !finished else { return }
                 if licenses.isActivated {
                     activatedRemotely = true
+                    finish()
                     NSApp.stopModal()
                     return
                 }
@@ -242,7 +242,21 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     }
 
     @objc private func syncActivation() {
-        Task { @MainActor [weak self] in await self?.refreshActivation() }
+        requestRefresh()
+    }
+
+    private func requestRefresh() {
+        guard !finished, refreshTask == nil else { return }
+        refreshTask = Task { @MainActor [weak self] in
+            await self?.refreshActivation()
+            self?.refreshTask = nil
+        }
+    }
+
+    private func finish() {
+        finished = true
+        refreshTimer?.invalidate()
+        refreshTask?.cancel()
     }
 
     private func wrappingLabel(_ text: String) -> NSTextField {
@@ -272,11 +286,13 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
             return
         }
         result = input.stringValue
+        finish()
         NSApp.stopModal()
     }
 
     @objc private func cancelPrompt() {
         result = nil
+        finish()
         NSApp.stopModal()
     }
 

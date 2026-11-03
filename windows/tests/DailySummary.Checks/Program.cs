@@ -21,6 +21,7 @@ internal static class Program
             CheckTemplatesAndRotation();
             CheckConfiguration();
             await CheckRemoteConfiguration(Path.Combine(directory, "remote"));
+            await CheckConcurrentRemoteConfiguration(Path.Combine(directory, "remote-concurrent"));
             Console.WriteLine($"Daily summary checks passed ({_assertions} assertions). No app or external API was started.");
         }
         finally
@@ -242,6 +243,51 @@ internal static class Program
         }
     }
 
+    private static async Task CheckConcurrentRemoteConfiguration(string directory)
+    {
+        var settings = new SettingsStore(directory);
+        var remote = new RemoteConfigService(settings);
+        var pending = new TaskCompletionSource<HttpResponseMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var requests = 0;
+        var changes = 0;
+        remote.Changed += () => Interlocked.Increment(ref changes);
+        DeskPetHttp.HandlerFactory = () => new AsyncResponseHandler(request =>
+        {
+            Interlocked.Increment(ref requests);
+            Require(request.Headers.CacheControl?.NoCache == true,
+                "Opening activation must request fresh backend settings rather than accept an intermediary cache.");
+            Require(request.Headers.UserAgent.ToString() == $"ZhuoDazi/{UpdateService.CurrentVersion}",
+                "Public settings requests must identify the client version so production ingress does not reject an empty User-Agent.");
+            return pending.Task;
+        });
+        using var closedWindow = new CancellationTokenSource();
+        var windowRefresh = remote.RefreshAsync(closedWindow.Token);
+        var controllerRefresh = remote.RefreshAsync();
+        Require(requests == 1 && !controllerRefresh.IsCompleted,
+            "Concurrent controller and activation-card refreshes must share one request to avoid late overwrites.");
+        closedWindow.Cancel();
+        Require(!await windowRefresh && !controllerRefresh.IsCompleted,
+            "Closing one card must cancel its own wait without canceling the shared configuration request.");
+        const string freshTitle = "最新线上激活卡片";
+        var payload = JsonSerializer.Serialize(new { activation = new { title = freshTitle, description = "新配置" } });
+        pending.SetResult(new(HttpStatusCode.OK) { Content = new StringContent(payload, Encoding.UTF8, "application/json") });
+        Require(await controllerRefresh && remote.Current.ActivationTitle == freshTitle && changes == 1,
+            "The surviving subscriber must receive and apply the configuration exactly once.");
+        Require(new RemoteConfigService(settings).Current.ActivationTitle == freshTitle,
+            "The newest accepted activation card must survive restart.");
+        foreach (var body in new[] { "[]", "null", "{\"publicSiteSettings\":null}", "broken-json" })
+        {
+            DeskPetHttp.HandlerFactory = () => new ResponseHandler(_ => new(HttpStatusCode.OK)
+                { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+            Require(!await remote.RefreshAsync() && remote.Current.ActivationTitle == freshTitle
+                && new RemoteConfigService(settings).Current.ActivationTitle == freshTitle && changes == 1,
+                "Malformed configuration must preserve the last valid in-memory and persistent activation card.");
+        }
+        DeskPetHttp.HandlerFactory = () => new ResponseHandler(_ => new(HttpStatusCode.ServiceUnavailable));
+        Require(!await remote.RefreshAsync() && remote.Current.ActivationTitle == freshTitle,
+            "An offline refresh must leave the last valid card available immediately.");
+    }
+
     private static void Require(bool condition, string message)
     {
         _assertions++;
@@ -253,10 +299,21 @@ internal static class Program
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(respond(request));
     }
+
+    private sealed class AsyncResponseHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => respond(request);
+    }
 }
 
 namespace ZhuoDazi.Services
 {
+    internal static class UpdateService
+    {
+        public static string CurrentVersion => typeof(RemoteConfigService).Assembly.GetName().Version!.ToString(3);
+    }
+
     // RemoteConfig only needs a data directory; keeping this test double avoids a WPF GIF decoder dependency.
     internal sealed class SettingsStore(string dataDirectory)
     {

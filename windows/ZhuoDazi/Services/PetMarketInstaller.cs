@@ -1,7 +1,9 @@
+using System.Buffers.Binary;
 using System.IO;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
+using ZhuoDazi.Models;
 
 namespace ZhuoDazi.Services;
 
@@ -14,12 +16,12 @@ internal sealed record PetMarketInstallResult(
 
 internal static class PetMarketInstaller
 {
-    internal const long MaximumArchiveBytes = 64 * 1024 * 1024;
-    internal const long MaximumUncompressedBytes = 64 * 1024 * 1024;
-    internal const int MaximumManifestBytes = 256 * 1024;
-    internal const int MaximumGifFiles = 80;
+    internal const long MaximumArchiveBytes = PetMarketPackageLimits.MaximumBytes;
+    internal const long MaximumUncompressedBytes = PetMarketPackageLimits.MaximumBytes;
+    internal const int MaximumManifestBytes = PetMarketPackageLimits.MaximumManifestBytes;
+    internal const int MaximumGifFiles = PetMarketPackageLimits.MaximumGifFiles;
 
-    private const int MaximumArchiveEntries = 256;
+    private const int MaximumArchiveEntries = PetMarketPackageLimits.MaximumArchiveEntries;
     private const int MaximumCompressionRatio = 100;
     private const int UnixFileTypeMask = 0xF000;
     private const int UnixSymbolicLink = 0xA000;
@@ -39,7 +41,7 @@ internal static class PetMarketInstaller
         ValidateSafeComponent(expectedVersion, "商品版本");
         var normalizedExpectedHash = NormalizeSha256(expectedSha256, "资源包 SHA-256");
         if (expectedSizeBytes is <= 0 or > MaximumArchiveBytes)
-            throw new InvalidOperationException("资源包大小无效或超过 64 MB。");
+            throw new InvalidOperationException("资源包大小无效或超过 300 MB。");
 
         var archivePath = Path.GetFullPath(zipPath);
         var dataDirectory = Path.GetFullPath(targetDataDirectory);
@@ -87,6 +89,8 @@ internal static class PetMarketInstaller
         string expectedVersion,
         CancellationToken cancellationToken)
     {
+        ValidateZip32Archive(input);
+        input.Position = 0;
         using var archive = new ZipArchive(input, ZipArchiveMode.Read, leaveOpen: true);
         var index = IndexArchive(archive);
         var manifestBytes = await ReadManifestAsync(index.Manifest, cancellationToken);
@@ -127,7 +131,8 @@ internal static class PetMarketInstaller
                     ?? throw new InvalidOperationException("资源包文件路径无效。");
                 System.IO.Directory.CreateDirectory(parent);
                 await ExtractGifAsync(index.Files[file.Path], file, destination, cancellationToken);
-                GifImportValidator.Validate(destination);
+                GifImportValidator.Validate(destination, PetMarketPackageLimits.MaximumBytes,
+                    PetMarketPackageLimits.MaximumGifDimension);
                 installedFiles.Add(destination);
             }
 
@@ -146,6 +151,96 @@ internal static class PetMarketInstaller
         {
             if (System.IO.Directory.Exists(stagingDirectory))
                 System.IO.Directory.Delete(stagingDirectory, recursive: true);
+        }
+    }
+
+    private static void ValidateZip32Archive(FileStream input)
+    {
+        var tail = new byte[(int)Math.Min(input.Length, 65_557)];
+        input.Position = input.Length - tail.Length;
+        input.ReadExactly(tail);
+        var end = -1;
+        for (var index = tail.Length - 22; index >= 0; index--)
+        {
+            if (BinaryPrimitives.ReadUInt32LittleEndian(tail.AsSpan(index)) == 0x06054B50
+                && index + 22 + BinaryPrimitives.ReadUInt16LittleEndian(tail.AsSpan(index + 20)) == tail.Length)
+            {
+                end = index;
+                break;
+            }
+        }
+        if (end < 0) throw new InvalidOperationException("资源包 ZIP 目录无效。");
+        var record = tail.AsSpan(end);
+        var entries = BinaryPrimitives.ReadUInt16LittleEndian(record[10..]);
+        var size = BinaryPrimitives.ReadUInt32LittleEndian(record[12..]);
+        var offset = BinaryPrimitives.ReadUInt32LittleEndian(record[16..]);
+        var endPosition = input.Length - tail.Length + end;
+        if (BinaryPrimitives.ReadUInt16LittleEndian(record[4..]) != 0
+            || BinaryPrimitives.ReadUInt16LittleEndian(record[6..]) != 0
+            || BinaryPrimitives.ReadUInt16LittleEndian(record[8..]) != entries
+            || entries is 0 or > MaximumArchiveEntries
+            || size == uint.MaxValue || offset == uint.MaxValue
+            || (long)offset + size != endPosition)
+            throw new InvalidOperationException("资源包必须使用非分卷 ZIP32 格式。");
+        if (endPosition >= 20)
+        {
+            Span<byte> signature = stackalloc byte[4];
+            input.Position = endPosition - 20;
+            input.ReadExactly(signature);
+            if (BinaryPrimitives.ReadUInt32LittleEndian(signature) == 0x07064B50)
+                throw new InvalidOperationException("资源包不支持 ZIP64。");
+        }
+
+        var central = new byte[46];
+        var local = new byte[30];
+        long cursor = offset;
+        for (var index = 0; index < entries; index++)
+        {
+            if (cursor + central.Length > endPosition)
+                throw new InvalidOperationException("资源包 ZIP 目录不完整。");
+            input.Position = cursor;
+            input.ReadExactly(central);
+            var nameLength = BinaryPrimitives.ReadUInt16LittleEndian(central.AsSpan(28));
+            var extraLength = BinaryPrimitives.ReadUInt16LittleEndian(central.AsSpan(30));
+            var commentLength = BinaryPrimitives.ReadUInt16LittleEndian(central.AsSpan(32));
+            var localOffset = BinaryPrimitives.ReadUInt32LittleEndian(central.AsSpan(42));
+            var next = cursor + central.Length + nameLength + extraLength + commentLength;
+            if (BinaryPrimitives.ReadUInt32LittleEndian(central) != 0x02014B50
+                || BinaryPrimitives.ReadUInt32LittleEndian(central.AsSpan(20)) == uint.MaxValue
+                || BinaryPrimitives.ReadUInt32LittleEndian(central.AsSpan(24)) == uint.MaxValue
+                || BinaryPrimitives.ReadUInt16LittleEndian(central.AsSpan(34)) != 0
+                || (long)localOffset + local.Length > offset || next > endPosition)
+                throw new InvalidOperationException("资源包必须使用非分卷 ZIP32 格式。");
+            input.Position += nameLength;
+            RejectZip64Extra(input, extraLength);
+            input.Position = localOffset;
+            input.ReadExactly(local);
+            var localNameLength = BinaryPrimitives.ReadUInt16LittleEndian(local.AsSpan(26));
+            var localExtraLength = BinaryPrimitives.ReadUInt16LittleEndian(local.AsSpan(28));
+            if (BinaryPrimitives.ReadUInt32LittleEndian(local) != 0x04034B50
+                || BinaryPrimitives.ReadUInt32LittleEndian(local.AsSpan(18)) == uint.MaxValue
+                || BinaryPrimitives.ReadUInt32LittleEndian(local.AsSpan(22)) == uint.MaxValue
+                || input.Position + localNameLength + localExtraLength > offset)
+                throw new InvalidOperationException("资源包本地 ZIP32 文件头无效。");
+            input.Position += localNameLength;
+            RejectZip64Extra(input, localExtraLength);
+            cursor = next;
+        }
+        if (cursor != endPosition) throw new InvalidOperationException("资源包 ZIP 目录长度无效。");
+    }
+
+    private static void RejectZip64Extra(FileStream input, int length)
+    {
+        var extra = new byte[length];
+        input.ReadExactly(extra);
+        for (var cursor = 0; cursor < extra.Length;)
+        {
+            if (cursor + 4 > extra.Length) throw new InvalidOperationException("资源包 ZIP 扩展字段无效。");
+            var type = BinaryPrimitives.ReadUInt16LittleEndian(extra.AsSpan(cursor));
+            var fieldLength = BinaryPrimitives.ReadUInt16LittleEndian(extra.AsSpan(cursor + 2));
+            cursor += 4 + fieldLength;
+            if (type == 1 || cursor > extra.Length)
+                throw new InvalidOperationException("资源包 ZIP 扩展字段无效或使用了 ZIP64。");
         }
     }
 
@@ -181,7 +276,7 @@ internal static class PetMarketInstaller
                 totalCompressed += entry.CompressedLength;
             }
             if (totalUncompressed > MaximumUncompressedBytes)
-                throw new InvalidOperationException("资源包解压后超过 64 MB。");
+                throw new InvalidOperationException("资源包解压后超过 300 MB。");
             if (entry.Length > 1024 * 1024
                 && entry.Length > Math.Max(1, entry.CompressedLength) * MaximumCompressionRatio)
                 throw new InvalidOperationException("资源包压缩比异常，可能是解压炸弹。");
@@ -190,15 +285,15 @@ internal static class PetMarketInstaller
             {
                 if (manifest is not null) throw new InvalidOperationException("资源包只能包含一个根清单。");
                 if (entry.Length is <= 0 or > MaximumManifestBytes)
-                    throw new InvalidOperationException("资源包清单为空或超过 256 KB。");
+                    throw new InvalidOperationException("资源包清单为空或超过 1 MB。");
                 manifest = entry;
                 continue;
             }
 
             if (!normalizedName.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
                 throw new InvalidOperationException("资源包除根清单外只能包含 GIF 文件。");
-            if (entry.Length is < 10 or > GifImportValidator.MaximumBytes)
-                throw new InvalidOperationException("资源包中的 GIF 为空或超过 8 MB。");
+            if (entry.Length is < 10 or > PetMarketPackageLimits.MaximumBytes)
+                throw new InvalidOperationException("资源包中的 GIF 为空或超过 300 MB。");
             files.Add(normalizedName, entry);
         }
 
@@ -249,7 +344,7 @@ internal static class PetMarketInstaller
             var read = await source.ReadAsync(buffer.AsMemory(), cancellationToken);
             if (read == 0) break;
             written += read;
-            if (written > file.SizeBytes || written > GifImportValidator.MaximumBytes)
+            if (written > file.SizeBytes || written > PetMarketPackageLimits.MaximumBytes)
                 throw new InvalidOperationException($"资源包文件解压大小异常：{file.Path}");
             hash.AppendData(buffer, 0, read);
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
@@ -276,7 +371,7 @@ internal static class PetMarketInstaller
             var read = await source.ReadAsync(buffer.AsMemory(), cancellationToken);
             if (read == 0) break;
             if (output.Length + read > MaximumManifestBytes)
-                throw new InvalidOperationException("资源包清单超过 256 KB。");
+                throw new InvalidOperationException("资源包清单超过 1 MB。");
             await output.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
         }
         if (output.Length != entry.Length)
@@ -321,7 +416,7 @@ internal static class PetMarketInstaller
             foreach (var element in fileElements.EnumerateArray())
             {
                 if (files.Count >= MaximumGifFiles)
-                    throw new InvalidOperationException("资源包最多包含 80 个 GIF。");
+                    throw new InvalidOperationException("资源包 GIF 数量超过 ZIP32 格式上限。");
                 RequireObjectProperties(element, ["path", "sha256", "sizeBytes"]);
                 var path = ValidateRelativePath(RequiredString(element.GetProperty("path"), "files.path", 1024), false);
                 if (string.Equals(path, ManifestName, StringComparison.OrdinalIgnoreCase)
@@ -330,7 +425,7 @@ internal static class PetMarketInstaller
                 if (!paths.Add(path)) throw new InvalidOperationException("资源包清单包含大小写重复的路径。");
                 var sha256 = NormalizeSha256(RequiredString(element.GetProperty("sha256"), "files.sha256", 64), "文件 SHA-256");
                 if (!element.GetProperty("sizeBytes").TryGetInt64(out var sizeBytes)
-                    || sizeBytes is < 10 or > GifImportValidator.MaximumBytes)
+                    || sizeBytes is < 10 or > PetMarketPackageLimits.MaximumBytes)
                     throw new InvalidOperationException("资源包清单中的 GIF 大小无效。");
                 files.Add(new ManifestFile(path, sha256, sizeBytes));
             }

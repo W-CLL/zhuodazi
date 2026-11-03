@@ -10,9 +10,11 @@ import re
 import struct
 import zipfile
 
-MAX_FILES = 80
-MAX_GIF_BYTES = 8 * 1024 * 1024
-MAX_TOTAL_BYTES = 64 * 1024 * 1024
+MAX_FILES = 65_533  # ZIP32 reserves one entry for the manifest and 0xffff for ZIP64.
+MAX_GIF_BYTES = 300 * 1024 * 1024
+MAX_TOTAL_BYTES = 300 * 1024 * 1024
+MAX_MANIFEST_BYTES = 1024 * 1024
+MAX_GIF_SIDE = 4096
 ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
 VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
 RESERVED = re.compile(r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?\Z", re.I)
@@ -57,16 +59,16 @@ def build_pack(source_files: list[Path], *, product_id: str, version: str,
         seen.add(archive_path.casefold())
         length = source.stat().st_size
         if not 10 <= length <= MAX_GIF_BYTES:
-            raise ValueError(f"GIF 不能为空且不能超过8MB：{source.name}")
+            raise ValueError(f"GIF 必须完整且不能超过300MiB：{source.name}")
+        if total + length > MAX_TOTAL_BYTES:
+            raise ValueError("全部素材解压后超过300MiB")
         data = source.read_bytes()
         if len(data) != length or data[:6] not in (b"GIF87a", b"GIF89a"):
             raise ValueError(f"GIF内容或文件大小无效：{source.name}")
         width, height = struct.unpack_from("<HH", data, 6)
-        if not 1 <= width <= 2048 or not 1 <= height <= 2048:
-            raise ValueError(f"GIF宽高必须为1至2048像素：{source.name}")
+        if not 1 <= width <= MAX_GIF_SIDE or not 1 <= height <= MAX_GIF_SIDE:
+            raise ValueError(f"GIF宽高必须为1至{MAX_GIF_SIDE}像素：{source.name}")
         total += len(data)
-        if total > MAX_TOTAL_BYTES - 256 * 1024:
-            raise ValueError("全部素材解压后超过64MB")
         resources.append((archive_path, data))
         manifest_files.append({"path": archive_path, "sizeBytes": len(data),
                                "sha256": hashlib.sha256(data).hexdigest()})
@@ -74,22 +76,31 @@ def build_pack(source_files: list[Path], *, product_id: str, version: str,
     manifest = {"schemaVersion": 1, "productId": product_id, "version": version,
                 "title": title.strip(), "files": manifest_files}
     manifest_bytes = json.dumps(manifest, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    if len(manifest_bytes) > MAX_MANIFEST_BYTES:
+        raise ValueError("桌宠清单不能超过1MiB")
+    if total + len(manifest_bytes) > MAX_TOTAL_BYTES:
+        raise ValueError("全部素材及清单解压后超过300MiB")
     output.parent.mkdir(parents=True, exist_ok=True)
     created = False
     try:
-        with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+        # Stored entries avoid the clients' compression-ratio guard for highly repetitive GIFs.
+        with zipfile.ZipFile(output, "x", compression=zipfile.ZIP_STORED, allowZip64=False) as archive:
             created = True
             archive.writestr("pet-market.json", manifest_bytes)
             for archive_path, data in resources:
                 archive.writestr(archive_path, data)
         if output.stat().st_size > MAX_TOTAL_BYTES:
-            raise ValueError("压缩包超过64MB")
+            raise ValueError("ZIP包超过300MiB（包含清单及目录信息）")
     except BaseException:
         if created:
             output.unlink(missing_ok=True)
         raise
+    package_hash = hashlib.sha256()
+    with output.open("rb") as archive_file:
+        for chunk in iter(lambda: archive_file.read(1024 * 1024), b""):
+            package_hash.update(chunk)
     return {"productId": product_id, "version": version, "assetCount": len(resources),
-            "sizeBytes": output.stat().st_size, "sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
+            "sizeBytes": output.stat().st_size, "sha256": package_hash.hexdigest(),
             "output": str(output.resolve())}
 
 

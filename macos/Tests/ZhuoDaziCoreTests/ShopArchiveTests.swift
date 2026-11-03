@@ -61,9 +61,57 @@ final class ShopArchiveTests: XCTestCase {
         XCTAssertThrowsError(try ShopArchive.read(original, maxFileBytes: 4))
         XCTAssertThrowsError(try ShopArchive.read(original, maxTotalBytes: 4))
         XCTAssertThrowsError(try ShopArchive.read(original, maxFiles: 0))
+        XCTAssertThrowsError(try ShopArchive.read(original, maxArchiveBytes: original.count - 1))
+        XCTAssertNoThrow(try ShopArchive.read(original, maxArchiveBytes: original.count))
+    }
+    func testReadsMoreThan80GIFsWithoutRestoringTheOldArchiveEntryLimit() throws {
+        let files = (0..<200).map { File(path: "pets/pet-\($0).gif") }
+        XCTAssertEqual(try ShopArchive.read(zip(files)).count, files.count)
+    }
+    func testReadsFilesOver8MiBAndExpandedArchivesOver64MiB() throws {
+        let data = Data(repeating: 0x61, count: 8 * 1024 * 1024 + 1)
+        let files = (0..<8).map { File(path: "pets/pet-\($0).gif", data: data) }
+        let archive = zip(files)
+        XCTAssertGreaterThan(archive.count, 64 * 1024 * 1024)
+        let entries = try ShopArchive.read(archive)
+        XCTAssertEqual(entries.count, 8)
+        XCTAssertTrue(entries.allSatisfy { $0.data == data })
+        // Other resource-pack callers still enforce their explicitly chosen limits.
+        XCTAssertThrowsError(try ShopArchive.read(archive, maxFileBytes: 8 * 1024 * 1024))
+        XCTAssertThrowsError(try ShopArchive.read(archive, maxTotalBytes: 64 * 1024 * 1024))
+    }
+    func testZIP32EntryBoundaryAndSentinel() throws {
+        let files = (0..<PetMarketLimits.maximumArchiveEntries).map { File(path: "\($0).gif") }
+        XCTAssertEqual(try ShopArchive.read(zip(files)).count, 65_534)
+        let sentinel = zip(files + [File(path: "extra.gif")])
+        XCTAssertThrowsError(try ShopArchive.read(sentinel, maxFiles: 65_535))
+    }
+    func testRejectsDeclaredExpansionBeyond300MiBBeforeAllocating() {
+        var archive = zip([File(path: "huge.gif")])
+        let declaredSize = UInt32(PetMarketLimits.maximumTotalBytes + 1)
+        let central = 30 + "huge.gif".utf8.count + 5
+        for shift in 0..<4 {
+            let byte = UInt8((declaredSize >> (shift * 8)) & 255)
+            archive[22 + shift] = byte
+            archive[central + 24 + shift] = byte
+        }
+        XCTAssertThrowsError(try ShopArchive.read(archive))
+    }
+    func testRejectsOverlappingLocalEntriesEvenWhenEachEntryHasAValidCRC() {
+        let embedded = zip([File(path: "inner.gif")])
+        let embeddedLocal = Data(embedded.prefix(30 + "inner.gif".utf8.count + 5))
+        var archive = zip([File(path: "outer.gif", data: embeddedLocal), File(path: "inner.gif")])
+        let innerOffset = 30 + "outer.gif".utf8.count
+        let centralStart = innerOffset + embeddedLocal.count + 30 + "inner.gif".utf8.count + 5
+        let secondCentral = centralStart + 46 + "outer.gif".utf8.count
+        for shift in 0..<4 {
+            archive[secondCentral + 42 + shift] = UInt8((UInt32(innerOffset) >> (shift * 8)) & 255)
+        }
+        XCTAssertThrowsError(try ShopArchive.read(archive))
     }
     func testCRCAndPathNormalization() {
         XCTAssertEqual(ShopArchive.crc32(Data("123456789".utf8)), 0xcbf43926)
+        XCTAssertEqual(ShopArchive.crc32(Data()), 0)
         XCTAssertTrue(ShopArchive.safePath("角色/开心.gif"))
         XCTAssertFalse(ShopArchive.safePath("角色/开心.gif "))
     }

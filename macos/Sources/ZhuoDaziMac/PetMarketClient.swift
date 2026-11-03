@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import ZhuoDaziCore
 
 // Redirects never receive license credentials. The same origin policy also
 // applies to public previews and free resource downloads.
@@ -20,7 +21,7 @@ final class PetMarketClient {
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.timeoutIntervalForRequest = 25
-        configuration.timeoutIntervalForResource = 120
+        configuration.timeoutIntervalForResource = 600
         configuration.httpCookieStorage = nil
         configuration.urlCache = nil
         configuration.connectionProxyDictionary = [:]
@@ -93,7 +94,7 @@ final class PetMarketClient {
         for product in result.products {
             guard PetMarketJSON.validPart(product.id), PetMarketJSON.validPart(product.activeVersion, maximum: 40),
                   product.previewFiles.count <= 5, product.currency == "CNY", product.priceFen >= 0,
-                  (1...80).contains(product.assetCount), ["paid", "free"].contains(product.chargingMode) else {
+                  (1...PetMarketLimits.maximumGIFCount).contains(product.assetCount), ["paid", "free"].contains(product.chargingMode) else {
                 throw PetMarketError.invalid("商品目录无效")
             }
         }
@@ -197,7 +198,7 @@ final class PetMarketClient {
         let descriptor = try verify(envelope, kind: "pet-market-download")
         let expected = "/api/pet-market/products/\(productId)/versions/\(descriptor.version)/download"
         guard descriptor.productId == productId, descriptor.downloadPath == expected,
-              let size = descriptor.sizeBytes, (1...128 * 1024 * 1024).contains(size),
+              let size = descriptor.sizeBytes, (1...PetMarketLimits.maximumArchiveBytes).contains(size),
               let hash = descriptor.sha256, PetMarketJSON.validHash(hash) else { throw PetMarketError.invalid("下载授权内容无效") }
         let bytes = try await data(expected, authenticated: true, limit: size)
         guard bytes.count == size, Self.hash(bytes) == hash.lowercased() else { throw PetMarketError.invalid("桌宠包校验失败") }
@@ -225,7 +226,7 @@ final class PetMarketClient {
     func preview(_ product: PetMarketProduct, index: Int) async throws -> Data? {
         guard product.previewFiles.indices.contains(index) else { return nil }
         let file = product.previewFiles[index]
-        guard (1...8 * 1024 * 1024).contains(file.sizeBytes), PetMarketJSON.validHash(file.sha256) else {
+        guard (1...PetMarketLimits.maximumFileBytes).contains(file.sizeBytes), PetMarketJSON.validHash(file.sha256) else {
             throw PetMarketError.invalid("预览清单无效")
         }
         let candidate = file.downloadPath ?? file.url ?? ""

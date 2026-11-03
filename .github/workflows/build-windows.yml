@@ -34,7 +34,7 @@ jobs:
           dotnet run --project windows/tests/DailyJournal.Checks/DailyJournal.Checks.csproj --configuration Release
           if ($LASTEXITCODE -ne 0) { throw "Daily journal checks failed" }
           dotnet run --project windows/tests/DailySummary.Checks/DailySummary.Checks.csproj --configuration Release
-          if ($LASTEXITCODE -ne 0) { throw "Daily summary checks failed" }
+          if ($LASTEXITCODE -ne 0) { throw "Daily summary and remote configuration checks failed" }
           $featureChecks = @(
             'AppPreview.Checks', 'CompanionSend.Checks', 'ContentSelection.Checks',
             'ConversationPresentation.Checks', 'PetMarketClient.Checks',
@@ -46,6 +46,8 @@ jobs:
           }
           dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --library-check
           if ($LASTEXITCODE -ne 0) { throw "Default pet upgrade checks failed" }
+          dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --activation-check "$env:RUNNER_TEMP/activation-check"
+          if ($LASTEXITCODE -ne 0) { throw "Activation configuration UI checks failed" }
           dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --daily-smoke "$env:RUNNER_TEMP/daily-smoke"
           if ($LASTEXITCODE -ne 0) { throw "Daily interaction UI checks failed" }
 

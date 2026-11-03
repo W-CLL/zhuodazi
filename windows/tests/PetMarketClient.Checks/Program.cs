@@ -10,6 +10,8 @@ namespace ZhuoDazi.Services;
 
 internal static class Program
 {
+    private static int _assertions;
+
     private static async Task Main()
     {
         var root = Path.Combine(Path.GetTempPath(), $"zhuodazi-market-client-{Guid.NewGuid():N}");
@@ -23,8 +25,9 @@ internal static class Program
             await CheckOrderHistoryAsync(config);
             await CheckEntitlementVersionAsync(config, privateKey);
             await CheckSignedEnvelopeRejectionsAsync(config, privateKey);
+            await CheckExpandedPackageMetadataAsync(config, privateKey);
             await CheckCompletedDownloadsMoveAsync(config);
-            Console.WriteLine("PetMarketClient checks passed (20 assertions).");
+            Console.WriteLine($"PetMarketClient checks passed ({_assertions} assertions).");
         }
         finally
         {
@@ -198,8 +201,9 @@ internal static class Program
 
     private static async Task CheckCompletedDownloadsMoveAsync(PetMarketDebugConfig config)
     {
-        byte[] packageBytes = [1, 2, 3, 4];
-        byte[] previewBytes = Encoding.ASCII.GetBytes("GIF89a");
+        var packageBytes = new byte[129 * 1024 * 1024 + 1];
+        var previewBytes = new byte[9 * 1024 * 1024];
+        Encoding.ASCII.GetBytes("GIF89a").CopyTo(previewBytes, 0);
         DeskPetHttp.HandlerFactory = () => new StubHandler(request =>
         {
             var bytes = request.RequestUri!.AbsolutePath.EndsWith("/preview", StringComparison.Ordinal)
@@ -221,7 +225,8 @@ internal static class Program
         };
         var packagePath = await client.DownloadPackageAsync(descriptor);
         Require(File.Exists(packagePath), "The package must move from .partial after the stream is disposed.");
-        Require(File.ReadAllBytes(packagePath).SequenceEqual(packageBytes), "The moved package must retain its bytes.");
+        Require(File.ReadAllBytes(packagePath).SequenceEqual(packageBytes),
+            "A package above the former 128 MiB download limit must retain its bytes.");
 
         var preview = new PetMarketProduct
         {
@@ -241,7 +246,55 @@ internal static class Program
         var previewPath = await client.DownloadPreviewAsync(preview);
         Require(previewPath is not null && File.Exists(previewPath),
             "The preview must move from .partial after the stream is disposed.");
-        Require(File.ReadAllBytes(previewPath!).SequenceEqual(previewBytes), "The moved preview must retain its bytes.");
+        Require(File.ReadAllBytes(previewPath!).SequenceEqual(previewBytes),
+            "A preview above the former 8 MiB limit must retain its bytes.");
+    }
+
+    private static async Task CheckExpandedPackageMetadataAsync(
+        PetMarketDebugConfig config, Ed25519PrivateKeyParameters privateKey)
+    {
+        var product = new PetMarketProduct
+        {
+            Id = "large-pet", Title = "大图鉴", ActiveVersion = "1", ChargingMode = "free", Currency = "CNY",
+            AssetCount = 300
+        };
+        DeskPetHttp.HandlerFactory = () => new StubHandler(_ => Json(new PetMarketCatalog { Products = [product] }));
+        using (var client = new PetMarketClient(config))
+            Require((await client.GetCatalogAsync()).Products.Single().AssetCount == 300,
+                "A catalog containing more than 80 GIFs must remain usable.");
+
+        var descriptor = new PetMarketDownloadPayload
+        {
+            SchemaVersion = 1, Kind = "pet-market-download", AccountId = config.AccountId,
+            LicenseId = config.LicenseId, InstallationId = config.InstallationId,
+            ProductId = product.Id, Version = product.ActiveVersion, FileName = "large-pet.zip",
+            SizeBytes = PetMarketPackageLimits.MaximumBytes, Sha256 = new string('a', 64), ManifestSha256 = new string('b', 64),
+            DownloadPath = "/api/pet-market/products/large-pet/versions/1/download",
+            IssuedAt = DateTimeOffset.UtcNow, ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10)
+        };
+        DeskPetHttp.HandlerFactory = () => new StubHandler(_ => Json(Sign(descriptor, privateKey)));
+        using (var client = new PetMarketClient(config))
+        {
+            Require((await client.GetDownloadDescriptorAsync(product.Id)).SizeBytes == PetMarketPackageLimits.MaximumBytes,
+                "Signed descriptors must accept the full 300 MiB technical budget.");
+            descriptor.SizeBytes++;
+            await ThrowsAsync(() => client.GetDownloadDescriptorAsync(product.Id),
+                "Signed descriptors above 300 MiB must be rejected.");
+        }
+        var requests = 0;
+        DeskPetHttp.HandlerFactory = () => new StubHandler(_ => { requests++; return Json(new { }); });
+        using (var client = new PetMarketClient(config))
+        {
+            await ThrowsAsync(() => client.DownloadPackageAsync(descriptor),
+                "Oversized descriptors must be rejected before any download request.");
+            product.PreviewFiles = [new PetMarketPreviewFile
+            {
+                Path = "large.gif", DownloadPath = "/api/pet-market/products/large-pet/versions/1/preview?file=large.gif",
+                SizeBytes = PetMarketPackageLimits.MaximumBytes + 1, Sha256 = new string('c', 64)
+            }];
+            Require(await client.DownloadPreviewAsync(product) is null && requests == 0,
+                "Oversized previews and packages must not issue network requests.");
+        }
     }
 
     private static async Task CheckSignedEnvelopeRejectionsAsync(
@@ -377,6 +430,7 @@ internal static class Program
         }
         catch (InvalidOperationException)
         {
+            _assertions++;
             return;
         }
         throw new InvalidOperationException(message);
@@ -390,6 +444,7 @@ internal static class Program
         }
         catch (InvalidOperationException)
         {
+            _assertions++;
             return;
         }
         throw new InvalidOperationException(message);
@@ -398,6 +453,7 @@ internal static class Program
     private static void Require(bool condition, string message)
     {
         if (!condition) throw new InvalidOperationException(message);
+        _assertions++;
     }
 }
 

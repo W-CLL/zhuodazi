@@ -22,11 +22,13 @@ struct RemoteConfig: Equatable {
 
 final class RemoteConfigService {
     private let defaults: UserDefaults
+    private let session: URLSession
     private let cacheKey = "com.zhuodazi.desktop-pet.remote-config.v1"
     private(set) var current = RemoteConfig()
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, session: URLSession = .shared) {
         self.defaults = defaults
+        self.session = session
         if let data = defaults.data(forKey: cacheKey) {
             current = Self.parse(data) ?? RemoteConfig()
         }
@@ -34,11 +36,15 @@ final class RemoteConfigService {
 
     @discardableResult
     func refresh() async -> Bool {
-        var request = URLRequest(url: DeskPetApi.siteSettings)
+        guard !Task.isCancelled else { return false }
+        var request = URLRequest(url: DeskPetApi.siteSettings, cachePolicy: .reloadIgnoringLocalCacheData)
         request.timeoutInterval = 8
         request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+        request.setValue("no-cache", forHTTPHeaderField: "Cache-Control")
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
+            try Task.checkCancellation()
             guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else { return false }
             guard let parsed = Self.parse(data) else { return false }
             current = parsed
@@ -64,10 +70,10 @@ final class RemoteConfigService {
         let summaryData = summaryObject.flatMap { try? JSONSerialization.data(withJSONObject: $0) }
         return RemoteConfig(
             wechatId: isWechatId(wechatId) ? wechatId : "wcl_lcw627",
-            activationTitle: string(activation["title"], fallback: fallback.activationTitle),
-            activationDescription: string(activation["description"], fallback: fallback.activationDescription),
-            activationReplacementTitle: string(activation["replacementTitle"], fallback: fallback.activationReplacementTitle),
-            activationReplacementDescription: string(activation["replacementDescription"], fallback: fallback.activationReplacementDescription),
+            activationTitle: activationText(activation["title"], fallback: fallback.activationTitle),
+            activationDescription: activationText(activation["description"], fallback: fallback.activationDescription),
+            activationReplacementTitle: activationText(activation["replacementTitle"], fallback: fallback.activationReplacementTitle),
+            activationReplacementDescription: activationText(activation["replacementDescription"], fallback: fallback.activationReplacementDescription),
             activationQrCodeDataUrl: string(activation["qrCodeDataUrl"], fallback: ""),
             announcement: string(root["announcement"], fallback: "").replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespacesAndNewlines),
             xianyuUrl: string(root["xianyuUrl"], fallback: ""),
@@ -84,6 +90,11 @@ final class RemoteConfigService {
 
     private static func string(_ value: Any?, fallback: String) -> String {
         (value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? fallback
+    }
+
+    private static func activationText(_ value: Any?, fallback: String) -> String {
+        let text = string(value, fallback: fallback)
+        return text.isEmpty ? fallback : text
     }
 
     private static func bool(_ value: Any?, fallback: Bool) -> Bool {

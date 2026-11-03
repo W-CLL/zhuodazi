@@ -21,20 +21,28 @@ public partial class ActivationWindow : Window
     private readonly CancellationTokenSource _lifetime = new();
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private bool _refreshing;
+    private bool _configurationRefreshing;
 
     public ActivationWindow(
         LicenseService licenses,
         bool replacingExisting = false,
         string? initialStatus = null,
         bool trialEnded = false)
+        : this(licenses, replacingExisting, initialStatus, trialEnded, null)
+    {
+    }
+
+    internal ActivationWindow(LicenseService licenses, bool replacingExisting, string? initialStatus,
+        bool trialEnded, RemoteConfigService? remoteConfig)
     {
         _licenses = licenses;
         _replacingExisting = replacingExisting;
-        _remoteConfig = new RemoteConfigService(new SettingsStore(licenses.DataDirectory));
+        _remoteConfig = remoteConfig ?? new RemoteConfigService(new SettingsStore(licenses.DataDirectory));
         InitializeComponent();
         DeviceCodeText.Text = licenses.InstallationId;
         SyncActivationButton.IsEnabled = !replacingExisting;
         ApplyContactConfiguration();
+        _remoteConfig.Changed += OnRemoteConfigurationChanged;
         ContinueButton.Content = replacingExisting ? "取消" : "先留下桌宠";
         if (replacingExisting)
         {
@@ -55,16 +63,17 @@ public partial class ActivationWindow : Window
         }
         StatusText.Text = initialStatus ?? string.Empty;
         ContentRendered += (_, _) => CodeTextBox.Focus();
-        _refreshTimer.Tick += async (_, _) => await RefreshActivationAsync();
+        _refreshTimer.Tick += async (_, _) => await RefreshCardAsync();
         Loaded += async (_, _) =>
         {
             _refreshTimer.Start();
-            await RefreshActivationAsync();
+            await RefreshCardAsync();
         };
         Closed += (_, _) =>
         {
             _refreshTimer.Stop();
             _lifetime.Cancel();
+            _remoteConfig.Changed -= OnRemoteConfigurationChanged;
         };
     }
 
@@ -149,7 +158,28 @@ public partial class ActivationWindow : Window
     }
 
     private async void SyncActivation_Click(object sender, RoutedEventArgs e)
-        => await RefreshActivationAsync(true);
+        => await RefreshCardAsync(true);
+
+    private Task RefreshCardAsync(bool showStatus = false)
+        => Task.WhenAll(RefreshContactConfigurationAsync(), RefreshActivationAsync(showStatus));
+
+    private async Task RefreshContactConfigurationAsync()
+    {
+        if (_configurationRefreshing || _lifetime.IsCancellationRequested) return;
+        _configurationRefreshing = true;
+        try { await _remoteConfig.RefreshAsync(_lifetime.Token); }
+        finally { _configurationRefreshing = false; }
+    }
+
+    private void OnRemoteConfigurationChanged()
+    {
+        if (_lifetime.IsCancellationRequested) return;
+        if (Dispatcher.CheckAccess()) ApplyContactConfiguration();
+        else _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (!_lifetime.IsCancellationRequested) ApplyContactConfiguration();
+        });
+    }
 
     private async Task RefreshActivationAsync(bool showStatus = false)
     {
@@ -157,9 +187,6 @@ public partial class ActivationWindow : Window
         _refreshing = true;
         try
         {
-            await _remoteConfig.RefreshAsync(_lifetime.Token);
-            if (_lifetime.IsCancellationRequested) return;
-            ApplyContactConfiguration();
             if (!_replacingExisting)
             {
                 await _licenses.CheckTrialAsync(_lifetime.Token);

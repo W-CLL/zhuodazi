@@ -141,8 +141,8 @@ internal sealed class PetMarketClient : IDisposable
     private const int MaxOrderHistoryEntries = 10_000;
     private const int MaxOrderHistoryPageEntries = 100;
     private const int MaxOrderCursorLength = 512;
-    private const long MaxPreviewBytes = 8 * 1024 * 1024;
-    private const long MaxPackageBytes = 128 * 1024 * 1024;
+    private const long MaxPreviewBytes = PetMarketPackageLimits.MaximumBytes;
+    private const long MaxPackageBytes = PetMarketPackageLimits.MaximumBytes;
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
@@ -349,6 +349,8 @@ internal sealed class PetMarketClient : IDisposable
         CancellationToken cancellationToken = default)
     {
         RequireActivated();
+        if (descriptor.SizeBytes is <= 0 or > MaxPackageBytes)
+            throw new InvalidOperationException("市场资源包大小无效或超过 300 MB。");
         if (!ValidDownloadPath(descriptor.DownloadPath, descriptor.ProductId, descriptor.Version))
             throw new InvalidOperationException("市场下载地址无效。");
         var downloadDirectory = Path.Combine(_dataDirectory, "pet-market", "downloads");
@@ -601,7 +603,8 @@ internal sealed class PetMarketClient : IDisposable
         product.PreviewFiles ??= [];
         if (string.IsNullOrWhiteSpace(product.Id) || string.IsNullOrWhiteSpace(product.Title)
             || product.ChargingMode is not ("free" or "paid")
-            || product.Currency != "CNY" || product.PriceFen < 0 || product.AssetCount < 0
+            || product.Currency != "CNY" || product.PriceFen < 0
+            || product.AssetCount is < 0 or > PetMarketPackageLimits.MaximumGifFiles
             || string.IsNullOrWhiteSpace(product.ActiveVersion))
             throw new InvalidOperationException("市场商品数据无效。");
     }

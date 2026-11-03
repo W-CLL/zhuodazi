@@ -7,6 +7,9 @@
     <UseWPF>true</UseWPF>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="..\..\ZhuoDazi\Models\PetMarketModels.cs" Link="PetMarketModels.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\AppSettings.cs" Link="AppSettings.cs" />
+    <Compile Include="..\..\ZhuoDazi\Models\OnboardingProgress.cs" Link="OnboardingProgress.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\GifImportValidator.cs" Link="GifImportValidator.cs" />
     <Compile Include="..\..\ZhuoDazi\Services\PetMarketInstaller.cs" Link="PetMarketInstaller.cs" />
     <None Include="..\..\assets\pet-libraries\yuexinmiao\017-90d741d6.gif" Link="assets\valid.gif" CopyToOutputDirectory="PreserveNewest" />

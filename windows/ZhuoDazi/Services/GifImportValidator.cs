@@ -9,13 +9,14 @@ internal static class GifImportValidator
     internal const long MaximumBytes = 8 * 1024 * 1024;
     internal const int MaximumDimension = 2048;
 
-    internal static void Validate(string path)
+    internal static void Validate(string path, long maximumBytes = MaximumBytes,
+        int maximumDimension = MaximumDimension)
     {
         var info = new FileInfo(path);
         if (!info.Exists || !path.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("请选择有效的 GIF 文件。");
-        if (info.Length is < 10 or > MaximumBytes)
-            throw new InvalidOperationException("GIF 不能为空，且不能超过 8 MB。");
+        if (info.Length < 10 || info.Length > maximumBytes)
+            throw new InvalidOperationException($"GIF 不能为空，且不能超过 {maximumBytes / (1024 * 1024)} MB。");
         using var input = File.OpenRead(path);
         Span<byte> header = stackalloc byte[10];
         input.ReadExactly(header);
@@ -23,8 +24,8 @@ internal static class GifImportValidator
             throw new InvalidOperationException("文件内容不是 GIF，请选择真正的 GIF 动图。");
         var width = BinaryPrimitives.ReadUInt16LittleEndian(header[6..8]);
         var height = BinaryPrimitives.ReadUInt16LittleEndian(header[8..10]);
-        if (width is 0 or > MaximumDimension || height is 0 or > MaximumDimension)
-            throw new InvalidOperationException("GIF 宽高都不能超过 2048 像素。");
+        if (width == 0 || width > maximumDimension || height == 0 || height > maximumDimension)
+            throw new InvalidOperationException($"GIF 宽高都不能超过 {maximumDimension} 像素。");
         input.Position = 0;
         try
         {

@@ -26,6 +26,13 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.Contains("--activation-config-live-check"))
+        {
+            var output = args.SkipWhile(argument => argument != "--activation-config-live-check").Skip(1).FirstOrDefault()
+                ?? Path.Combine(Path.GetTempPath(), "ZhuoDazi-PublicConfiguration-Check", Guid.NewGuid().ToString("N"));
+            ActivationFlowChecks.RunPublicConfigurationCheck(Path.GetFullPath(output));
+            return;
+        }
         // Every service request is intercepted in memory. This harness never opens a network socket.
         DeskPetHttp.HandlerFactory = () => new OfflineHandler();
         var directory = Path.Combine(Path.GetTempPath(), "ZhuoDazi-OfflinePreview", Guid.NewGuid().ToString("N"));

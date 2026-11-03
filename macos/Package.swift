@@ -33,6 +33,11 @@ let package = Package(
             name: "ZhuoDaziCoreTests",
             dependencies: ["ZhuoDaziCore"],
             path: "Tests/ZhuoDaziCoreTests"
+        ),
+        .testTarget(
+            name: "ZhuoDaziMacTests",
+            dependencies: ["ZhuoDaziMac", "ZhuoDaziCore"],
+            path: "Tests/ZhuoDaziMacTests"
         )
     ]
 )
