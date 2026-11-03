@@ -50,9 +50,17 @@ final class PetMarketInstallerTests: XCTestCase {
     }
 
     private func withRoot(_ action: (URL) throws -> Void) throws {
-        let root = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        // Foundation can standardize /private/var back to the /var symlink.
+        // Match the real user's Library storage so the installer's ancestor
+        // checks see ordinary directories rather than the system temp alias.
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches", isDirectory: true)
             .appendingPathComponent("pet-market-tests-\(UUID().uuidString)", isDirectory: true)
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer {
+            if FileManager.default.fileExists(atPath: root.path) {
+                try? FileManager.default.removeItem(at: root)
+            }
+        }
         try action(root)
     }
 

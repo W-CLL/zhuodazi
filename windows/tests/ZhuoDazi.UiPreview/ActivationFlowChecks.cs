@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Text.Json;
 using System.Windows;
@@ -104,7 +105,9 @@ internal static class ActivationFlowChecks
         {
             try
             {
-                await WaitFor(() => ((TextBlock)window.FindName("ContactTitleText")).Text == title && identityVerified);
+                await WaitFor(() => ((TextBlock)window.FindName("ContactTitleText")).Text == title && identityVerified,
+                    "first activation copy and the delayed trial request");
+                await WaitForRefreshToFinish(window, "_configurationRefreshing", "initial configuration refresh completion");
                 if (((TextBlock)window.FindName("ContactDescriptionText")).Text != description
                     || ((TextBlock)window.FindName("WeChatIdText")).Text != wechatId
                     || ((TextBox)window.FindName("DeviceCodeText")).Text != licenses.InstallationId)
@@ -119,21 +122,24 @@ internal static class ActivationFlowChecks
                 description = "激活验证仍在等待，卡片配置也应立即更新。";
                 qrCodeDataUrl = QrDataUrl(Colors.Blue);
                 ((Button)window.FindName("SyncActivationButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                await WaitFor(() => ((TextBlock)window.FindName("ContactTitleText")).Text == title);
+                await WaitFor(() => ((TextBlock)window.FindName("ContactTitleText")).Text == title,
+                    "manual copy refresh while trial verification is delayed");
+                await WaitForRefreshToFinish(window, "_configurationRefreshing", "manual configuration refresh completion");
                 if (((TextBlock)window.FindName("ContactDescriptionText")).Text != description
                     || code.Text != "ABC234" || status.Text != "保留正在输入的状态")
                     throw new InvalidOperationException("A delayed activation check must not block copy refresh or reset input/status.");
                 AssertQrColor(window, Colors.Blue);
                 title = "主控制器刷新后同步到已打开卡片";
                 await sharedConfig.RefreshAsync();
-                await WaitFor(() => ((TextBlock)window.FindName("ContactTitleText")).Text == title);
+                await WaitFor(() => ((TextBlock)window.FindName("ContactTitleText")).Text == title,
+                    "shared controller configuration appearing in the open card");
                 delayTrial = false;
                 trialResponse.TrySetResult(true);
+                await WaitForRefreshToFinish(window, "_refreshing", "delayed trial verification completion");
                 Capture(window, Path.Combine(output, "activation-window.png"));
-                await Task.Delay(100);
                 authorized = true;
                 ((Button)window.FindName("SyncActivationButton")).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-                await WaitFor(() => licenses.IsActivated);
+                await WaitFor(() => licenses.IsActivated, "verified backend activation and modal completion");
             }
             catch (Exception error)
             {
@@ -163,7 +169,8 @@ internal static class ActivationFlowChecks
         {
             try
             {
-                await WaitFor(() => ((TextBlock)replacementWindow.FindName("ContactTitleText")).Text == replacementTitle);
+                await WaitFor(() => ((TextBlock)replacementWindow.FindName("ContactTitleText")).Text == replacementTitle,
+                    "replacement-specific contact copy");
                 if (((TextBlock)replacementWindow.FindName("ContactDescriptionText")).Text != replacementDescription)
                     throw new InvalidOperationException("The replacement flow reused the first-activation copy.");
                 replacementWindow.DialogResult = false;
@@ -212,14 +219,25 @@ internal static class ActivationFlowChecks
             throw new InvalidOperationException("The activation QR image did not update with its backend configuration.");
     }
 
-    private static async Task WaitFor(Func<bool> condition)
+    private static Task WaitForRefreshToFinish(ActivationWindow window, string fieldName, string stage)
     {
+        // Configuration Changed is raised before the awaiting window reaches its
+        // finally block. Wait for the real operation to finish before simulating
+        // another click; response arrival alone is not completion on a busy STA.
+        var field = typeof(ActivationWindow).GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException($"Missing activation refresh state: {fieldName}");
+        return WaitFor(() => field.GetValue(window) is false, stage);
+    }
+
+    private static async Task WaitFor(Func<bool> condition, string stage)
+    {
+        Program.Stage($"activation: {stage}");
         for (var attempt = 0; attempt < 100; attempt++)
         {
             if (condition()) return;
             await Task.Delay(50);
         }
-        throw new TimeoutException("Activation window test timed out.");
+        throw new TimeoutException($"Activation window test timed out waiting for {stage}.");
     }
 
     private sealed class ResponseHandler(Func<HttpRequestMessage, Task<HttpResponseMessage>> respond) : HttpMessageHandler
