@@ -1,0 +1,101 @@
+[
+  {
+    "source": "互动.png",
+    "sha256": "1e5b3996e484b1c08f231f22329b088d05d4c1984b1addd19237b3ff40b33a4f",
+    "file": "hello.webp",
+    "width": 973,
+    "height": 588,
+    "originalBytes": 407153,
+    "bytes": 51464
+  },
+  {
+    "source": "互动猜歌词.png",
+    "sha256": "c3cc908ea1604c8da5a67dd0c2d2770d50c6a81b88758a6fa013c9ba1dca26bf",
+    "file": "lyrics.webp",
+    "width": 325,
+    "height": 391,
+    "originalBytes": 70266,
+    "bytes": 13596
+  },
+  {
+    "source": "小剧场.png",
+    "sha256": "6f434dd6f3e84198b2bc2c510576f70484398175fedc4d238bea4ab1103bf941",
+    "file": "theater.webp",
+    "width": 792,
+    "height": 373,
+    "originalBytes": 205433,
+    "bytes": 32356
+  },
+  {
+    "source": "搭子来访.png",
+    "sha256": "abe25b15360ac2a33ce3c1d0ed7115bf5cd01904ca0a9aa80a08c45b2546e7ee",
+    "file": "visit.webp",
+    "width": 633,
+    "height": 319,
+    "originalBytes": 132016,
+    "bytes": 16586
+  },
+  {
+    "source": "摸鱼模式.png",
+    "sha256": "c8869a023cbb71ce1e0012e66feb6fafe6449c99d944689b08ee601dea5bbcac",
+    "file": "break.webp",
+    "width": 1440,
+    "height": 916,
+    "originalBytes": 960719,
+    "bytes": 101256
+  },
+  {
+    "source": "桌宠大厅和其他人互动.png",
+    "sha256": "283daaf601c4f822d8efe7a52ff486e1d49755500b63a97897256994831da628",
+    "file": "hall.webp",
+    "width": 707,
+    "height": 313,
+    "originalBytes": 10505,
+    "bytes": 7556
+  },
+  {
+    "source": "桌宠性格满屏幕走跟随鼠标.png",
+    "sha256": "0e67824aceb46a162907c88e6ab99be2c51f50dbdafa819d8ce6ae82ee236506",
+    "file": "personality.webp",
+    "width": 647,
+    "height": 417,
+    "originalBytes": 25419,
+    "bytes": 20090
+  },
+  {
+    "source": "答对收下分数.png",
+    "sha256": "6db66be968560a866b13381fd512353423b8d20bfe451ef217ea47f39ddef6ec",
+    "file": "score.webp",
+    "width": 295,
+    "height": 367,
+    "originalBytes": 64976,
+    "bytes": 9882
+  },
+  {
+    "source": "答题互动.png",
+    "sha256": "18f88ba42393b9ea747d71ca40ca34d8d94130c8133b44c8862419a5a705154e",
+    "file": "quiz.webp",
+    "width": 1018,
+    "height": 563,
+    "originalBytes": 419821,
+    "bytes": 52772
+  },
+  {
+    "source": "自定义词包.png",
+    "sha256": "5b6d40ced4b0624608893dd6d3db24294f752044f4d6950b77c885531055c902",
+    "file": "words.webp",
+    "width": 363,
+    "height": 348,
+    "originalBytes": 81470,
+    "bytes": 11438
+  },
+  {
+    "source": "设置点外卖提醒.png",
+    "sha256": "e3106522a85660d9d892979b301cd0e6445825a926f5d65e63103983209a488c",
+    "file": "reminder.webp",
+    "width": 764,
+    "height": 499,
+    "originalBytes": 17526,
+    "bytes": 13432
+  }
+]

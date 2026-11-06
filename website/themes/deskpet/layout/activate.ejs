@@ -1,0 +1,103 @@
+<div class="activate-page">
+  <section class="activate-hero" aria-labelledby="activate-title">
+    <div class="site-shell activate-hero-grid">
+      <div class="activate-hero-copy">
+        <p class="overline">激活价格说明 · 没有月费，也不绕弯子</p>
+        <h1 id="activate-title"><span><%= site.data.product.activation.price %> 元</span>，<br>把小搭子正式留下。</h1>
+        <p class="activate-lead">少加一份小料的钱，换一只长期住在屏幕角落的小搭子。<strong>一次购买，永久激活</strong>；不用按月续费，也没有自动扣款。</p>
+        <div class="activate-actions">
+          <a class="button button-primary" data-xianyu-link href="<%= site.data.product.activation.purchase_url %>" target="_blank" rel="noopener">去购买激活码 <span aria-hidden="true">↗</span></a>
+          <a class="button button-secondary" href="<%= url_for('/download/') %>">先免费体验 7 天 <span aria-hidden="true">↓</span></a>
+        </div>
+        <p class="activate-reassurance">先体验，觉得它真的让日常多了一点开心再买。合适才买，才不吃亏。</p>
+      </div>
+
+      <div class="activate-visual">
+        <div class="activate-price-card" aria-label="桌搭子激活价格 <%= site.data.product.activation.price %> 元">
+          <span class="activate-price-label">桌搭子 · 永久激活</span>
+          <div class="activate-price"><span>¥</span><strong><%= site.data.product.activation.price %></strong></div>
+          <p>一次付清，不按月续费</p>
+          <ul>
+            <li><span aria-hidden="true">✓</span> 一组码最多激活 2 台设备</li>
+            <li><span aria-hidden="true">✓</span> Windows / macOS / Android</li>
+            <li><span aria-hidden="true">✓</span> 互动、小剧场、提醒与更多玩法</li>
+          </ul>
+          <img src="<%= url_for('/images/collection/bubu-together.gif') %>" width="108" height="108" alt="趴在软垫上陪伴你的白熊桌宠" decoding="async">
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="activate-value" aria-labelledby="activate-value-title">
+    <div class="site-shell">
+      <div class="activate-heading">
+        <div><p class="overline">这 6.88 元，能换来什么</p><h2 id="activate-value-title">不是买一张码，<br>是把喜欢的日常继续留下。</h2></div>
+        <p>7 天体验结束后，正式激活就能继续使用进阶功能。<br>一组激活码最多授权两台设备，电脑和手机都能有个小角落。</p>
+      </div>
+      <div class="activate-feature-grid">
+        <article><span>01</span><h3>想玩时，它能接住你</h3><p>继续使用趣味互动、小剧场与自定义提醒。猜一题、接个梗，或者到点叫你记得吃饭。</p></article>
+        <article><span>02</span><h3>想热闹，也有人来串门</h3><p>继续使用桌宠大厅；双方各自正式激活后，还能用 8 位搭子码绑定私人搭子。</p></article>
+        <article><span>03</span><h3>两台设备，一份激活</h3><p>同一组 6 位激活码最多激活两台设备，属于同一账号。换个屏幕，小搭子也能继续陪着。</p></article>
+      </div>
+    </div>
+  </section>
+
+  <section class="activate-moment" aria-labelledby="activate-moment-title">
+    <div class="site-shell activate-moment-grid">
+      <figure class="activate-shot">
+        <img src="<%= url_for('/images/promo/hello.webp') %>" width="973" height="588" alt="桌搭子在屏幕上提醒你不用一次想完所有事情，先照顾好眼前这一小时" loading="lazy" decoding="async">
+        <figcaption>真实使用画面：忙了一阵，它来叫你照顾好眼前这一小时。</figcaption>
+      </figure>
+      <div class="activate-moment-copy">
+        <p class="overline">算一笔很小的账</p>
+        <h2 id="activate-moment-title">用一个月，每天约两毛三。<br>用一年，每天不到两分钱。</h2>
+        <p>6.88 元可能留不住一杯奶茶，却能把这只偶尔逗你笑、提醒你歇一歇的小家伙留下来。哪怕它只在某个加班的晚上让你心情好了一点，这笔钱也不算白花。</p>
+        <div class="activate-math"><span><b>30 天</b>约 ¥0.23 / 天</span><span><b>365 天</b>不到 ¥0.02 / 天</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="activate-letter" aria-labelledby="activate-letter-title">
+    <div class="site-shell activate-letter-inner">
+      <div class="activate-letter-pet"><img src="<%= url_for('/images/collection/bubu-wave.gif') %>" width="148" height="148" alt="向你挥手的白熊桌宠" loading="lazy" decoding="async"></div>
+      <div>
+        <p class="overline">想认真说几句</p>
+        <h2 id="activate-letter-title">一个小软件想一直活着，<br>也要有人替它添一点柴。</h2>
+        <p>服务器要续，系统更新后要重新适配，偶尔冒出来的小问题也要一遍遍查。页面背后的这些事不太可爱，却是小搭子还能继续待在你屏幕上的原因。</p>
+        <p>6.88 元不多，可能还不够付下一整笔账。但每一份支持都会凑在一起，让下次修复、下一次更新、下一段新的小剧场，有机会慢慢来到你面前。</p>
+        <p class="activate-letter-soft"><strong>不过，不要因为这些话勉强购买。</strong>先把 7 天体验用完。觉得它确实陪到你了，再留下它；如果不合适，基础陪伴依然保留。我们想要的不是一时心软，而是一笔你付完也觉得值得的小钱。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="activate-steps" aria-labelledby="activate-steps-title">
+    <div class="site-shell">
+      <div class="activate-heading"><div><p class="overline">买好以后</p><h2 id="activate-steps-title">三步，把它留下。</h2></div></div>
+      <ol>
+        <li><span>1</span><div><h3>购买激活码</h3><p>从本站购买入口了解并下单，获得一组 6 位激活码。</p></div></li>
+        <li><span>2</span><div><h3>打开激活入口</h3><p>在桌搭子内找到激活入口，输入 6 位激活码并完成兑换。</p></div></li>
+        <li><span>3</span><div><h3>继续好好陪伴</h3><p>激活后不按月续费；同一组码最多可授权两台设备。</p></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="activate-faq" aria-labelledby="activate-faq-title">
+    <div class="site-shell activate-faq-grid">
+      <div><p class="overline">常见问题</p><h2 id="activate-faq-title">买之前，先把话说清楚。</h2></div>
+      <div class="home-faq">
+        <details open><summary>“永久激活”是什么意思？还会自动续费吗？</summary><p>不会自动续费，也没有月费。正常情况下，激活后的授权本身不设置订阅到期时间，可以长期使用。这里的“永久”以产品持续提供服务、授权状态正常为前提；退款、异常滥用或服务终止等情况除外。</p></details>
+        <details><summary>一组激活码能用几台设备？</summary><p>最多授权两台设备，它们属于同一账号。6 位激活码用于授权设备，不是用来绑定朋友的配对码。</p></details>
+        <details><summary>激活码和搭子码有什么区别？</summary><p>购买后获得的 6 位激活码用于设备授权；8 位搭子码用于和熟人绑定私人搭子。绑定私人搭子时，双方都需要使用各自独立账号并完成正式激活。</p></details>
+        <details><summary>未使用的激活码会过期吗？</summary><p>未兑换的激活码可能有兑换有效期，请在购买页面标注的期限内完成兑换。成功兑换后，授权本身不按月计费。</p></details>
+        <details><summary>我可以先试用再买吗？</summary><p>当然可以。首次使用有 7 天进阶体验，体验结束后基础陪伴仍然保留。先确定它适合你，再花这 6.88 元。</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="activate-final">
+    <div class="site-shell activate-final-inner">
+      <div><p class="overline">一次购买 · 不按月续费</p><h2>6.88 元，让它继续住在这里。</h2><p>买一份完整陪伴，也给这个小产品一点继续长大的力气。</p></div>
+      <div class="activate-actions"><a class="button button-primary" data-xianyu-link href="<%= site.data.product.activation.purchase_url %>" target="_blank" rel="noopener">购买永久激活 <span aria-hidden="true">↗</span></a><a class="button button-secondary" href="<%= url_for('/download/') %>">先下载体验</a></div>
+    </div>
+  </section>
+</div>

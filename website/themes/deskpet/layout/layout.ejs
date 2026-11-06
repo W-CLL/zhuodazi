@@ -1,58 +1,16 @@
 <!doctype html>
 <%
-  const siteUrl = String(config.url || 'https://desktoppet.online').replace(/\/$/, '');
-  const pagePath = url_for(page.path || '/');
-  const canonicalUrl = siteUrl + (pagePath === '/index.html' ? '/' : pagePath);
-  const isHome = Boolean(page.__index) || page.path === '' || page.path === 'index.html';
+  const info = discovery_info(page);
+  const canonicalUrl = info.canonical;
   const isPost = page.layout === 'post';
-  const isNotFound = String(page.path || '').includes('404');
-  const isArchive = Boolean(page.archive) || page.layout === 'archive';
-  const seoTitle = isHome
-    ? '桌搭子｜对象回「在开会」，你回一只熊'
-    : isArchive
-      ? '桌搭子手记｜桌角发生过的事'
-      : ((page.title || config.title) + '｜桌搭子');
-  const fallbackDescription = isArchive
-    ? '桌搭子手记。怎么用、改了什么、以及那次把熊派过去之后发生了什么。'
-    : config.description;
-  const seoDescription = String(strip_html(page.description || page.excerpt || fallbackDescription || ''))
+  const seoTitle = info.title;
+  const seoDescription = String(strip_html(info.description || ''))
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 180);
-  const seoImage = siteUrl + url_for(page.cover || '/images/screenshots/visit-showcase.gif');
+  const seoImage = full_url_for(page.cover || '/images/promo/hello.webp');
   const ogType = isPost ? 'article' : 'website';
-  const softwareLd = {
-    '@context': 'https://schema.org',
-    '@type': 'SoftwareApplication',
-    name: '桌搭子',
-    alternateName: 'DeskPet',
-    applicationCategory: 'EntertainmentApplication',
-    operatingSystem: 'Windows, macOS, Android',
-    url: siteUrl + '/',
-    downloadUrl: siteUrl + '/download/',
-    description: config.description,
-    image: siteUrl + url_for('/images/screenshots/visit-showcase.gif'),
-    offers: {
-      '@type': 'Offer',
-      url: siteUrl + '/download/',
-      price: '0',
-      priceCurrency: 'CNY',
-      description: '先下载试用。一组激活码填两台。'
-    }
-  };
-  const webpageLd = {
-    '@context': 'https://schema.org',
-    '@type': isPost ? 'BlogPosting' : 'WebPage',
-    name: seoTitle,
-    headline: page.title || seoTitle,
-    description: seoDescription,
-    url: canonicalUrl,
-    inLanguage: 'zh-CN',
-    isPartOf: { '@type': 'WebSite', name: '桌搭子', url: siteUrl + '/' },
-    image: seoImage
-  };
-  if (isPost && page.date) webpageLd.datePublished = page.date.toISOString();
-  if (isPost && page.updated) webpageLd.dateModified = page.updated.toISOString();
+  const modifiedDate = editorial_date(page);
 %>
 <html lang="<%= config.language || 'zh-CN' %>">
   <head>
@@ -62,9 +20,9 @@
     <meta name="description" content="<%= seoDescription %>">
     <meta name="keywords" content="<%= config.keywords %>">
     <link rel="canonical" href="<%= canonicalUrl %>">
-    <meta name="theme-color" content="#f3eadc">
+    <meta name="theme-color" content="#faf9f3">
     <meta name="color-scheme" content="light dark">
-    <meta name="robots" content="<%= isNotFound ? 'noindex,follow' : 'index,follow' %>">
+    <meta name="robots" content="<%= info.is404 ? 'noindex,follow' : 'index,follow,max-image-preview:large' %>">
     <meta property="og:type" content="<%= ogType %>">
     <meta property="og:locale" content="zh_CN">
     <meta property="og:site_name" content="桌搭子">
@@ -72,14 +30,21 @@
     <meta property="og:description" content="<%= seoDescription %>">
     <meta property="og:url" content="<%= canonicalUrl %>">
     <meta property="og:image" content="<%= seoImage %>">
+    <meta property="og:image:alt" content="桌搭子桌面宠物与互动玩法">
+    <% if (isPost) { %>
+    <meta name="author" content="<%= page.author || config.author %>">
+    <meta property="article:published_time" content="<%= date_xml(page.date) %>">
+    <% if (modifiedDate) { %><meta property="article:modified_time" content="<%= modifiedDate %>"><% } %>
+    <% } %>
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="<%= seoTitle %>">
     <meta name="twitter:description" content="<%= seoDescription %>">
     <meta name="twitter:image" content="<%= seoImage %>">
     <link rel="icon" href="<%= url_for('/images/app-icon.png') %>" type="image/png">
+    <link rel="alternate" type="text/plain" title="桌搭子官方信息索引" href="<%= url_for('/llms.txt') %>">
     <link rel="stylesheet" href="<%= url_for('/css/site.css') %>?v=<%= theme.asset_version %>">
-    <script type="application/ld+json"><%- JSON.stringify(isHome ? softwareLd : webpageLd) %></script>
-    <% if (isHome) { %><script type="application/ld+json"><%- JSON.stringify(webpageLd) %></script><% } %>
+    <link rel="stylesheet" href="<%= url_for('/css/product.css') %>?v=<%= theme.asset_version %>">
+    <script type="application/ld+json"><%- discovery_json(page, info, seoDescription, seoImage) %></script>
   </head>
   <body class="page-<%= page.layout || 'default' %>">
     <a class="skip-link" href="#main-content">跳到主要内容</a>
@@ -92,11 +57,12 @@
         <nav class="site-nav" id="site-navigation" aria-label="主导航" data-site-nav>
           <a href="<%= url_for('/') %>">首页</a>
           <a href="<%= url_for('/#play') %>">怎么玩</a>
-          <a href="<%= url_for('/#moyu') %>">摸鱼</a>
-          <a href="<%= url_for('/download/') %>">下载</a>
+          <a href="<%= url_for('/gameplay/') %>"<% if (page.layout === 'gameplay') { %> aria-current="page"<% } %>>桌宠玩法</a>
+          <a href="<%= url_for('/#platforms') %>">三端对比</a>
           <a href="<%= url_for('/resources/') %>">资源包</a>
+          <a href="<%= url_for('/activate/') %>">激活说明</a>
           <a href="<%= url_for('/archives/') %>">手记</a>
-          <a href="<%= url_for('/about/') %>">关于</a>
+          <a class="nav-download" href="<%= url_for('/download/') %>">免费下载 ↓</a>
         </nav>
         <div class="header-actions">
           <button class="icon-button theme-button" type="button" data-theme-toggle aria-label="切换深色模式" title="切换深色模式">
@@ -109,6 +75,13 @@
       </div>
     </header>
     <main id="main-content">
+      <% if (!info.isHome && !info.is404) { %>
+      <nav class="site-shell breadcrumbs" aria-label="面包屑导航">
+        <ol><% info.crumbs.forEach(function(crumb, index) { %>
+          <li><% if (index === info.crumbs.length - 1) { %><span aria-current="page"><%= crumb.name %></span><% } else { %><a href="<%= crumb.url %>"><%= crumb.name %></a><% } %></li>
+        <% }) %></ol>
+      </nav>
+      <% } %>
       <%- body %>
     </main>
     <footer class="site-footer">
@@ -118,10 +91,13 @@
             <img src="<%= url_for('/images/app-icon.png') %>" width="34" height="34" alt="" loading="lazy" decoding="async">
             <span>桌搭子</span>
           </a>
-          <p>对象回「在开会」，你回一只熊。</p>
+          <p>给日常添一点小热闹，给屏幕留一个小搭子。</p>
         </div>
         <div class="footer-links">
           <a href="<%= url_for('/download/') %>">下载</a>
+          <a href="<%= url_for('/activate/') %>">激活说明</a>
+          <a href="<%= url_for('/faq/') %>">常见问题</a>
+          <a href="<%= url_for('/gameplay/') %>">桌宠玩法</a>
           <a href="<%= url_for('/resources/') %>">资源包</a>
           <a href="<%= url_for('/archives/') %>">手记</a>
           <a href="<%= url_for('/about/') %>">关于</a>
@@ -134,6 +110,17 @@
       </div>
       <div class="site-shell footer-disclaimer">GIF 资源均来自网络公开，如有侵权请联系删除</div>
     </footer>
+    <dialog class="download-dialog" data-download-dialog aria-labelledby="download-dialog-title" aria-describedby="download-dialog-message">
+      <button class="download-dialog-close" type="button" data-download-cancel aria-label="关闭下载提示">×</button>
+      <p class="overline">桌搭子来报到啦</p>
+      <h2 id="download-dialog-title">下载前的小提醒</h2>
+      <p id="download-dialog-message">哈喽，感谢下载体验，里面有不懂的操作可以再次回到网页点击“<a href="<%= url_for('/gameplay/') %>">桌宠玩法</a>”，进行查看噢。</p>
+      <div class="download-dialog-actions">
+        <button class="button button-secondary" type="button" data-download-cancel>取消</button>
+        <button class="button button-primary" type="button" data-download-confirm autofocus>确认下载 <span aria-hidden="true">↓</span></button>
+      </div>
+    </dialog>
     <script src="<%= url_for('/js/site.js') %>?v=<%= theme.asset_version %>" defer></script>
+    <script src="<%= url_for('/js/product.js') %>?v=<%= theme.asset_version %>" defer></script>
   </body>
 </html>

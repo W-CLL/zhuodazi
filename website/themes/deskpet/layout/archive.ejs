@@ -1,9 +1,9 @@
-<% const archivePosts = page.posts ? page.posts.sort('date', 'desc').toArray() : site.posts.sort('date', 'desc').toArray(); %>
+<% const archivePosts = page.posts ? page.posts.sort('date', 'desc').toArray() : site.posts.sort('date', 'desc').toArray(); const archiveInfo = discovery_info(page); %>
 <section class="archive-page">
   <div class="site-shell archive-head reveal">
     <p class="section-kicker">桌搭子手记</p>
-    <h1>桌角发生过的事，记在这儿。</h1>
-    <p>怎么用、改了什么、以及那次把熊派过去之后发生了什么。</p>
+    <h1><%= archiveInfo.label %></h1>
+    <p><%= archiveInfo.description %></p>
   </div>
   <div class="site-shell archive-list">
     <% archivePosts.forEach(function(post, index) { %>
@@ -12,10 +12,13 @@
         <div>
           <p class="archive-category"><%= post.categories && post.categories.length ? post.categories.first().name : '桌搭子手记' %></p>
           <h2><a href="<%= url_for(post.path) %>"><%= post.title %></a></h2>
-          <p><%= post.excerpt || truncate(strip_html(post.content), {length: 120}) %></p>
+          <p><%= truncate(strip_html(post.description || post.excerpt || post.content), {length: 140}) %></p>
         </div>
         <a class="archive-arrow" href="<%= url_for(post.path) %>" aria-label="阅读 <%= post.title %>">→</a>
       </article>
     <% }) %>
   </div>
+  <% if (page.total > 1) { %>
+  <nav class="site-shell archive-pagination" aria-label="文章列表分页"><%- paginator({prev_text: '← 上一页', next_text: '下一页 →', mid_size: 2}) %></nav>
+  <% } %>
 </section>

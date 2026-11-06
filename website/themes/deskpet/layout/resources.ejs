@@ -3,11 +3,11 @@
     <div class="resource-hero-copy reveal">
       <p class="section-kicker">互动资源</p>
       <h1>桌搭子资源包</h1>
-      <p class="resource-hero-lead">给桌搭子换台词。下载 ZIP，解压后在 Windows / macOS 客户端里多选导入。它会说得更贫一点。</p>
-      <dl class="resource-hero-stats" aria-label="校园热梗资源包内容">
-        <div><dt>5 套</dt><dd>互动词包</dd></div>
-        <div><dt>3,600 句</dt><dd>互动台词</dd></div>
-        <div><dt>5 个</dt><dd>完整小剧场</dd></div>
+      <p class="resource-hero-lead">给桌搭子换台词，也给小剧场添个新故事。下载 ZIP，解压后在 Windows / macOS 客户端导入；需要有效体验或激活。Android 使用内置词包。</p>
+      <dl class="resource-hero-stats" aria-label="资源包用途">
+        <div><dt>换台词</dt><dd>互动词包</dd></div>
+        <div><dt>添故事</dt><dd>小剧场剧本</dd></div>
+        <div><dt>电脑端</dt><dd>下载后导入</dd></div>
       </dl>
     </div>
     <div class="resource-hero-media reveal" aria-hidden="true">
@@ -21,14 +21,14 @@
   <div class="site-shell">
     <div class="resource-preview-heading reveal">
       <div>
-        <p class="section-kicker">内容预览</p>
-        <h2 id="resource-preview-title">先听听，它们会贫些什么。</h2>
+        <p class="section-kicker">玩法示例</p>
+        <h2 id="resource-preview-title">词包和剧本，分别能做什么？</h2>
       </div>
-      <p>校园日常、吐槽、一点点嘴硬。已经整理成能直接导入的 JSON，不用自己写。</p>
+      <p>下面是台词写法示例。实际可下载的资源及其内容，以本页资源目录中的标题和说明为准。</p>
     </div>
     <div class="resource-preview-grid">
       <article class="resource-preview-block reveal">
-        <p class="resource-preview-type">互动词包 / 校园嘴替局</p>
+        <p class="resource-preview-type">互动词包 / 台词示例</p>
         <h3>不同状态，都有一句接得住的话。</h3>
         <ul class="word-preview-list">
           <li><span>待机</span><q>早八还没点名，我先替你的灵魂占个座。</q></li>
@@ -36,11 +36,11 @@
           <li><span>开心</span><q>恭喜你把普通一天玩成了高光局。</q></li>
           <li><span>鼓励</span><q>先做一小步，卷王也不是一天练成的。</q></li>
         </ul>
-        <p class="resource-preview-meta">每套 24 个触发场景 · 每个场景 30 句 · 共 720 句</p>
+        <p class="resource-preview-meta">词包改变场景台词，不会新增在线题库。</p>
       </article>
       <article class="resource-preview-block reveal">
-        <p class="resource-preview-type">小剧场 / 早八搭子心动事故</p>
-        <h3>两只桌宠，把日常演成五轮对白。</h3>
+        <p class="resource-preview-type">小剧场 / 对白示例</p>
+        <h3>两只桌宠，把日常演成一段对白。</h3>
         <ol class="theater-preview-list">
           <li>
             <p><span>主角</span>快醒醒，早八老师点名了，你的灵魂还卡在加载页。</p>
@@ -55,7 +55,7 @@
             <p><span>搭子</span>成交，先去食堂，恋爱脑也得按时吃饭。</p>
           </li>
         </ol>
-        <p class="resource-preview-meta">完整文件包含 5 轮、10 句对白，可与其他剧本一起多选导入</p>
+        <p class="resource-preview-meta">剧本让两只桌宠轮流说话；不导入也可以看内置小剧场。</p>
       </article>
     </div>
   </div>
@@ -79,6 +79,10 @@
       <span class="resource-state-mark" aria-hidden="true">...</span>
       <p>正在读取资源包</p>
     </div>
+    <noscript>
+      <style>.resource-filters,[data-resource-state]{display:none}</style>
+      <p class="resource-static-note">资源目录需要 JavaScript 才能读取最新内容。你仍可阅读上面的格式与玩法说明；词包和小剧场均有内置内容，不下载资源包也能体验。<a class="text-link" href="<%= url_for('/posts/deskpet-feature-guide/') %>">查看完整玩法指南 →</a></p>
+    </noscript>
   </div>
 </section>
 

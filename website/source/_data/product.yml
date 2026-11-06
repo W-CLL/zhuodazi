@@ -1,0 +1,49 @@
+name: 桌搭子
+alternate_name: DeskPet
+description: 桌搭子是一款支持 Windows、macOS 和 Android 的桌面宠物软件，提供屏幕陪伴、趣味互动、小剧场、提醒和桌宠来访。
+platforms:
+  - Windows
+  - macOS
+  - Android
+features:
+  - 20 只默认桌宠、拖动与换宠
+  - 趣味问答与日常台词
+  - 双宠小剧场
+  - 自定义提醒
+  - 桌宠大厅与留言来访
+  - 正式激活后的私人搭子绑定
+free:
+  name: 基础陪伴与首次体验
+  price: '0'
+  description: 基础陪伴免费，首次提供 7 天进阶体验；体验结束后保留基础陪伴。
+activation:
+  name: 永久激活
+  price: '6.88'
+  currency: CNY
+  description: 6.88 元一次购买永久激活，不按月续费。一组 6 位激活码最多授权两台设备，属于同一账号。
+  purchase_url: https://www.goofish.com/item?id=1083348954733
+links:
+  - name: 桌宠玩法
+    path: /gameplay/
+    description: 对照十张桌面版菜单截图，了解今日桌宠、陪伴日常、小窝、灵感口袋、提醒、搭子和大厅等功能。
+  - name: 官方下载
+    path: /download/
+    description: Windows、macOS、Android 安装包、架构选择和安装说明。
+  - name: 激活价格与授权说明
+    path: /activate/
+    description: 6.88 元永久激活、设备数量、激活码和购买方式。
+  - name: 常见问题
+    path: /faq/
+    description: 免费范围、支持平台、私人搭子和自定义内容的直接解答。
+  - name: 完整玩法指南
+    path: /posts/deskpet-feature-guide/
+    description: 首次使用、互动、小剧场、大厅、提醒和三端差异。
+  - name: 互动词包与小剧场资源
+    path: /resources/
+    description: 电脑端可导入的内容类型、格式和资源目录。
+  - name: 关于桌搭子
+    path: /about/
+    description: 产品用途和官方信息入口。
+  - name: 更新与使用手记
+    path: /archives/
+    description: 按时间浏览使用文章和历史版本说明。
