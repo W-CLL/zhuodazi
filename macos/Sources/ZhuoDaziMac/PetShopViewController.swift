@@ -82,6 +82,8 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
 
     override func loadView() {
         view = NSView()
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
         let root = column()
         root.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(root)
         NSLayoutConstraint.activate([root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),

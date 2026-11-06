@@ -3,6 +3,13 @@ import CryptoKit
 import XCTest
 @testable import ZhuoDaziMac
 
+/// CI screens may be smaller than the requested review size. Keep only test
+/// windows unconstrained, so a 1400-point layout is actually laid out at 1400.
+@MainActor
+private final class PetShopReviewWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
 /// These checks exercise native Auto Layout with the real shop controller, rather than a screenshot mock.
 final class PetShopLayoutTests: XCTestCase {
     @MainActor
@@ -76,11 +83,13 @@ final class PetShopLayoutTests: XCTestCase {
 
     @MainActor
     private func layout(_ fixture: Fixture, size: NSSize) -> NSWindow {
-        let window = NSWindow(contentViewController: fixture.controller)
+        let window = PetShopReviewWindow(contentViewController: fixture.controller)
         window.styleMask = [.titled, .closable, .resizable]
         window.setContentSize(size); window.isReleasedWhenClosed = false
         window.orderFront(nil)
         for _ in 0..<4 { fixture.controller.view.layoutSubtreeIfNeeded() }
+        XCTAssertEqual(fixture.controller.view.bounds.width, size.width, accuracy: 1)
+        XCTAssertEqual(fixture.controller.view.bounds.height, size.height, accuracy: 1)
         return window
     }
 

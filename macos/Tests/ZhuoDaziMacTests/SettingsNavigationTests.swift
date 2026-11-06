@@ -3,6 +3,11 @@ import XCTest
 @testable import ZhuoDaziMac
 
 @MainActor
+private final class SettingsReviewWindow: NSWindow {
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
+@MainActor
 private final class HallServiceStub: HallServing {
     private(set) var profile: CompanionProfile? = CompanionProfile(
         displayName: "本地验收名片", pairingCode: "PREVIEW1", partner: nil, hallEnabled: false, online: true)
@@ -75,7 +80,7 @@ final class SettingsNavigationTests: XCTestCase {
         }
         let navigation = SettingsSidebarController(destinations: destinations)
         navigation.selectionChanged = { page in hall.setPagePresented(page == .hall) }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
+        let window = SettingsReviewWindow(contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
         window.title = "设置导航验收 · 大厅为本地模拟数据"
@@ -84,6 +89,8 @@ final class SettingsNavigationTests: XCTestCase {
         window.setContentSize(NSSize(width: 1100, height: 760))
         window.orderFront(nil)
         for _ in 0..<4 { navigation.view.layoutSubtreeIfNeeded() }
+        XCTAssertEqual(navigation.view.bounds.width, 1100, accuracy: 1, "Review host must exercise the requested content width even on a smaller CI display")
+        XCTAssertEqual(navigation.view.bounds.height, 760, accuracy: 1, "Review host must exercise the requested content height")
         _ = navigation.view
         XCTAssertEqual(navigation.selectedPage, .today)
         try capture(navigation.view, name: "settings-sidebar-mock.png")
