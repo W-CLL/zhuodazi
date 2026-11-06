@@ -24,4 +24,4 @@ description: 桌搭子是支持 Windows、macOS、Android 的桌宠软件，提�
 
 Windows、macOS、Android 都能下载，当前没有 iOS 版。三端的导入功能、系统权限和操作方式有一些差异，可以先看下载说明，慢慢找到自己喜欢的节奏。
 
-[下载桌搭子](/download/) · [完整玩法指南](/posts/deskpet-feature-guide/) · [激活价格说明](/activate/) · [更新说明](/posts/deskpet-3-3-update/)
+[下载桌搭子](/download/) · [完整玩法指南](/posts/deskpet-feature-guide/) · [激活价格说明](/activate/) · [最新更新：macOS 3.5.5](/posts/macos-3-5-5-update/)
