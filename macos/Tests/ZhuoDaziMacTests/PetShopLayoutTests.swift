@@ -7,7 +7,11 @@ import XCTest
 final class PetShopLayoutTests: XCTestCase {
     @MainActor
     private final class Fixture {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("shop-layout-\(UUID().uuidString)")
+        // macOS's /var temporary directory is a symlink; use a real user cache path
+        // while keeping the installer's production symlink checks intact.
+        let directory = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches", isDirectory: true)
+            .appendingPathComponent("shop-layout-\(UUID().uuidString)", isDirectory: true)
         let controller: PetShopViewController
 
         init(activated: Bool = true, pets: [PetMarketInstallation] = [], resourceStates: [String: String] = [:]) throws {

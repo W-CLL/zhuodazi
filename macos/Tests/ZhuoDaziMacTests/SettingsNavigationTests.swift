@@ -55,7 +55,9 @@ final class SettingsNavigationTests: XCTestCase {
         guard let directory = ProcessInfo.processInfo.environment["ZHUODAZI_REVIEW_OUTPUT"], !directory.isEmpty else { return }
         let output = URL(fileURLWithPath: directory, isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
-        view.layoutSubtreeIfNeeded()
+        for _ in 0..<4 { view.layoutSubtreeIfNeeded() }
+        XCTAssertGreaterThan(view.bounds.width, 0, "Screenshot host must have a laid out content width")
+        XCTAssertGreaterThan(view.bounds.height, 0, "Screenshot host must have a laid out content height")
         let bitmap = try XCTUnwrap(view.bitmapImageRepForCachingDisplay(in: view.bounds))
         view.cacheDisplay(in: view.bounds, to: bitmap)
         let data = try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
@@ -79,6 +81,9 @@ final class SettingsNavigationTests: XCTestCase {
         window.title = "设置导航验收 · 大厅为本地模拟数据"
         window.contentViewController = navigation
         defer { hall.setPagePresented(false); window.close() }
+        window.setContentSize(NSSize(width: 1100, height: 760))
+        window.orderFront(nil)
+        for _ in 0..<4 { navigation.view.layoutSubtreeIfNeeded() }
         _ = navigation.view
         XCTAssertEqual(navigation.selectedPage, .today)
         try capture(navigation.view, name: "settings-sidebar-mock.png")

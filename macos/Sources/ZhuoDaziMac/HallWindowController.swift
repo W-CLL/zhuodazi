@@ -378,6 +378,8 @@ final class HallViewController: NSViewController, NSTextFieldDelegate {
 
     private func startCooldownTimer() {
         cooldownTimer?.invalidate()
+        cooldownTimer = nil
+        guard pagePresented else { return }
         cooldownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
