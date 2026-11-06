@@ -130,4 +130,51 @@ final class PetMarketInstallerTests: XCTestCase {
             }
         }
     }
+
+    func testDownloadedArchiveRequiresExactSignedSizeAndHashBeforeInstalling() throws {
+        let (bytes, manifestGrant) = try pack([("pet.gif", tinyGIF)])
+        var grant = manifestGrant
+        grant.sizeBytes = bytes.count
+        grant.sha256 = PetMarketClient.hash(bytes)
+        try withRoot { root in
+            let item = try PetMarketInstaller.installDownloadedArchive(bytes, descriptor: grant, title: "", root: root)
+            XCTAssertTrue(PetMarketInstaller.validInstallation(item, root: root))
+        }
+        for invalid in 0..<3 {
+            var descriptor = grant
+            var content = bytes
+            switch invalid {
+            case 0: descriptor.sizeBytes = bytes.count + 1
+            case 1: descriptor.sha256 = String(repeating: "0", count: 64)
+            default: content[0] ^= 1
+            }
+            try withRoot { root in
+                XCTAssertThrowsError(try PetMarketInstaller.installDownloadedArchive(content,
+                    descriptor: descriptor, title: "", root: root))
+                XCTAssertFalse(FileManager.default.fileExists(atPath: root.path))
+            }
+        }
+    }
+
+    func testCanceledInstallDoesNotCreateOrReplaceAnInstallation() async throws {
+        let (bytes, manifestGrant) = try pack([("pet.gif", tinyGIF)])
+        var grant = manifestGrant
+        grant.sizeBytes = bytes.count
+        grant.sha256 = PetMarketClient.hash(bytes)
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Caches/pet-market-tests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let existing = try PetMarketInstaller.installDownloadedArchive(bytes, descriptor: grant, title: "", root: root)
+        let productRoot = root.appendingPathComponent("pets/\(grant.productId)")
+        let before = try FileManager.default.contentsOfDirectory(atPath: productRoot.path).sorted()
+        let work = Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try PetMarketInstaller.installDownloadedArchive(bytes, descriptor: grant, title: "", root: root)
+        }
+        do { _ = try await work.value; XCTFail("Canceled install succeeded") }
+        catch is CancellationError {}
+        let after = try FileManager.default.contentsOfDirectory(atPath: productRoot.path).sorted()
+        XCTAssertEqual(after, before, "Canceled work must leave no staging directory or new committed copy")
+        XCTAssertTrue(PetMarketInstaller.validInstallation(existing, root: root))
+    }
 }

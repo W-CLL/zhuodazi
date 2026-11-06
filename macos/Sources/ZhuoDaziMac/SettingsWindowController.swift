@@ -30,7 +30,7 @@ enum ActivationPrompts {
 }
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     private let petController: PetWindowController
     private let licenses: LicenseService
     private let updates: UpdateService
@@ -40,7 +40,8 @@ final class SettingsWindowController: NSWindowController {
     private let uninstallFeedbackService: UninstallFeedbackService
     private let dockVisibilityChanged: (Bool) -> Void
     private let openCompanion: () -> Void
-    private let openHall: () -> Void
+    private let hallController: HallViewController
+    private var navigation: SettingsSidebarController?
     private let showUsageGuide: () -> Void
     private let openExperienceGuide: () -> Void
     private let experienceGuideButton = NSButton(title: "开始体验", target: nil, action: nil)
@@ -118,8 +119,6 @@ final class SettingsWindowController: NSWindowController {
     private let activationLabel = NSTextField(labelWithString: "")
     private let updateLabel = NSTextField(labelWithString: "")
     private let releaseNotes = NSTextView()
-    private let hallButton = NSButton(title: "打开桌宠大厅", target: nil, action: nil)
-    private let hallAccessLabel = NSTextField(wrappingLabelWithString: "")
     private let currentPetLabel = NSTextField(wrappingLabelWithString: "")
     private let currentPetPreview = NSImageView()
     private let updateProgress = NSProgressIndicator()
@@ -142,7 +141,7 @@ final class SettingsWindowController: NSWindowController {
         refreshDailyConfig: @escaping () async -> Bool,
         dockVisibilityChanged: @escaping (Bool) -> Void,
         openCompanion: @escaping () -> Void,
-        openHall: @escaping () -> Void,
+        hallController: HallViewController,
         showUsageGuide: @escaping () -> Void,
         openExperienceGuide: @escaping () -> Void,
         openFakeAd: @escaping () -> Void,
@@ -157,24 +156,24 @@ final class SettingsWindowController: NSWindowController {
         self.uninstallFeedbackService = UninstallFeedbackService(licenses: licenses)
         self.dockVisibilityChanged = dockVisibilityChanged
         self.openCompanion = openCompanion
-        self.openHall = openHall
+        self.hallController = hallController
         self.showUsageGuide = showUsageGuide
         self.openExperienceGuide = openExperienceGuide
         self.openFakeAd = openFakeAd
         self.petShopController = petShopController
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
+            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 760),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
-        window.title = "桌搭子 · 陪伴设置"
+        window.title = "桌搭子设置"
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 820, height: 620)
-        window.toolbarStyle = .preference
+        window.contentMinSize = NSSize(width: 1040, height: 650)
         window.tabbingMode = .disallowed
         window.center()
         super.init(window: window)
+        window.delegate = self
         buildInterface(in: window)
         updates.statusChanged = { [weak self] _ in DispatchQueue.main.async { self?.refreshUpdateState() } }
         refresh()
@@ -187,38 +186,55 @@ final class SettingsWindowController: NSWindowController {
         super.showWindow(sender)
         window?.makeKeyAndOrderFront(sender)
         NSApp.activate(ignoringOtherApps: true)
+        updateHallVisibility()
         Task { @MainActor [weak self] in
             await self?.loadFeedback(showAlert: false)
         }
     }
 
     private func buildInterface(in window: NSWindow) {
-        let tabs = NSTabViewController()
-        tabs.tabStyle = .toolbar
-        tabs.addChild(buildBehaviorPage())
+        var destinations: [SettingsSidebarController.Destination] = [
+            .init(page: .today, controller: buildTodayPage())
+        ]
+        if let petShopController {
+            destinations.append(.init(page: .shop, controller: petShopController))
+        }
+        destinations.append(.init(page: .companionship, controller: buildBehaviorPage()))
+        destinations.append(.init(page: .pets, controller: buildPetsPage()))
+        destinations.append(.init(page: .inspiration, controller: buildContentPage()))
+        destinations.append(.init(page: .reminders, controller: buildRemindersPage()))
+        destinations.append(.init(page: .companion, controller: buildCompanionPage()))
+        destinations.append(.init(page: .hall, controller: hallController))
+        destinations.append(.init(page: .feedback, controller: buildFeedbackPage()))
         let daily = DailyPageController(pet: petController, config: remoteConfig, refreshConfig: refreshDailyConfig)
         dailyPage = daily
-        tabs.addChild(daily)
+        destinations.append(.init(page: .daily, controller: daily))
         petController.dailyChanged = { [weak daily] in daily?.refresh() }
-        tabs.addChild(buildPetsPage())
-        tabs.addChild(buildLibrariesPage())
-        if let petShopController {
-            petShopController.title = "桌宠小铺"
-            tabs.addChild(petShopController)
-        }
-        tabs.addChild(buildContentPage())
-        tabs.addChild(buildCompanionPage())
-        tabs.addChild(buildHallPage())
-        tabs.addChild(buildRemindersPage())
-        tabs.addChild(buildFeedbackPage())
-        tabs.addChild(buildUninstallPage())
-        tabs.addChild(buildUpdatePage())
-        window.contentViewController = tabs
+        destinations.append(.init(page: .updates, controller: buildUpdatePage()))
+        destinations.append(.init(page: .uninstall, controller: buildUninstallPage()))
+        let navigation = SettingsSidebarController(destinations: destinations)
+        self.navigation = navigation
+        navigation.selectionChanged = { [weak self] _ in self?.updateHallVisibility() }
+        window.contentViewController = navigation
+        window.toolbar = nil
     }
 
+    func showHallPage() {
+        navigation?.select(.hall)
+        updateHallVisibility()
+    }
+
+    private func updateHallVisibility() {
+        hallController.setPagePresented(navigation?.selectedPage == .hall && window?.isVisible == true && window?.isMiniaturized != true)
+    }
+
+    func windowWillClose(_ notification: Notification) { hallController.setPagePresented(false) }
+    func windowDidMiniaturize(_ notification: Notification) { hallController.setPagePresented(false) }
+    func windowDidDeminiaturize(_ notification: Notification) { updateHallVisibility() }
+
     private func buildCompanionPage() -> NSViewController {
-        let (page, stack) = makePage("私人搭子")
-        addTitle("私人搭子", to: stack)
+        let (page, stack) = makePage("搭子")
+        addTitle("搭子", to: stack)
         companionStatusIcon.image = NSImage(systemSymbolName: "person.2.fill", accessibilityDescription: "搭子联机状态")
         companionStatusIcon.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 18, weight: .medium)
         companionStatusLabel.font = .systemFont(ofSize: 14, weight: .medium)
@@ -235,26 +251,18 @@ final class SettingsWindowController: NSWindowController {
         return page
     }
 
-    private func buildHallPage() -> NSViewController {
-        let (page, stack) = makePage("桌宠大厅")
-        addTitle("桌宠大厅", to: stack)
-        stack.addArrangedSubview(hint("体验期间和正式激活后都可加入大厅，向在线用户发送当前 GIF 和一句留言。"))
-        stack.addArrangedSubview(hint("只有你主动加入后，昵称与在线状态才会公开。退出大厅不会解除私人搭子绑定。"))
-        hallAccessLabel.maximumNumberOfLines = 0
-        hallAccessLabel.textColor = .secondaryLabelColor
-        stack.addArrangedSubview(hallAccessLabel)
-        hallButton.target = self
-        hallButton.action = #selector(openHallAction)
-        hallButton.controlSize = .large
-        hallButton.bezelStyle = .rounded
-        stack.addArrangedSubview(hallButton)
-        return page
-    }
-
-    private func buildBehaviorPage() -> NSViewController {
-        let (page, stack) = makePage("陪伴日常")
-        addTitle("把陪伴调成喜欢的样子", to: stack)
-        stack.addArrangedSubview(hint("设置会自动保存。关闭设置后桌宠继续运行；菜单栏中的“退出桌搭子”会完全退出。"))
+    private func buildTodayPage() -> NSViewController {
+        let (page, stack) = makePage("今日桌宠")
+        addTitle("今日桌宠", to: stack)
+        stack.addArrangedSubview(hint("调整桌面上这只的样子，换一只也在这里。设置会自动保存。"))
+        currentPetPreview.imageScaling = .scaleProportionallyUpOrDown
+        currentPetPreview.animates = true
+        currentPetPreview.widthAnchor.constraint(equalToConstant: 100).isActive = true
+        currentPetPreview.heightAnchor.constraint(equalToConstant: 100).isActive = true
+        currentPetLabel.widthAnchor.constraint(equalToConstant: 440).isActive = true
+        currentPetLabel.maximumNumberOfLines = 0
+        stack.addArrangedSubview(buttonRow([currentPetPreview, currentPetLabel]))
+        stack.addArrangedSubview(NSButton(title: "立即换一只", target: self, action: #selector(randomizeNow)))
         experienceGuideButton.target = self
         experienceGuideButton.action = #selector(openExperienceGuideAction)
         stack.addArrangedSubview(buttonRow([experienceGuideButton, NSButton(title: "文字使用指南", target: self, action: #selector(showUsageGuideAction))]))
@@ -275,6 +283,38 @@ final class SettingsWindowController: NSWindowController {
         opacitySlider.isContinuous = true
         opacitySlider.widthAnchor.constraint(equalToConstant: 360).isActive = true
         stack.addArrangedSubview(labeledRow("透明度", controls: [opacitySlider, opacityValue]))
+
+        randomPetCheckbox.target = self
+        randomPetCheckbox.action = #selector(randomSettingsChanged(_:))
+        stack.addArrangedSubview(randomPetCheckbox)
+        randomIntervalPopup.addItems(withTitles: ["每 30 秒", "每 1 分钟", "每 5 分钟", "每 10 分钟", "每 30 分钟"])
+        randomIntervalPopup.target = self
+        randomIntervalPopup.action = #selector(randomSettingsChanged(_:))
+        stack.addArrangedSubview(labeledRow("切换间隔", controls: [randomIntervalPopup]))
+        stack.addArrangedSubview(separator())
+        addSection("窗口行为", to: stack)
+        for control in [alwaysOnTopCheckbox, startupCheckbox, mirrorCheckbox, clickThroughCheckbox, dockCheckbox] {
+            control.target = self
+            control.action = #selector(behaviorChanged(_:))
+            stack.addArrangedSubview(control)
+        }
+        stack.addArrangedSubview(separator())
+        let fishTitle = NSTextField(labelWithString: "摸鱼模式")
+        fishTitle.font = .systemFont(ofSize: 15, weight: .semibold)
+        let fishHint = hint("七天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。")
+        fishModeButton.target = self
+        fishModeButton.action = #selector(openFakeAdAction)
+        fishModeSection = [fishTitle, fishHint, fishModeButton]
+        stack.addArrangedSubview(fishTitle)
+        stack.addArrangedSubview(fishHint)
+        stack.addArrangedSubview(fishModeButton)
+        return page
+    }
+
+    private func buildBehaviorPage() -> NSViewController {
+        let (page, stack) = makePage("陪伴日常")
+        addTitle("陪伴日常", to: stack)
+        stack.addArrangedSubview(hint("决定它怎么走动、多久来找你，以及要不要演一小段。关闭设置后桌宠继续运行；菜单栏中的“退出桌搭子”会完全退出。"))
 
         personalityPopup.addItems(withTitles: ["活泼", "害羞", "黏人", "混乱"])
         personalityPopup.target = self
@@ -313,35 +353,18 @@ final class SettingsWindowController: NSWindowController {
         stack.addArrangedSubview(NSButton(title: "停止当前剧场或来访", target: self, action: #selector(stopCurrentScene)))
         stack.addArrangedSubview(hint("想自己写对白，可到“灵感口袋”页的“小剧场 · 自编小故事”导入剧本。也可以直接欣赏内置小故事。"))
         stack.addArrangedSubview(separator())
-        addSection("桌宠行动与窗口", to: stack)
-        for control in [mouseCheckbox, movementCheckbox, alwaysOnTopCheckbox, startupCheckbox, mirrorCheckbox, clickThroughCheckbox, dockCheckbox] {
+        addSection("桌宠行动", to: stack)
+        for control in [mouseCheckbox, movementCheckbox] {
             control.target = self
             control.action = #selector(behaviorChanged(_:))
             stack.addArrangedSubview(control)
         }
-        stack.addArrangedSubview(separator())
-        let fishTitle = NSTextField(labelWithString: "摸鱼模式")
-        fishTitle.font = .systemFont(ofSize: 15, weight: .semibold)
-        let fishHint = hint("七天完整体验可用，激活后继续使用；首次使用需要允许辅助功能权限。")
-        fishModeButton.target = self
-        fishModeButton.action = #selector(openFakeAdAction)
-        fishModeSection = [fishTitle, fishHint, fishModeButton]
-        stack.addArrangedSubview(fishTitle)
-        stack.addArrangedSubview(fishHint)
-        stack.addArrangedSubview(fishModeButton)
         return page
     }
 
     private func buildPetsPage() -> NSViewController {
         let (page, stack) = makePage("桌宠小窝")
         addTitle("桌宠小窝", to: stack)
-        currentPetPreview.imageScaling = .scaleProportionallyUpOrDown
-        currentPetPreview.animates = true
-        currentPetPreview.widthAnchor.constraint(equalToConstant: 100).isActive = true
-        currentPetPreview.heightAnchor.constraint(equalToConstant: 100).isActive = true
-        currentPetLabel.widthAnchor.constraint(equalToConstant: 440).isActive = true
-        currentPetLabel.maximumNumberOfLines = 0
-        stack.addArrangedSubview(buttonRow([currentPetPreview, currentPetLabel]))
         stack.addArrangedSubview(hint("把喜欢的 GIF 接回小窝，最多可添加 3 只。添加后会为你保存一份副本。"))
         petsPopup.target = self
         petsPopup.action = #selector(petSelectionChanged(_:))
@@ -353,12 +376,13 @@ final class SettingsWindowController: NSWindowController {
         let useDefault = NSButton(title: "使用默认桌宠", target: self, action: #selector(useDefaultPet))
         let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedPet))
         stack.addArrangedSubview(buttonRow([add, use, useDefault, delete]))
+        stack.addArrangedSubview(separator())
+        addLibrariesSection(to: stack)
         return page
     }
 
-    private func buildLibrariesPage() -> NSViewController {
-        let (page, stack) = makePage("桌宠图鉴")
-        addTitle("桌宠图鉴", to: stack)
+    private func addLibrariesSection(to stack: NSStackView) {
+        addSection("桌宠图鉴", to: stack)
         stack.addArrangedSubview(hint("本地 GIF 文件夹与小铺桌宠合计最多同时启用 3 个来源；未启用的图鉴会继续保留。"))
         librariesPopup.target = self
         librariesPopup.action = #selector(librarySelectionChanged(_:))
@@ -371,17 +395,7 @@ final class SettingsWindowController: NSWindowController {
         let bind = NSButton(title: "添加 GIF 文件夹", target: self, action: #selector(addLibrary))
         let delete = NSButton(title: "删除所选", target: self, action: #selector(deleteSelectedLibrary))
         stack.addArrangedSubview(buttonRow([bind, delete]))
-        stack.addArrangedSubview(separator())
-        addSection("小搭子轮流陪你", to: stack)
-        randomPetCheckbox.target = self
-        randomPetCheckbox.action = #selector(randomSettingsChanged(_:))
-        stack.addArrangedSubview(randomPetCheckbox)
-        randomIntervalPopup.addItems(withTitles: ["每 30 秒", "每 1 分钟", "每 5 分钟", "每 10 分钟", "每 30 分钟"])
-        randomIntervalPopup.target = self
-        randomIntervalPopup.action = #selector(randomSettingsChanged(_:))
-        let now = NSButton(title: "立即换一只", target: self, action: #selector(randomizeNow))
-        stack.addArrangedSubview(labeledRow("切换间隔", controls: [randomIntervalPopup, now]))
-        return page
+        stack.addArrangedSubview(hint("是否自动轮换、多久换一次，可到“今日桌宠”设置。"))
     }
 
     private func buildContentPage() -> NSViewController {
@@ -529,8 +543,8 @@ final class SettingsWindowController: NSWindowController {
     }
 
     private func buildUpdatePage() -> NSViewController {
-        let (page, stack) = makePage("成长日记")
-        addTitle("成长日记 · 软件更新", to: stack)
+        let (page, stack) = makePage("版本更新")
+        addTitle("版本更新", to: stack)
         autoUpdateCheckbox.target = self
         autoUpdateCheckbox.action = #selector(autoUpdateChanged(_:))
         stack.addArrangedSubview(autoUpdateCheckbox)
@@ -568,6 +582,7 @@ final class SettingsWindowController: NSWindowController {
         controller.title = title
         let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 880, height: 620))
         scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         let view = SettingsDocumentView()
         view.translatesAutoresizingMaskIntoConstraints = false
@@ -579,8 +594,8 @@ final class SettingsWindowController: NSWindowController {
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 42),
-            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -42),
+            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 28),
+            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -28),
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 32),
             stack.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -32),
             view.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor)
@@ -685,8 +700,7 @@ final class SettingsWindowController: NSWindowController {
         randomIntervalPopup.selectItem(at: randomIntervals.firstIndex(of: settings.randomPetIntervalSeconds) ?? 0)
         autoUpdateCheckbox.state = settings.autoCheckUpdates ? .on : .off
         let config = remoteConfig()
-        hallButton.isEnabled = config.companionHall
-        hallAccessLabel.stringValue = !config.companionHall ? "大厅暂时关闭。" : premium ? "现在可以打开大厅并选择加入。" : "有效体验或正式激活后可以加入大厅。"
+        hallController.refreshAccessState()
         announcementLabel.stringValue = config.announcement
         announcementLabel.isHidden = config.announcement.isEmpty
         autoUpdateCheckbox.isHidden = !config.autoUpdates
@@ -1437,10 +1451,9 @@ final class SettingsWindowController: NSWindowController {
         refreshUpdateState()
     }
 
-    @objc func checkForUpdatesFromMenu() { checkForUpdates() }
+    @objc func checkForUpdatesFromMenu() { navigation?.select(.updates); checkForUpdates() }
 
     @objc private func openCompanionAction() { openCompanion() }
-    @objc private func openHallAction() { openHall() }
     @objc private func showUsageGuideAction() { showUsageGuide() }
     @objc private func openExperienceGuideAction() { openExperienceGuide() }
     @objc private func dailySpeechChanged() { petController.update { $0.dailySpeechEnabled = dailySpeechCheckbox.state == .on } }

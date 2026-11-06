@@ -2,14 +2,6 @@ import CryptoKit
 import Foundation
 import ZhuoDaziCore
 
-// Redirects never receive license credentials. The same origin policy also
-// applies to public previews and free resource downloads.
-private final class PetMarketSessionDelegate: NSObject, URLSessionTaskDelegate {
-    func urlSession(_ session: URLSession, task: URLSessionTask,
-                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
-                    completionHandler: @escaping (URLRequest?) -> Void) { completionHandler(nil) }
-}
-
 @MainActor
 final class PetMarketClient {
     let licenses: LicenseService
@@ -17,16 +9,6 @@ final class PetMarketClient {
     let storage: URL
     let isPreview: Bool
     private let publicKey: Curve25519.Signing.PublicKey
-    private let delegate = PetMarketSessionDelegate()
-    private lazy var session: URLSession = {
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.timeoutIntervalForRequest = 25
-        configuration.timeoutIntervalForResource = 600
-        configuration.httpCookieStorage = nil
-        configuration.urlCache = nil
-        configuration.connectionProxyDictionary = [:]
-        return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
-    }()
     private var serverOffset: TimeInterval = 0
     var serverNow: Date { Date().addingTimeInterval(serverOffset) }
 
@@ -46,7 +28,8 @@ final class PetMarketClient {
     }
 
     func data(_ path: String, method: String = "GET", body: [String: String]? = nil,
-              authenticated: Bool = false, limit: Int = 2 * 1024 * 1024) async throws -> Data {
+              authenticated: Bool = false, limit: Int = 2 * 1024 * 1024,
+              policy: PetMarketTransferPolicy = .api) async throws -> Data {
         guard path.hasPrefix("/"), !path.hasPrefix("//"), !path.contains("\\"),
               let url = URL(string: path, relativeTo: origin)?.absoluteURL,
               url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port,
@@ -57,7 +40,8 @@ final class PetMarketClient {
         request.httpMethod = method
         request.setValue("macos", forHTTPHeaderField: "X-DeskPet-Platform")
         request.setValue(AppVersion.current, forHTTPHeaderField: "X-DeskPet-Version")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue(policy.acceptsBinary
+            ? "application/octet-stream, application/json" : "application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -66,25 +50,7 @@ final class PetMarketClient {
             guard licenses.isActivated else { throw LicenseError.inactive }
             try licenses.authorize(&request)
         }
-        let (bytes, response) = try await session.bytes(for: request)
-        guard let http = response as? HTTPURLResponse, http.url?.host == origin.host,
-              http.url?.scheme == origin.scheme, http.url?.port == origin.port else {
-            throw PetMarketError.invalid("小铺响应来源无效")
-        }
-        let success = (200..<300).contains(http.statusCode)
-        let maximum = success ? limit : 32 * 1024
-        guard response.expectedContentLength <= Int64(maximum) else { throw PetMarketError.invalid("小铺内容超过大小限制") }
-        var result = Data()
-        for try await byte in bytes {
-            try Task.checkCancellation()
-            guard result.count < maximum else { throw PetMarketError.invalid("小铺内容超过大小限制") }
-            result.append(byte)
-        }
-        guard success else {
-            let object = try? JSONSerialization.jsonObject(with: result) as? [String: Any]
-            throw PetMarketError.server(object?["error"] as? String ?? "小铺请求失败（\(http.statusCode)）")
-        }
-        return result
+        return try await PetMarketTransfer(origin: origin, maximum: limit, policy: policy).data(for: request)
     }
 
     func catalog() async throws -> PetMarketCatalog {
@@ -200,11 +166,12 @@ final class PetMarketClient {
         guard descriptor.productId == productId, descriptor.downloadPath == expected,
               let size = descriptor.sizeBytes, (1...PetMarketLimits.maximumArchiveBytes).contains(size),
               let hash = descriptor.sha256, PetMarketJSON.validHash(hash) else { throw PetMarketError.invalid("下载授权内容无效") }
-        let bytes = try await data(expected, authenticated: true, limit: size)
-        guard bytes.count == size, Self.hash(bytes) == hash.lowercased() else { throw PetMarketError.invalid("桌宠包校验失败") }
+        let policy = try PetMarketTransferPolicy.archive(validFor: descriptor.expiresAt.timeIntervalSince(serverNow))
+        let bytes = try await data(expected, authenticated: true, limit: size, policy: policy)
+        try Task.checkCancellation()
         let root = storage
         let work = Task.detached(priority: .utility) {
-            try PetMarketInstaller.install(bytes, descriptor: descriptor, title: title, root: root)
+            try PetMarketInstaller.installDownloadedArchive(bytes, descriptor: descriptor, title: title, root: root)
         }
         let installation = try await withTaskCancellationHandler(operation: {
             try await work.value
@@ -239,8 +206,15 @@ final class PetMarketClient {
               components.path == "/api/pet-market/products/\(product.id)/versions/\(product.activeVersion)/preview",
               components.queryItems?.count == 1, components.queryItems?.first?.name == "file",
               components.queryItems?.first?.value == file.path else { throw PetMarketError.invalid("预览路径无效") }
-        let result = try await data(path, limit: file.sizeBytes)
-        guard result.count == file.sizeBytes, Self.hash(result) == file.sha256.lowercased() else { throw PetMarketError.invalid("预览校验失败") }
+        let result = try await data(path, limit: file.sizeBytes, policy: .asset)
+        let validation = Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            guard result.count == file.sizeBytes, Self.hash(result) == file.sha256.lowercased() else {
+                throw PetMarketError.invalid("预览校验失败")
+            }
+        }
+        try await withTaskCancellationHandler(operation: { try await validation.value }, onCancel: { validation.cancel() })
+        try Task.checkCancellation()
         return result
     }
 

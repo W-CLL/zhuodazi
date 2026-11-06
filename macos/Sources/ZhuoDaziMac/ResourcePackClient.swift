@@ -34,14 +34,20 @@ final class ResourcePackClient {
     }
     func install(_ pack: ResourcePackProduct) async throws -> ParsedResourcePack {
         try Self.validate(pack)
-        let data = try await transport.data("/resource-packs/\(pack.id)/download", limit: pack.size)
-        guard data.count == pack.size, PetMarketClient.hash(data) == pack.sha256.lowercased() else {
-            throw PetMarketError.invalid("资源完整性校验失败，请刷新后重试")
+        let data = try await transport.data("/resource-packs/\(pack.id)/download", limit: pack.size, policy: .asset)
+        try Task.checkCancellation()
+        let work = Task.detached(priority: .utility) {
+            try Task.checkCancellation()
+            guard data.count == pack.size, PetMarketClient.hash(data) == pack.sha256.lowercased() else {
+                throw PetMarketError.invalid("资源完整性校验失败，请刷新后重试")
+            }
+            return try Self.parse(data, pack: pack)
         }
-        let work = Task.detached(priority: .utility) { try Self.parse(data, pack: pack) }
-        return try await withTaskCancellationHandler(operation: {
+        let parsed = try await withTaskCancellationHandler(operation: {
             try await work.value
         }, onCancel: { work.cancel() })
+        try Task.checkCancellation()
+        return parsed
     }
     private nonisolated static func validate(_ pack: ResourcePackProduct) throws {
         guard UUID(uuidString: pack.id) != nil, ["interaction-words", "theater-scripts"].contains(pack.category),

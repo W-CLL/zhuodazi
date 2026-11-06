@@ -1,5 +1,10 @@
 import AppKit
 
+/// Scroll documents begin at the first card, including when the document is taller than its viewport.
+private final class PetShopDocumentView: NSView {
+    override var isFlipped: Bool { true }
+}
+
 @MainActor
 private final class PetShopButton: NSButton {
     private var actionHandler: (() -> Void)?
@@ -7,6 +12,8 @@ private final class PetShopButton: NSButton {
         super.init(frame: .zero)
         self.title = title; actionHandler = action; target = self; self.action = #selector(run)
         bezelStyle = .rounded
+        setContentHuggingPriority(.required, for: .vertical)
+        setContentCompressionResistancePriority(.required, for: .vertical)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
     @objc private func run() { actionHandler?() }
@@ -35,6 +42,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private var timer: Timer?, nextPoll = Date.distantPast, nextGrantRefresh = Date.distantPast
     private var polling = false, loading = false, started = false, stopped = false
     private var installing = Set<String>(), installErrors: [String: String] = [:]
+    private var purchasing = Set<String>()
     private var thumbnailCache: [String: NSImage] = [:]
     private var thumbnailTasks: [String: Task<Void, Never>] = [:]
     private var thumbnailViews: [String: NSImageView] = [:]
@@ -42,12 +50,15 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private let search = NSSearchField()
     private let filter = NSPopUpButton()
     private let status = NSTextField(wrappingLabelWithString: "")
-    private let productStack = NSStackView(), detailStack = NSStackView(), resourceStack = NSStackView()
+    private let productStack = NSStackView(), detailStack = NSStackView(), detailActions = NSStackView(), resourceStack = NSStackView()
+    private let detailScroll = NSScrollView()
     private let market = NSView(), resourceScroll = NSScrollView()
     private var countdownLabel: NSTextField?
     private var ordersWindow: NSWindowController?
     private var orderStack: NSStackView?
-    private var resourceColumns = 0
+    private var resourceColumns = 1, catalogColumns = 1
+    private var detailProductId: String?
+    private var catalogPreviewOnly = false
 
     init(licenses: LicenseService, client: PetMarketClient,
          installedPets: @escaping () -> [PetMarketInstallation],
@@ -71,37 +82,71 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
 
     override func loadView() {
         view = NSView()
-        let root = NSStackView(); root.orientation = .vertical; root.alignment = .leading; root.spacing = 12
+        let root = column()
         root.translatesAutoresizingMaskIntoConstraints = false; view.addSubview(root)
         NSLayoutConstraint.activate([root.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
             root.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            root.topAnchor.constraint(equalTo: view.topAnchor, constant: 18), root.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -18)])
+            root.topAnchor.constraint(equalTo: view.topAnchor, constant: 18)])
         let heading = row([label("桌宠小铺", size: 24, bold: true), NSView(),
             PetShopButton("订单记录") { [weak self] in self?.showOrders() },
             PetShopButton("刷新") { [weak self] in self?.reload() }])
-        root.addArrangedSubview(heading); heading.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-        if client.isPreview { root.addArrangedSubview(label("本地独立预览 · 只连接配置的本机后台", secondary: true)) }
+        addFullWidth(heading, to: root)
+        addFullWidth(label("挑一只喜欢的，预览后再领取或购买；安装后由你手动启用。", secondary: true), to: root)
+        if client.isPreview { addFullWidth(label("本地独立预览 · 只连接配置的本机后台", secondary: true), to: root) }
+        if !licenses.isActivated {
+            let activate = PetShopButton("正式激活") { [weak self] in self?.requestActivation() }
+            addFullWidth(card(row([label("可以先浏览预览，领取、购买和启用桌宠需要正式激活。", secondary: true), activate])), to: root)
+        }
         tabs.selectedSegment = 0; tabs.target = self; tabs.action = #selector(changeTab)
+        tabs.identifier = NSUserInterfaceItemIdentifier("shop-tabs")
         root.addArrangedSubview(tabs)
         search.placeholderString = "搜索名称、介绍或标签"; search.delegate = self
+        search.identifier = NSUserInterfaceItemIdentifier("shop-search")
+        search.setContentHuggingPriority(.defaultLow, for: .horizontal)
         filter.target = self; filter.action = #selector(changeFilter); updateFilters()
-        let controls = row([search, filter]); root.addArrangedSubview(controls)
-        controls.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
+        filter.identifier = NSUserInterfaceItemIdentifier("shop-filter")
+        let controls = row([search, filter]); addFullWidth(controls, to: root)
         filter.widthAnchor.constraint(equalToConstant: 120).isActive = true
-        status.textColor = .secondaryLabelColor; root.addArrangedSubview(status)
-        let content = NSView(); root.addArrangedSubview(content)
-        content.widthAnchor.constraint(equalTo: root.widthAnchor).isActive = true
-        content.heightAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
+        status.textColor = .secondaryLabelColor; status.maximumNumberOfLines = 2
+        addFullWidth(status, to: root)
+        let content = NSView(); view.addSubview(content)
         content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([content.leadingAnchor.constraint(equalTo: root.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: root.trailingAnchor),
+            content.topAnchor.constraint(equalTo: root.bottomAnchor, constant: 12),
+            content.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -18),
+            content.heightAnchor.constraint(greaterThanOrEqualToConstant: 220)])
 
         // Both columns are constrained to exactly the same width, with their own scrollbars.
         let horizontal = NSScrollView(); horizontal.hasHorizontalScroller = true; horizontal.hasVerticalScroller = false
         horizontal.drawsBackground = false; horizontal.documentView = market
         market.translatesAutoresizingMaskIntoConstraints = false
-        let left = scroll(productStack), right = scroll(detailStack)
+        let left = scroll(productStack), right = NSView()
+        left.identifier = NSUserInterfaceItemIdentifier("shop-catalog-scroll")
+        right.identifier = NSUserInterfaceItemIdentifier("shop-detail-panel")
+        right.wantsLayer = true; right.layer?.cornerRadius = 10
+        right.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+        right.layer?.borderWidth = 1; right.layer?.borderColor = NSColor.separatorColor.cgColor
+        configureScroll(detailScroll, stack: detailStack)
+        detailScroll.identifier = NSUserInterfaceItemIdentifier("shop-detail-scroll")
+        detailActions.orientation = .vertical; detailActions.alignment = .leading; detailActions.spacing = 8
+        detailActions.identifier = NSUserInterfaceItemIdentifier("shop-detail-actions")
+        for child in [detailScroll, detailActions] {
+            child.translatesAutoresizingMaskIntoConstraints = false; right.addSubview(child)
+        }
+        // The purchase/install/enable controls stay in the panel, not beneath a tall preview or description.
+        NSLayoutConstraint.activate([detailScroll.leadingAnchor.constraint(equalTo: right.leadingAnchor, constant: 14),
+            detailScroll.trailingAnchor.constraint(equalTo: right.trailingAnchor, constant: -14),
+            detailScroll.topAnchor.constraint(equalTo: right.topAnchor, constant: 14),
+            detailScroll.bottomAnchor.constraint(equalTo: detailActions.topAnchor, constant: -12),
+            detailActions.leadingAnchor.constraint(equalTo: right.leadingAnchor, constant: 14),
+            detailActions.trailingAnchor.constraint(equalTo: right.trailingAnchor, constant: -14),
+            detailActions.bottomAnchor.constraint(equalTo: right.bottomAnchor, constant: -14)])
         for panel in [left, right] { market.addSubview(panel); panel.translatesAutoresizingMaskIntoConstraints = false }
         NSLayoutConstraint.activate([market.widthAnchor.constraint(greaterThanOrEqualToConstant: 720),
             market.widthAnchor.constraint(greaterThanOrEqualTo: horizontal.contentView.widthAnchor),
+            market.leadingAnchor.constraint(equalTo: horizontal.contentView.leadingAnchor),
+            market.topAnchor.constraint(equalTo: horizontal.contentView.topAnchor),
             market.heightAnchor.constraint(equalTo: horizontal.contentView.heightAnchor),
             left.leadingAnchor.constraint(equalTo: market.leadingAnchor), left.topAnchor.constraint(equalTo: market.topAnchor),
             left.bottomAnchor.constraint(equalTo: market.bottomAnchor), right.trailingAnchor.constraint(equalTo: market.trailingAnchor),
@@ -110,6 +155,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
         let preferredWidth = market.widthAnchor.constraint(equalTo: horizontal.contentView.widthAnchor)
         preferredWidth.priority = .defaultHigh; preferredWidth.isActive = true
         configureScroll(resourceScroll, stack: resourceStack)
+        resourceScroll.identifier = NSUserInterfaceItemIdentifier("shop-resource-scroll")
         resourceScroll.isHidden = true
         for panel in [horizontal, resourceScroll] {
             panel.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(panel)
@@ -121,7 +167,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
 
     override func viewDidAppear() {
         super.viewDidAppear()
-        guard !stopped else { return }
+        guard !stopped, !catalogPreviewOnly else { return }
         if !started {
             started = true; reload()
             timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -131,8 +177,13 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     }
     override func viewDidLayout() {
         super.viewDidLayout()
-        let columns = view.bounds.width >= 900 ? 2 : 1
-        if columns != resourceColumns { resourceColumns = columns; if started { renderResources() } }
+        let columns = resourceScroll.contentView.bounds.width >= 720 ? 2 : 1
+        if columns != resourceColumns { resourceColumns = columns; if started || catalogPreviewOnly { renderResources() } }
+        let newCatalogColumns = productStack.bounds.width >= 440 ? 2 : 1
+        if newCatalogColumns != catalogColumns {
+            catalogColumns = newCatalogColumns
+            if started || catalogPreviewOnly { renderProducts() }
+        }
     }
     func stop() {
         stopped = true
@@ -224,6 +275,22 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
         resourceScroll.isHidden = tabs.selectedSegment == 0
         renderProducts(); renderDetail(); renderResources()
     }
+
+    /// Deterministic AppKit review data is accepted only by an isolated preview client.
+    /// It skips timers, catalog requests and preview downloads, so tests cannot contact production.
+    func showLayoutPreview(catalog: PetMarketCatalog, resourcePacks: [ResourcePackProduct] = [],
+                           orders: [PetMarketOrder] = [], thumbnails: [String: NSImage] = [:],
+                           installingProductIds: Set<String> = [], errors: [String: String] = [:], showResources: Bool = false) {
+        precondition(client.isPreview, "Layout review requires an isolated shop preview")
+        precondition(!started, "Set review data before the live shop starts")
+        catalogPreviewOnly = true
+        _ = view // AppKit loads an NSViewController's view lazily through this property.
+        products = catalog.products; payment = catalog.payment; packs = resourcePacks; self.orders = orders
+        thumbnailCache = thumbnails; installing = installingProductIds; installErrors = errors
+        selectedId = products.first?.id; tabs.selectedSegment = showResources ? 1 : 0
+        updateFilters(); status.stringValue = "\(products.count) 款桌宠 · \(packs.count) 套免费内容"
+        render()
+    }
     private func matches(_ text: String) -> Bool { search.stringValue.isEmpty || text.localizedCaseInsensitiveContains(search.stringValue) }
     private func owns(_ product: PetMarketProduct) -> Bool {
         product.owned || orders.contains { $0.productId == product.id && $0.status == "paid" }
@@ -236,58 +303,80 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                 || filter.indexOfSelectedItem == 1 && $0.isFree || filter.indexOfSelectedItem == 2 && !$0.isFree
                 || filter.indexOfSelectedItem == 3 && owns($0))
         }
-        if items.isEmpty { productStack.addArrangedSubview(label(loading ? "正在加载桌宠…" : "没有找到桌宠，试试其他关键词。", secondary: true)) }
-        for product in items {
-            let image = NSImageView(); image.imageScaling = .scaleProportionallyUpOrDown; image.animates = true
-            image.image = thumbnailCache[product.id]; image.widthAnchor.constraint(equalToConstant: 84).isActive = true
-            image.heightAnchor.constraint(equalToConstant: 84).isActive = true; thumbnailViews[product.id] = image
-            let text = column(); text.addArrangedSubview(label(product.title, size: 16, bold: true))
-            text.addArrangedSubview(label(product.description, secondary: true))
-            let badges = ([product.isFeatured ? "精选" : "", product.isDefault ? "默认" : ""] + product.tags).filter { !$0.isEmpty }.joined(separator: " · ")
-            if !badges.isEmpty { text.addArrangedSubview(label(badges, secondary: true)) }
-            text.addArrangedSubview(label("\(product.assetCount) 个动作 · \(owns(product) ? "已拥有" : product.priceLabel)", bold: true))
-            let choose = PetShopButton(selectedId == product.id ? "正在预览" : "查看桌宠") { [weak self] in
-                self?.selectedId = product.id; self?.selectedOrderId = nil; self?.previewIndex = 0; self?.render()
-            }
-            text.addArrangedSubview(choose)
-            let item = card(row([image, text]), selected: selectedId == product.id)
-            productStack.addArrangedSubview(item); item.widthAnchor.constraint(equalTo: productStack.widthAnchor).isActive = true
-            if thumbnailCache[product.id] == nil, thumbnailTasks[product.id] == nil, !product.previewFiles.isEmpty {
-                thumbnailTasks[product.id] = Task { [weak self] in
-                    guard let self else { return }
-                    if let bytes = try? await client.preview(product, index: 0), !stopped, !Task.isCancelled, let image = NSImage(data: bytes) {
-                        thumbnailCache[product.id] = image; thumbnailViews[product.id]?.image = image
+        if items.isEmpty { addFullWidth(label(loading ? "正在加载桌宠…" : "没有找到桌宠，试试其他关键词。", secondary: true), to: productStack) }
+        for offset in stride(from: 0, to: items.count, by: catalogColumns) {
+            let line = row([]); line.distribution = .fillEqually; line.alignment = .top; line.spacing = 12
+            for product in items[offset..<min(items.count, offset + catalogColumns)] {
+                let content = column(); content.spacing = 7
+                let image = NSImageView(); image.imageScaling = .scaleProportionallyUpOrDown; image.animates = true
+                image.image = thumbnailCache[product.id]; image.heightAnchor.constraint(equalToConstant: 104).isActive = true
+                image.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+                thumbnailViews[product.id] = image; addFullWidth(image, to: content)
+                let title = label(product.title, size: 15, bold: true); title.maximumNumberOfLines = 2
+                addFullWidth(title, to: content)
+                let summary = label(product.description, secondary: true); summary.maximumNumberOfLines = 2
+                summary.lineBreakMode = .byTruncatingTail; addFullWidth(summary, to: content)
+                let badges = ([product.isFeatured ? "精选" : "", product.isDefault ? "默认" : ""] + product.tags).filter { !$0.isEmpty }.joined(separator: " · ")
+                if !badges.isEmpty {
+                    let badge = label(badges, size: 11, secondary: true); badge.maximumNumberOfLines = 1
+                    badge.lineBreakMode = .byTruncatingTail; addFullWidth(badge, to: content)
+                }
+                addFullWidth(label("\(product.priceLabel) · \(product.assetCount) 个动作", bold: true), to: content)
+                let state = installedPets().contains { $0.productId == product.id }
+                    ? (isPetEnabled(product.id) ? "已安装 · 已启用" : "已安装 · 待启用") : owns(product) ? "已拥有 · 待安装" : "尚未领取或购买"
+                addFullWidth(label(state, size: 11, secondary: true), to: content)
+                let choose = PetShopButton(selectedId == product.id ? "正在预览" : "查看桌宠") { [weak self] in
+                    self?.selectedId = product.id; self?.selectedOrderId = nil; self?.previewIndex = 0; self?.render()
+                }
+                choose.identifier = NSUserInterfaceItemIdentifier("shop-product-\(product.id)")
+                addFullWidth(choose, to: content)
+                line.addArrangedSubview(card(content, selected: selectedId == product.id))
+                if !catalogPreviewOnly, thumbnailCache[product.id] == nil, thumbnailTasks[product.id] == nil, !product.previewFiles.isEmpty {
+                    thumbnailTasks[product.id] = Task { [weak self] in
+                        guard let self else { return }
+                        if let bytes = try? await client.preview(product, index: 0), !stopped, !Task.isCancelled, let image = NSImage(data: bytes) {
+                            thumbnailCache[product.id] = image; thumbnailViews[product.id]?.image = image
+                        }
+                        thumbnailTasks[product.id] = nil
                     }
-                    thumbnailTasks[product.id] = nil
                 }
             }
+            if line.arrangedSubviews.count < catalogColumns { line.addArrangedSubview(NSView()) }
+            addFullWidth(line, to: productStack)
         }
     }
 
     private func renderDetail() {
         guard !stopped, isViewLoaded else { return }
-        clear(detailStack); countdownLabel = nil
+        clear(detailStack); clear(detailActions); countdownLabel = nil
         previewGeneration += 1; let generation = previewGeneration; previewTask?.cancel()
         guard let product = products.first(where: { $0.id == selectedId }) else {
-            detailStack.addArrangedSubview(label("选择一只桌宠，看看它的动作。", secondary: true)); return
+            addFullWidth(label("选择一只桌宠，看看它的动作。", secondary: true), to: detailStack); return
         }
+        let selectionChanged = detailProductId != product.id; detailProductId = product.id
         if let order = displayedOrder, order.status == "pending_payment", order.expiresAt > client.serverNow {
             renderPayment(order)
         } else if let order = displayedOrder {
-            detailStack.addArrangedSubview(label(order.status == "paid" ? "付款验证成功" : order.statusLabel, bold: true))
+            addFullWidth(label(order.status == "paid" ? "付款验证成功" : order.statusLabel, bold: true), to: detailStack)
         }
-        detailStack.addArrangedSubview(label(product.title, size: 22, bold: true))
+        let overview = row([]); overview.alignment = .top
+        let preview = column(); preview.spacing = 6
+        preview.widthAnchor.constraint(equalToConstant: 118).isActive = true
         let image = NSImageView(); image.imageScaling = .scaleProportionallyUpOrDown; image.animates = true
-        image.heightAnchor.constraint(equalToConstant: 200).isActive = true
-        image.image = thumbnailCache[product.id]; detailStack.addArrangedSubview(image)
-        image.widthAnchor.constraint(equalTo: detailStack.widthAnchor).isActive = true
+        image.heightAnchor.constraint(equalToConstant: 132).isActive = true
+        image.image = thumbnailCache[product.id]; addFullWidth(image, to: preview)
+        image.identifier = NSUserInterfaceItemIdentifier("shop-preview-image")
         if !product.previewFiles.isEmpty {
             previewIndex = min(previewIndex, product.previewFiles.count - 1)
-            detailStack.addArrangedSubview(row([PetShopButton("上一个") { [weak self] in self?.movePreview(-1) },
-                label("预览 \(previewIndex + 1) / \(product.previewFiles.count)", secondary: true),
-                PetShopButton("下一个") { [weak self] in self?.movePreview(1) }]))
+            let previous = PetShopButton("‹") { [weak self] in self?.movePreview(-1) }; previous.toolTip = "上一个动作"
+            let next = PetShopButton("›") { [weak self] in self?.movePreview(1) }; next.toolTip = "下一个动作"
+            let count = label("\(previewIndex + 1)/\(product.previewFiles.count)", size: 11, secondary: true)
+            count.alignment = .center
+            let controls = row([previous, count, next]); controls.spacing = 2
+            count.setContentHuggingPriority(.defaultLow, for: .horizontal)
+            addFullWidth(controls, to: preview)
             let index = previewIndex
-            previewTask = Task { [weak self, weak image] in
+            if !catalogPreviewOnly { previewTask = Task { [weak self, weak image] in
                 guard let self else { return }
                 do {
                     let bytes = try await client.preview(product, index: index)
@@ -295,28 +384,55 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                     if let bytes { image?.image = NSImage(data: bytes) }
                 } catch is CancellationError { }
                 catch { if generation == previewGeneration { status.stringValue = "预览加载失败：\(error.localizedDescription)" } }
-            }
-        } else { detailStack.addArrangedSubview(label("这款桌宠暂未开放动作预览。", secondary: true)) }
-        detailStack.addArrangedSubview(label(product.description))
-        detailStack.addArrangedSubview(label("同一角色 · \(product.assetCount) 个动作/表情 · \(product.priceLabel)", secondary: true))
-        if let error = installErrors[product.id] { detailStack.addArrangedSubview(label(error, secondary: true)) }
-        if installing.contains(product.id) { detailStack.addArrangedSubview(label("正在下载并校验安装…", bold: true)); return }
-        if let installation = installedPets().first(where: { $0.productId == product.id }) {
-            let enabled = isPetEnabled(product.id)
-            detailStack.addArrangedSubview(label(enabled ? "已安装 · 已启用" : "已安装 · 待启用", bold: true))
-            detailStack.addArrangedSubview(PetShopButton(enabled ? "停用" : "启用桌宠") { [weak self] in
-                self?.togglePet(installation, enable: !enabled)
-            })
-            detailStack.addArrangedSubview(PetShopButton("重新安装已拥有版本") { [weak self] in self?.beginInstall(product) })
-        } else if owns(product) {
-            detailStack.addArrangedSubview(PetShopButton("下载安装") { [weak self] in self?.beginInstall(product) })
-        } else {
-            let button = PetShopButton(product.isFree ? "免费领取并安装" : "购买 \(product.priceLabel)") { [weak self] in self?.purchase(product) }
-            button.isEnabled = displayedOrder?.status != "pending_payment" || displayedOrder!.expiresAt <= client.serverNow
-            detailStack.addArrangedSubview(button)
-            if !product.isFree, let payment, !payment.canOrder { detailStack.addArrangedSubview(label(payment.unavailableReason, secondary: true)) }
+            } }
+        } else { addFullWidth(label("暂未开放动作预览", size: 11, secondary: true), to: preview) }
+        let info = column(); info.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        addFullWidth(label(product.title, size: 20, bold: true), to: info)
+        addFullWidth(label(product.priceLabel, size: 18, bold: true), to: info)
+        addFullWidth(label("同一角色 · \(product.assetCount) 个动作/表情", secondary: true), to: info)
+        if owns(product) { addFullWidth(label("已拥有", bold: true, secondary: true), to: info) }
+        let badges = ([product.isFeatured ? "精选" : "", product.isDefault ? "默认" : ""] + product.tags).filter { !$0.isEmpty }.joined(separator: " · ")
+        if !badges.isEmpty { addFullWidth(label(badges, size: 11, secondary: true), to: info) }
+        overview.addArrangedSubview(preview); overview.addArrangedSubview(info)
+        addFullWidth(overview, to: detailStack)
+        addFullWidth(label(product.description), to: detailStack)
+        addFullWidth(label("\(product.priceLabel) · \(owns(product) ? "已拥有" : product.isFree ? "免费桌宠" : "付费桌宠")", size: 16, bold: true), to: detailActions)
+        if let error = installErrors[product.id] {
+            let message = label(error, secondary: true); message.maximumNumberOfLines = 3
+            addFullWidth(message, to: detailActions)
         }
-        detailStack.addArrangedSubview(label("安装后由你手动启用。试用期间可以浏览，正式激活后可领取和购买桌宠。", secondary: true))
+        if purchasing.contains(product.id) {
+            let busy = PetShopButton(product.isFree ? "正在领取…" : "正在创建订单…") {}; busy.isEnabled = false
+            busy.identifier = NSUserInterfaceItemIdentifier("shop-primary-action"); addFullWidth(busy, to: detailActions)
+        } else if installing.contains(product.id) {
+            addFullWidth(label("正在下载并校验安装…", bold: true), to: detailActions)
+            let busy = PetShopButton("正在安装…") {}; busy.isEnabled = false
+            busy.identifier = NSUserInterfaceItemIdentifier("shop-primary-action"); addFullWidth(busy, to: detailActions)
+        } else if let installation = installedPets().first(where: { $0.productId == product.id }) {
+            let enabled = isPetEnabled(product.id)
+            addFullWidth(label(enabled ? "已安装 · 已启用" : "已安装 · 待启用", bold: true), to: detailActions)
+            let use = PetShopButton(enabled ? "停用" : "启用桌宠") { [weak self] in self?.togglePet(installation, enable: !enabled) }
+            use.identifier = NSUserInterfaceItemIdentifier("shop-primary-action"); addFullWidth(use, to: detailActions)
+            let reinstall = PetShopButton("重新安装已拥有版本") { [weak self] in self?.beginInstall(product) }
+            addFullWidth(reinstall, to: detailActions)
+        } else if owns(product) {
+            addFullWidth(label("已拥有 · 待安装", secondary: true), to: detailActions)
+            let install = PetShopButton("下载安装") { [weak self] in self?.beginInstall(product) }
+            install.identifier = NSUserInterfaceItemIdentifier("shop-primary-action"); addFullWidth(install, to: detailActions)
+        } else {
+            let pending = displayedOrder.map { $0.status == "pending_payment" && $0.expiresAt > client.serverNow } ?? false
+            let button = PetShopButton(pending ? "等待付款确认" : product.isFree ? "免费领取并安装" : "购买 \(product.priceLabel)") { [weak self] in self?.purchase(product) }
+            button.identifier = NSUserInterfaceItemIdentifier("shop-primary-action")
+            button.isEnabled = !pending && (product.isFree || !licenses.isActivated || payment?.canOrder != false)
+            addFullWidth(button, to: detailActions)
+            if !product.isFree, let payment, !payment.canOrder {
+                let message = label(payment.unavailableReason, secondary: true); message.maximumNumberOfLines = 2
+                addFullWidth(message, to: detailActions)
+            }
+        }
+        let note = label(licenses.isActivated ? "安装完成后点击「启用桌宠」，不会自动替换当前桌宠。" : "可以先看预览，点击领取或购买后前往正式激活。", size: 11, secondary: true)
+        addFullWidth(note, to: detailActions)
+        if selectionChanged { scrollToTop(detailScroll) }
     }
     private func movePreview(_ step: Int) {
         guard let product = products.first(where: { $0.id == selectedId }), !product.previewFiles.isEmpty else { return }
@@ -325,7 +441,8 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
 
     private func renderPayment(_ order: PetMarketOrder) {
         let content = column()
-        let countdown = label("", bold: true); countdownLabel = countdown
+        let remaining = max(0, Int(ceil(order.expiresAt.timeIntervalSince(client.serverNow))))
+        let countdown = label(String(format: "%02d:%02d", remaining / 60, remaining % 60), bold: true); countdownLabel = countdown
         content.addArrangedSubview(row([label("完成付款", size: 18, bold: true), NSView(), countdown]))
         content.addArrangedSubview(label(String(format: "应付 ¥%.2f", Double(order.amountFen) / 100), size: 20, bold: true))
         content.addArrangedSubview(row([label(order.paymentReference, size: 24, bold: true),
@@ -347,6 +464,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
         content.addArrangedSubview(PetShopButton("取消订单") { [weak self] in
             self?.action { [weak self] in guard let self else { return }; try await client.cancelOrder(order.id); await syncOrders() }
         })
+        fillColumn(content)
         let paymentCard = card(content, selected: true)
         detailStack.addArrangedSubview(paymentCard); paymentCard.widthAnchor.constraint(equalTo: detailStack.widthAnchor).isActive = true
     }
@@ -359,8 +477,11 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
 
     private func purchase(_ product: PetMarketProduct) {
         guard licenses.isActivated else { requestActivation(); return }
+        guard purchasing.insert(product.id).inserted else { return }
+        renderDetail()
         action { [weak self] in
             guard let self else { return }
+            defer { purchasing.remove(product.id); renderDetail() }
             if product.isFree {
                 try await client.claim(product.id); await installPet(product.id, title: product.title); reload()
             } else {
@@ -368,7 +489,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                 try Task.checkCancellation()
                 guard !stopped else { return }
                 orders.removeAll { $0.id == order.id }; orders.insert(order, at: 0); selectedOrderId = order.id
-                nextPoll = .distantPast; renderDetail(); renderOrderList()
+                nextPoll = .distantPast; renderDetail(); scrollToTop(detailScroll); renderOrderList()
             }
         }
     }
@@ -379,7 +500,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private func installPet(_ id: String, title: String) async {
         guard !stopped, installing.insert(id).inserted else { return }
         installErrors[id] = nil; renderDetail(); renderOrderList()
-        defer { installing.remove(id); renderDetail(); renderOrderList() }
+        defer { installing.remove(id); renderProducts(); renderDetail(); renderOrderList() }
         do {
             let installation = try await client.install(id, title: title)
             try Task.checkCancellation()
@@ -398,7 +519,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                 guard !stopped else { return }
                 onRefreshPet(refreshed)
             }
-            try onTogglePet(installation.productId, enable); renderDetail()
+            try onTogglePet(installation.productId, enable); renderProducts(); renderDetail()
         }
     }
 
@@ -410,7 +531,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                 || category == 1 && $0.isWords || category == 2 && !$0.isWords
                 || category == 3 && resourceState($0.id, $0.sha256) != "not-installed")
         }
-        if items.isEmpty { resourceStack.addArrangedSubview(label(loading ? "正在加载资源…" : "没有找到资源，试试清除筛选。", secondary: true)) }
+        if items.isEmpty { addFullWidth(label(loading ? "正在加载资源…" : "没有找到资源，试试清除筛选。", secondary: true), to: resourceStack) }
         let columns = max(1, resourceColumns)
         for offset in stride(from: 0, to: items.count, by: columns) {
             let line = NSStackView(); line.orientation = .horizontal; line.distribution = .fillEqually; line.spacing = 14; line.alignment = .top
@@ -419,7 +540,8 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                 let category = label(pack.isWords ? "✦ 互动词库 · 免费" : "◈ 小剧场 · 免费", bold: true)
                 category.textColor = pack.isWords ? .systemTeal : .systemPurple
                 content.addArrangedSubview(category); content.addArrangedSubview(label(pack.title, size: 18, bold: true))
-                content.addArrangedSubview(label(pack.description, secondary: true))
+                let description = label(pack.description, secondary: true); description.maximumNumberOfLines = 3
+                description.lineBreakMode = .byTruncatingTail; content.addArrangedSubview(description)
                 content.addArrangedSubview(label("\(pack.fileCount) 份内容 · v\(pack.version)", secondary: true))
                 let state = resourceState(pack.id, pack.sha256), key = "resource:\(pack.id)"
                 let installed = state != "not-installed"
@@ -428,21 +550,28 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
                     if installed {
                         do { try onToggleResources(pack.id); renderResources() } catch { show(error) }
                     } else {
-                        guard installing.insert(key).inserted else { return }; renderResources()
+                        guard installing.insert(key).inserted else { return }; installErrors[key] = nil; renderResources()
                         action { [weak self] in
                             guard let self else { return }
                             defer { installing.remove(key); renderResources() }
-                            let parsed = try await resources.install(pack)
-                            try Task.checkCancellation()
-                            guard !stopped else { return }
-                            try onInstallResources(parsed)
-                            status.stringValue = "\(pack.title) 已安装 · 待启用"
+                            do {
+                                let parsed = try await resources.install(pack)
+                                try Task.checkCancellation()
+                                guard !stopped else { return }
+                                try onInstallResources(parsed)
+                                status.stringValue = "\(pack.title) 已安装 · 待启用"
+                            } catch is CancellationError { }
+                            catch { if !stopped { installErrors[key] = "安装未完成：\(error.localizedDescription)"; show(error) } }
                         }
                     }
                 }
+                button.identifier = NSUserInterfaceItemIdentifier("shop-resource-action-\(pack.id)")
                 button.isEnabled = !installing.contains(key)
-                if installed { content.addArrangedSubview(label(state == "enabled" ? "已安装 · 已启用" : "已安装 · 待启用", secondary: true)) }
-                content.addArrangedSubview(button); line.addArrangedSubview(card(content))
+                content.addArrangedSubview(label(installing.contains(key) ? "正在下载并校验安装…" : installed ? (state == "enabled" ? "已安装 · 已启用" : "已安装 · 待启用") : "尚未安装 · 安装后手动启用", secondary: true))
+                if let error = installErrors[key] {
+                    let message = label(error, secondary: true); message.maximumNumberOfLines = 3; content.addArrangedSubview(message)
+                }
+                content.addArrangedSubview(button); fillColumn(content); line.addArrangedSubview(card(content))
             }
             if line.arrangedSubviews.count < columns { line.addArrangedSubview(NSView()) }
             resourceStack.addArrangedSubview(line); line.widthAnchor.constraint(equalTo: resourceStack.widthAnchor).isActive = true
@@ -517,13 +646,26 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private func clear(_ stack: NSStackView) { stack.arrangedSubviews.forEach { stack.removeArrangedSubview($0); $0.removeFromSuperview() } }
     private func label(_ text: String, size: CGFloat = 13, bold: Bool = false, secondary: Bool = false) -> NSTextField {
         let label = NSTextField(wrappingLabelWithString: text); label.font = .systemFont(ofSize: size, weight: bold ? .semibold : .regular)
-        label.textColor = secondary ? .secondaryLabelColor : .labelColor; label.isSelectable = true; return label
+        label.textColor = secondary ? .secondaryLabelColor : .labelColor; label.isSelectable = true
+        label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        label.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        return label
     }
     private func column() -> NSStackView {
         let stack = NSStackView(); stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 9; return stack
     }
     private func row(_ views: [NSView]) -> NSStackView {
         let stack = NSStackView(views: views); stack.orientation = .horizontal; stack.alignment = .centerY; stack.spacing = 9; return stack
+    }
+    private func addFullWidth(_ child: NSView, to stack: NSStackView) {
+        stack.addArrangedSubview(child)
+        child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+    }
+    private func fillColumn(_ stack: NSStackView) {
+        for child in stack.arrangedSubviews { child.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true }
+    }
+    private func scrollToTop(_ scroll: NSScrollView) {
+        scroll.contentView.scroll(to: .zero); scroll.reflectScrolledClipView(scroll.contentView)
     }
     private func card(_ content: NSView, selected: Bool = false) -> NSView {
         let card = NSView(); card.wantsLayer = true; card.layer?.cornerRadius = 10
@@ -538,10 +680,14 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private func scroll(_ stack: NSStackView) -> NSScrollView { let scroll = NSScrollView(); configureScroll(scroll, stack: stack); return scroll }
     private func configureScroll(_ scroll: NSScrollView, stack: NSStackView) {
         scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = false; scroll.drawsBackground = false
+        scroll.autohidesScrollers = true
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false; scroll.documentView = stack
-        stack.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor).isActive = true
-        stack.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor).isActive = true
-        stack.topAnchor.constraint(equalTo: scroll.contentView.topAnchor).isActive = true
+        let document = PetShopDocumentView(); document.translatesAutoresizingMaskIntoConstraints = false
+        scroll.documentView = document; stack.translatesAutoresizingMaskIntoConstraints = false; document.addSubview(stack)
+        NSLayoutConstraint.activate([document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
+            document.leadingAnchor.constraint(equalTo: scroll.contentView.leadingAnchor),
+            document.topAnchor.constraint(equalTo: scroll.contentView.topAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor), stack.trailingAnchor.constraint(equalTo: document.trailingAnchor),
+            stack.topAnchor.constraint(equalTo: document.topAnchor), stack.bottomAnchor.constraint(equalTo: document.bottomAnchor)])
     }
 }

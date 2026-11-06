@@ -1,8 +1,21 @@
 import AppKit
 
 @MainActor
-final class HallWindowController: NSWindowController, NSTextFieldDelegate {
-    private let service: CompanionService
+protocol HallServing: AnyObject {
+    var profile: CompanionProfile? { get }
+    var hallPeople: [CompanionHallPerson] { get }
+    func refreshProfile() async throws -> CompanionProfile
+    func refreshHall() async throws -> [CompanionHallPerson]
+    func updateName(_ displayName: String) async throws -> CompanionProfile
+    func setHallEnabled(_ enabled: Bool) async throws -> CompanionProfile
+    func sendToHall(fileURL: URL, recipientId: String, message: String) async throws -> String
+}
+
+extension CompanionService: HallServing {}
+
+@MainActor
+final class HallViewController: NSViewController, NSTextFieldDelegate {
+    private let service: any HallServing
     private let hasAccess: () -> Bool
     private let isTrial: () -> Bool
     private let hallAvailable: () -> Bool
@@ -32,8 +45,11 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
     private var cooldownUntil: Date?
     private var refreshTimer: Timer?
     private var cooldownTimer: Timer?
+    private(set) var pagePresented = false
+    private var lastAllowed = false
+    var isPolling: Bool { refreshTimer?.isValid == true }
 
-    init(service: CompanionService, hasAccess: @escaping () -> Bool, isTrial: @escaping () -> Bool,
+    init(service: any HallServing, hasAccess: @escaping () -> Bool, isTrial: @escaping () -> Bool,
          hallAvailable: @escaping () -> Bool, currentGIFURL: @escaping () -> URL?, stateChanged: @escaping () -> Void) {
         self.service = service
         self.hasAccess = hasAccess
@@ -41,15 +57,8 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
         self.hallAvailable = hallAvailable
         self.currentGIFURL = currentGIFURL
         self.stateChanged = stateChanged
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 740),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "桌宠大厅"
-        window.minSize = NSSize(width: 760, height: 640)
-        window.isReleasedWhenClosed = false
-        window.center()
-        super.init(window: window)
-        buildInterface(in: window)
-        render()
+        super.init(nibName: nil, bundle: nil)
+        title = "桌宠大厅"
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -59,25 +68,53 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
         cooldownTimer?.invalidate()
     }
 
-    override func showWindow(_ sender: Any?) {
-        super.showWindow(sender)
-        window?.makeKeyAndOrderFront(sender)
-        NSApp.activate(ignoringOtherApps: true)
-        refresh()
+    override func loadView() {
+        buildInterface()
+        render()
+    }
+
+    override func viewDidDisappear() {
+        super.viewDidDisappear()
+        setPagePresented(false)
+    }
+
+    /// The settings host owns visibility: switching pages, closing or minimizing
+    /// must stop hallway polling without changing the user's joined status.
+    func setPagePresented(_ presented: Bool) {
+        guard pagePresented != presented else { return }
+        pagePresented = presented
         refreshTimer?.invalidate()
+        refreshTimer = nil
+        cooldownTimer?.invalidate()
+        cooldownTimer = nil
+        guard presented else { return }
+        _ = view
+        lastAllowed = hasAccess() && hallAvailable()
+        refresh()
+        if (cooldownUntil?.timeIntervalSinceNow ?? 0) > 0 { startCooldownTimer() }
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, window?.isVisible == true, !busy, service.profile?.hallEnabled == true else { return }
+                guard let self, pagePresented, view.window?.isVisible == true,
+                      view.window?.isMiniaturized != true, !busy,
+                      service.profile?.hallEnabled == true else { return }
                 refresh(preserveResult: true)
             }
         }
     }
 
-    func refreshAccessState() { render() }
+    func refreshAccessState() {
+        guard isViewLoaded else { return }
+        let allowed = hasAccess() && hallAvailable()
+        let regainedAccess = allowed && !lastAllowed
+        lastAllowed = allowed
+        render()
+        if pagePresented && regainedAccess { refresh() }
+    }
 
-    private func buildInterface(in window: NSWindow) {
+    private func buildInterface() {
         let scroll = NSScrollView()
         scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
         scroll.drawsBackground = false
         let document = HallDocumentView()
         document.translatesAutoresizingMaskIntoConstraints = false
@@ -88,7 +125,7 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         document.addSubview(stack)
         scroll.documentView = document
-        window.contentView = scroll
+        view = scroll
         NSLayoutConstraint.activate([
             document.widthAnchor.constraint(equalTo: scroll.contentView.widthAnchor),
             stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 28),
@@ -97,7 +134,7 @@ final class HallWindowController: NSWindowController, NSTextFieldDelegate {
             stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -24)
         ])
 
-        let title = NSTextField(labelWithString: "来大厅，遇见另一只桌搭子")
+        let title = NSTextField(labelWithString: "桌宠大厅")
         title.font = .systemFont(ofSize: 25, weight: .bold)
         stack.addArrangedSubview(title)
         stack.addArrangedSubview(label("给在线的人送一只表情，也让有趣的来访落在你的桌角。", secondary: true))

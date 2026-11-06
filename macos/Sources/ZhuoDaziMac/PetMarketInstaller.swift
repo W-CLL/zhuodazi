@@ -3,6 +3,20 @@ import ImageIO
 import ZhuoDaziCore
 
 enum PetMarketInstaller {
+    /// Runs on the install worker, after bounded network transfer has finished.
+    /// Hashing a full archive must not monopolize the main actor either.
+    static func installDownloadedArchive(_ bytes: Data, descriptor: PetMarketGrant, title: String,
+                                         root: URL) throws -> PetMarketInstallation {
+        try Task.checkCancellation()
+        guard let size = descriptor.sizeBytes, (1...PetMarketLimits.maximumArchiveBytes).contains(size),
+              let hash = descriptor.sha256, PetMarketJSON.validHash(hash), bytes.count == size,
+              PetMarketClient.hash(bytes) == hash.lowercased() else {
+            throw PetMarketError.invalid("桌宠包校验失败")
+        }
+        try Task.checkCancellation()
+        return try install(bytes, descriptor: descriptor, title: title, root: root)
+    }
+
     static func prepareDirectory(_ directory: URL) throws {
         var ancestor = directory.standardizedFileURL
         while ancestor.path != "/" {
@@ -17,7 +31,9 @@ enum PetMarketInstaller {
     }
 
     static func install(_ bytes: Data, descriptor: PetMarketGrant, title: String, root: URL) throws -> PetMarketInstallation {
+        try Task.checkCancellation()
         let entries = try ShopArchive.read(bytes)
+        try Task.checkCancellation()
         guard let manifestBytes = entries.first(where: { $0.path == "pet-market.json" })?.data,
               manifestBytes.count <= PetMarketLimits.maximumManifestBytes, PetMarketClient.hash(manifestBytes) == descriptor.manifestSha256 else {
             throw PetMarketError.invalid("桌宠清单校验失败")
@@ -28,6 +44,7 @@ enum PetMarketInstaller {
         let byName = Dictionary(uniqueKeysWithValues: entries.map { ($0.path, $0.data) })
         var names = Set<String>()
         for file in manifest.files {
+            try Task.checkCancellation()
             guard ShopArchive.safePath(file.path), file.path.lowercased().hasSuffix(".gif"), names.insert(file.path).inserted,
                   let data = byName[file.path], data.count == file.sizeBytes,
                   PetMarketClient.hash(data) == file.sha256.lowercased(), validGIF(data) else { throw PetMarketError.invalid("桌宠素材完整性校验失败") }
@@ -45,6 +62,7 @@ enum PetMarketInstaller {
             try prepareDirectory(file.deletingLastPathComponent())
             try entry.data.write(to: file, options: .withoutOverwriting)
         }
+        try Task.checkCancellation()
         try FileManager.default.moveItem(at: staging, to: destination)
         committed = true
         return PetMarketInstallation(productId: descriptor.productId, title: title.isEmpty ? manifest.title : title,

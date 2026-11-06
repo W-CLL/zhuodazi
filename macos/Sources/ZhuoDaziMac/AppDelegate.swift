@@ -37,7 +37,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
     private var fakeAdWindow: FakeAdWindowController?
     private var companionWindow: CompanionWindowController?
-    private var hallWindow: HallWindowController?
+    private var hallController: HallViewController?
     private var guideWindow: GuideWindowController?
     private var guideMenuItem: NSMenuItem!
     private var statusItem: NSStatusItem!
@@ -94,7 +94,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.settingsStore.save(settings)
                     self?.refreshMenuState()
                     self?.settingsWindow?.refreshCurrentPetPreview()
-                    self?.hallWindow?.refreshAccessState()
+                    self?.hallController?.refreshAccessState()
                 }
             applyDockVisibility(settings.dockIconVisible)
             configureStatusMenu()
@@ -221,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         refreshMenuState()
         settingsWindow?.refreshAccessState()
-        hallWindow?.refreshAccessState()
+        hallController?.refreshAccessState()
         return success
     }
 
@@ -410,6 +410,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let shopPreview { shopPreview.show(); return }
         if settingsWindow == nil {
             petShopController = makePetShopController()
+            let hall = HallViewController(
+                service: companions,
+                hasAccess: { [weak self] in self?.licenses.hasPremiumAccess == true },
+                isTrial: { [weak self] in self?.licenses.isTrialActive == true },
+                hallAvailable: { [weak self] in self?.remoteConfig.current.companionHall == true },
+                currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
+                stateChanged: { [weak self] in self?.refreshMenuState() }
+            )
+            hallController = hall
             settingsWindow = SettingsWindowController(
                 petController: petController,
                 licenses: licenses,
@@ -418,7 +427,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 refreshDailyConfig: { [weak self] in await self?.refreshRemoteConfig() ?? false },
                 dockVisibilityChanged: { [weak self] visible in self?.applyDockVisibility(visible) },
                 openCompanion: { [weak self] in self?.openCompanion() },
-                openHall: { [weak self] in self?.openHall() },
+                hallController: hall,
                 showUsageGuide: { [weak self] in self?.replayUsageGuide() },
                 openExperienceGuide: { [weak self] in self?.openExperienceGuide() },
                 openFakeAd: { [weak self] in self?.openFishMode() },
@@ -544,17 +553,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard remoteConfig.current.companionHall else { petController.showBubble("大厅暂时关闭，请稍后再来。"); return }
         requestPremiumAccess("桌宠大厅") { [weak self] in
             guard let self else { return }
-            if hallWindow == nil {
-                hallWindow = HallWindowController(
-                    service: companions,
-                    hasAccess: { [weak self] in self?.licenses.hasPremiumAccess == true },
-                    isTrial: { [weak self] in self?.licenses.isTrialActive == true },
-                    hallAvailable: { [weak self] in self?.remoteConfig.current.companionHall == true },
-                    currentGIFURL: { [weak self] in self?.petController.currentGIFURL },
-                    stateChanged: { [weak self] in self?.refreshMenuState() }
-                )
-            }
-            hallWindow?.showWindow(nil)
+            showSettings()
+            settingsWindow?.showHallPage()
         }
     }
 

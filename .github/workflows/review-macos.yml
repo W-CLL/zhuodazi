@@ -1,0 +1,70 @@
+name: Review macOS
+
+on:
+  push:
+    branches: ["codex/macos-*"]
+    paths:
+      - "macos/**"
+      - "assets/default-pets/**"
+      - ".github/workflows/review-macos.yml"
+      - "scripts/check-release-consistency.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: review-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Test and package ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    env:
+      BUILD_ARCH: ${{ matrix.arch }}
+      ARCH_LABEL: ${{ matrix.arch }}
+      ZHUODAZI_REVIEW_OUTPUT: ${{ github.workspace }}/macos-review
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check native toolchain and metadata
+        run: |
+          test "$(uname -m)" = "$BUILD_ARCH"
+          swift --version
+          xcodebuild -version
+          python3 scripts/check-release-consistency.py
+      - name: Run native tests and capture layout evidence
+        run: |
+          mkdir -p "$ZHUODAZI_REVIEW_OUTPUT"
+          set -o pipefail
+          swift test --package-path macos --arch "$BUILD_ARCH" 2>&1 | tee "$ZHUODAZI_REVIEW_OUTPUT/tests.log"
+          bash macos/scripts/test-device-heartbeat.sh
+      - name: Build and verify candidate application
+        run: |
+          bash macos/scripts/build-app.sh
+          bash macos/scripts/verify-app.sh
+          shasum -a 256 macos/dist/*.zip > "$ZHUODAZI_REVIEW_OUTPUT/packages.sha256"
+      - name: Save review evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-review-${{ matrix.arch }}
+          path: macos-review/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Save candidate package
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-candidate-${{ matrix.arch }}
+          path: macos/dist/*.zip
+          if-no-files-found: error
+          retention-days: 14
