@@ -1,7 +1,8 @@
 menu:
   home: /
   play: /#play
+  gameplay: /gameplay/
   journal: /archives/
   about: /about/
 
-asset_version: 20261009-geo-1
+asset_version: 20261106-gameplay-1

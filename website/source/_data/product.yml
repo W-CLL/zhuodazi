@@ -23,6 +23,9 @@ activation:
   description: 6.88 元一次购买永久激活，不按月续费。一组 6 位激活码最多授权两台设备，属于同一账号。
   purchase_url: https://www.goofish.com/item?id=1083348954733
 links:
+  - name: 桌宠玩法
+    path: /gameplay/
+    description: 对照十张桌面版菜单截图，了解今日桌宠、陪伴日常、小窝、灵感口袋、提醒、搭子和大厅等功能。
   - name: 官方下载
     path: /download/
     description: Windows、macOS、Android 安装包、架构选择和安装说明。

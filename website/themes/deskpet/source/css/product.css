@@ -12,12 +12,27 @@ section[id], details[id] { scroll-margin-top:98px; }
 .brand img { border-radius:12px; }
 .site-nav { gap:26px; font-weight:500; }
 .site-nav a { min-height:44px; }
+.site-nav a[aria-current='page'] { color:var(--ink); border-color:var(--yellow); }
 .site-nav .nav-download { background:var(--ink); color:var(--canvas); padding:2px 19px; border-radius:50px; border:0; }
 .icon-button { border-radius:50%; background:transparent; }
 .button { border-radius:9px; min-height:51px; padding:13px 24px; font-weight:650; font-size:15px; gap:22px; }
 .button-primary { background:var(--ink); color:var(--canvas); border:1px solid var(--ink); }
 .button-primary:hover,.button-primary:focus-visible { background:var(--mint-strong); color:var(--canvas); border-color:var(--mint-strong); }
 .button-secondary { background:transparent; color:var(--ink); border:1px solid var(--line); }
+.download-dialog { width:min(510px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); padding:36px; border:1px solid var(--line); border-radius:20px; background:var(--surface); color:var(--ink); box-shadow:0 24px 90px #10271930; }
+.download-dialog:not([open]) { display:none; }
+.download-dialog::backdrop { background:#0b1711b8; backdrop-filter:blur(5px); }
+.download-dialog-close { position:absolute; right:13px; top:11px; display:grid; place-items:center; width:34px; height:34px; border:0; border-radius:50%; background:var(--mint); color:var(--ink); font-size:24px; cursor:pointer; }
+.download-dialog .overline { margin:0 0 10px; color:var(--mint-strong); font-size:12px; }
+.download-dialog h2 { margin:0 0 18px; font:750 26px/1.4 var(--display); letter-spacing:-.03em; }
+.download-dialog #download-dialog-message { margin:0; color:var(--muted); font-size:16px; line-height:1.95; }
+.download-dialog #download-dialog-message a { color:var(--mint-strong); text-decoration:underline; text-underline-offset:4px; }
+.download-dialog-actions { display:flex; justify-content:flex-end; gap:12px; margin-top:28px; }
+@media (max-width:480px) {
+ .download-dialog { padding:31px 24px 24px; }
+ .download-dialog h2 { font-size:23px; }
+ .download-dialog-actions .button { flex:1; padding:12px 14px; gap:8px; }
+}
 .text-link { color:var(--mint-strong); font-weight:600; font-size:14px; }
 .site-footer { background:var(--mint); }
 .home-redesign { overflow:clip; }

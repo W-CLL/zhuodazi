@@ -1,0 +1,187 @@
+<%
+const gameplaySections = [
+  {
+    id: 'today', name: '今日桌宠', title: '先把桌面上的这只，调成你喜欢的样子。',
+    summary: '换一只、调大小、让它更透明，最常用的外观与窗口设置都在这里。',
+    points: [
+      '点「立即换一只」切换当前桌宠；开启「自动随机切换桌宠」后，还能选择更换频率。',
+      '用滑块调整桌宠大小与透明度，按需要开启始终置顶、开机启动或水平镜像。',
+      '开启鼠标穿透后，可以直接点到桌宠下方的内容；快捷键 Ctrl + Shift + P 可切换穿透状态。'
+    ],
+    tip: '想打开一个小窗口放松一下，可以在「摸鱼广告」处点「打开」；它需要手动开启。',
+    file: 'today.png', width: 1095, height: 836,
+    alt: '今日桌宠设置：切换角色、调整大小与透明度、随机更换频率、鼠标穿透和摸鱼窗口'
+  },
+  {
+    id: 'companionship', name: '陪伴日常', title: '热闹一点，还是安静陪着？你来决定。',
+    summary: '这里决定桌宠多久找你玩一次、怎么移动，以及要不要演一段小剧场。',
+    points: [
+      '「趣味互动」包含问候、笑话和小问题，可以调整出现频率，也可以点「陪我玩一会」主动体验。',
+      '不想让它跟着鼠标跑，就取消「跟随与躲避鼠标」；想安静待着，可以再关闭「自动随机走动」，或试试「害羞」性格。',
+      '点「看一场」观看两只桌宠的对白；想定时看到，可以开启「自动随机上演」并设置频率。'
+    ],
+    tip: '需要专心时，可暂停 1 小时，或停止当前剧场 / 来访。这里的趣味互动不支持自由输入聊天。',
+    file: 'companionship.png', width: 1097, height: 841,
+    alt: '陪伴日常设置：互动频率、行为性格、跟随鼠标、随机走动和双宠小剧场'
+  },
+  {
+    id: 'pet-home', name: '桌宠小窝', title: '固定一只喜欢的，或让一整组 GIF 轮流来。',
+    summary: '安静陪伴和轮换桌宠，对应两种不同的选择方式。',
+    points: [
+      '想让某一只长期陪着你，先「添加 GIF」，选中它，再点「让它来陪我」。',
+      '想让桌宠多一些变化，用「添加 GIF 文件夹」加入图鉴，再勾选参与切换的来源。',
+      '「我的图鉴」中未勾选的资源会保留；要不要随机更换、多久换一次，回到「今日桌宠」设置。'
+    ],
+    tip: '「添加 GIF」偏向选定一只，「添加 GIF 文件夹」偏向建立轮换来源；可以按自己喜欢的陪伴方式选。',
+    file: 'pet-home.png', width: 1099, height: 838,
+    alt: '桌宠小窝设置：添加自定义 GIF、让指定桌宠陪伴、导入 GIF 文件夹与选择图鉴来源'
+  },
+  {
+    id: 'inspiration', name: '灵感口袋', title: '换一套悄悄话，也给小剧场添个新故事。',
+    summary: '左边是桌宠会说的词包，右边是两只桌宠轮流演出的对白剧本。',
+    points: [
+      '勾选想启用的悄悄话词包，给待机、拖动、点击等场景换一套表达。',
+      '勾选喜欢的小剧场剧本，让它们加入演出候选；词包与剧本都可以多选。',
+      '想自己写，先点「格式说明」，按要求准备文件，再点「导入词包」或「导入剧本」，导入后勾选启用。'
+    ],
+    tip: '也可以把格式说明交给外部 AI 工具，辅助整理成符合要求的文件，再回到桌搭子导入。',
+    file: 'inspiration.png', width: 1099, height: 838,
+    alt: '灵感口袋设置：启用悄悄话词包和小剧场剧本、导入文件与查看格式说明'
+  },
+  {
+    id: 'reminders', name: '贴心提醒', title: '开会、吃饭、回消息，让桌宠到点叫你。',
+    summary: '把容易忘记的小事写下来，交给桌宠提醒。',
+    points: [
+      '点「新建提醒」，选择日期和时间，填入要提醒的事情，例如「下午四点要开会」。',
+      '可以选一张专属 GIF；需要每天重复时，勾选「每天重复」。',
+      '确认「启用提醒」已勾选，再点「保存提醒」；已有提醒可以继续编辑或删除。'
+    ],
+    tip: '提醒需要桌搭子保持运行；退出期间不会触发系统闹钟。',
+    file: 'reminders.png', width: 1099, height: 838,
+    alt: '贴心提醒设置：日期、时间、提醒内容、可选 GIF、启用提醒和每天重复'
+  },
+  {
+    id: 'companion', name: '搭子', title: '把当前这只，送到熟人的桌面打个招呼。',
+    summary: '和固定搭子绑定后，用一只 GIF 加一句话，代替普通的消息提醒。',
+    points: [
+      '在「我的信息」中设置昵称，复制自己的搭子码，和想绑定的人交换并按界面完成配对。',
+      '绑定后在「我的搭子」查看对方状态，点「把当前这只发给 TA」发起串门，也可以选择「复制一段话」。',
+      '对方收到的 GIF 会作为独立桌宠出现；需要更换关系时，可在此解除绑定。'
+    ],
+    tip: '私人搭子绑定需要双方正式激活；搭子码用于配对，和激活码用途不同。',
+    file: 'companion.png', width: 1099, height: 838,
+    alt: '搭子设置：我的昵称、搭子码、绑定搭子状态和把当前桌宠发送给搭子'
+  },
+  {
+    id: 'lobby', name: '桌宠大厅', title: '去大厅逛逛，让一只桌宠带着留言串门。',
+    summary: '想认识更多在线搭子，可以自愿加入大厅，看看此刻谁也在场。',
+    points: [
+      '先保存大厅昵称，再勾选「我愿意加入大厅，接收陌生人的来访」；加入后，昵称与在线状态对大厅用户可见。',
+      '在「此刻在场」选择一张在线名片，确认发送对象，写好可选留言，再点「发送这只 GIF」。',
+      '不想继续接收陌生人来访时，可以退出大厅；关闭后不再出现在陌生人列表里。'
+    ],
+    tip: '截图中的发送规则：留言最多 120 字，发送后冷却 15 秒；对方最多积压 3 条，未收取的投递保留 24 小时。',
+    file: 'lobby.png', width: 1099, height: 838,
+    alt: '桌宠大厅设置：自愿加入大厅、在线用户列表、选择来访对象并发送 GIF 与留言'
+  },
+  {
+    id: 'feedback', name: '心愿信箱', title: '遇到问题，或者有新点子，都可以写在这里。',
+    summary: '把操作中遇到的情况说明白，也把想要的新玩法告诉作者。',
+    points: [
+      '选择反馈类型，填写标题和详细说明，再点「提交反馈」。',
+      '报告问题时，可以写清楚在哪个页面、做了什么操作、出现了什么结果，方便定位。',
+      '在左侧选择记录或双击查看完整回复，也可以点「刷新」查看进展。'
+    ],
+    tip: '截图中，待处理和进行中的反馈最多同时保留 3 条；提交后可以继续查看处理情况。',
+    file: 'feedback.png', width: 1099, height: 838,
+    alt: '心愿信箱设置：选择反馈类型、填写标题与详细说明、提交反馈和查看回复记录'
+  },
+  {
+    id: 'daily-log', name: '我们的日常', title: '这一周的互动和心情，回头看看。',
+    summary: '记下当下的心情，再从日历和统计里看看这些天的陪伴。',
+    points: [
+      '用「记一下心情」留下当天状态，也可以「聊聊下班」或「来一道互动题」。',
+      '按周或按月查看总互动、答题、答对、心情记录和一起互动的天数；用上一期、下一期或「回到今天」切换时间。',
+      '在心情分布和心情月历里，回看这段时间的变化。一天可以记录不同心情。'
+    ],
+    tip: '日常记录保存在本机，从安装此版本后开始；点进并回答后才计数，只打开或关闭不会留下记录。',
+    file: 'daily-log.png', width: 1099, height: 838,
+    alt: '我们的日常：每周每月互动统计、答题记录、心情分布和心情月历'
+  },
+  {
+    id: 'updates', name: '版本更新', title: '偶尔来看看，新玩法有没有报到。',
+    summary: '在这里查看当前版本，检查有没有可以更新的内容。',
+    points: [
+      '点「检查更新」获取更新状态，也可以保持「自动检查更新」开启。',
+      '当前版本号和更新结果会显示在页面中，是否有新版以检查结果为准。',
+      '需要调整设备授权时，可以使用「更换激活码」入口；不清楚授权范围时，可先查看官网激活说明。'
+    ],
+    tip: '图中的 v3.5.4 是截图拍摄时的版本示例；最新安装包请到官网下载页查看。',
+    file: 'updates.png', width: 1099, height: 838,
+    alt: '版本更新设置：当前版本、自动检查更新、检查更新按钮和更换激活码入口'
+  }
+];
+%>
+<link rel="stylesheet" href="<%= url_for('/css/gameplay.css') %>?v=<%= theme.asset_version %>">
+<div class="gameplay-guide" id="gameplay-top">
+  <section class="gameplay-hero" aria-labelledby="gameplay-title">
+    <div class="site-shell">
+      <p class="gameplay-eyebrow">桌搭子 · 玩法说明书</p>
+      <h1 id="gameplay-title">桌宠玩法</h1>
+      <p class="gameplay-lead">从换一只喜欢的桌宠，到带着一句话去串门。<br>对照 10 张设置图，找到你想玩的那一项。</p>
+      <div class="gameplay-hero-actions">
+        <a class="button button-primary" href="#gameplay-directory">开始看图 →</a>
+        <a class="text-link" href="<%= url_for('/download/') %>">还没下载？先领一位桌搭子 ↓</a>
+      </div>
+      <div class="gameplay-routes" aria-label="按兴趣选择玩法">
+        <a href="#pet-home"><span>想安静陪着</span><strong>选一只喜欢的 →</strong><small>桌宠小窝 · 陪伴日常</small></a>
+        <a href="#inspiration"><span>想找点小乐子</span><strong>换台词、看剧场 →</strong><small>灵感口袋 · 趣味互动</small></a>
+        <a href="#companion"><span>想和朋友一起玩</span><strong>带一句话去串门 →</strong><small>私人搭子 · 桌宠大厅</small></a>
+      </div>
+      <p class="gameplay-scope">以下为 Windows 桌面版设置截图，保留了图中的红色操作标注。不同系统和版本的界面与功能范围可能不同，可结合<a href="<%= url_for('/#platforms') %>">三端对比</a>与<a href="<%= url_for('/activate/') %>">激活说明</a>查看。点击图片可放大，也可打开原图细看。</p>
+    </div>
+  </section>
+
+  <div class="site-shell gameplay-layout">
+    <aside class="gameplay-sidebar" aria-label="玩法目录">
+      <nav id="gameplay-directory" aria-labelledby="gameplay-directory-title">
+        <p id="gameplay-directory-title">按菜单找玩法</p>
+        <ol>
+          <% gameplaySections.forEach(function(item, index) { %>
+          <li><a href="#<%= item.id %>"><span><%= String(index + 1).padStart(2, '0') %></span><%= item.name %></a></li>
+          <% }) %>
+        </ol>
+        <a class="gameplay-back-top" href="#gameplay-top">回到顶部 ↑</a>
+      </nav>
+    </aside>
+    <div class="gameplay-sections">
+      <p class="gameplay-start-note">打开桌搭子设置，在左侧选择对应菜单，跟着下面的图操作就好。</p>
+      <% gameplaySections.forEach(function(item, index) { %>
+      <section class="gameplay-section" id="<%= item.id %>" aria-labelledby="gameplay-<%= item.id %>-title">
+        <header class="gameplay-section-heading">
+          <span class="gameplay-section-number" aria-hidden="true"><%= String(index + 1).padStart(2, '0') %></span>
+          <div><p class="gameplay-menu-name"><%= item.name %></p><h2 id="gameplay-<%= item.id %>-title"><%= item.title %></h2></div>
+        </header>
+        <p class="gameplay-section-summary"><%= item.summary %></p>
+        <ul class="gameplay-instructions">
+          <% item.points.forEach(function(point) { %><li><%= point %></li><% }) %>
+        </ul>
+        <figure class="gameplay-shot">
+          <a class="real-shot" href="<%= url_for('/images/gameplay/' + item.file) %>" data-lightbox aria-label="放大查看：<%= item.name %>操作说明图">
+            <img src="<%= url_for('/images/gameplay/' + item.file) %>" width="<%= item.width %>" height="<%= item.height %>" alt="<%= item.alt %>" loading="lazy" decoding="async">
+            <span class="zoom-hint" aria-hidden="true">点击放大 ↗</span>
+          </a>
+          <figcaption><span><%= item.name %> · 原始操作标注图</span><a href="<%= url_for('/images/gameplay/' + item.file) %>" target="_blank" rel="noopener">打开原图 ↗</a></figcaption>
+        </figure>
+        <p class="gameplay-tip"><span>小提示</span><%= item.tip %></p>
+      </section>
+      <% }) %>
+      <section class="gameplay-finish" aria-labelledby="gameplay-finish-title">
+        <p class="gameplay-eyebrow">挑一种喜欢的方式，慢慢玩</p>
+        <h2 id="gameplay-finish-title">玩法记不住也没关系，<br>回来点「桌宠玩法」就能找到。</h2>
+        <p>先选一只喜欢的，调好大小和陪伴频率。其他的小乐趣，等你想玩的时候再打开。</p>
+        <div class="gameplay-hero-actions"><a class="button button-primary" href="<%= url_for('/download/') %>">下载桌搭子 ↓</a><a class="text-link" href="<%= url_for('/faq/') %>">还有疑问？查看常见问题 →</a></div>
+      </section>
+    </div>
+  </div>
+</div>

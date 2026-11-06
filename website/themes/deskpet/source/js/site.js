@@ -125,6 +125,51 @@
   };
 
   track('page_view');
+
+  const downloadDialog = document.querySelector('[data-download-dialog]');
+  const downloadMessage = document.getElementById('download-dialog-message')?.textContent ||
+    '哈喽，感谢下载体验，里面有不懂的操作可以再次回到网页点击“桌宠玩法”，进行查看噢。';
+  let pendingDownload;
+  let confirmedDownload;
+  let downloadOverflow;
+  const requestDownload = (event) => {
+    const link = event.target.closest?.('a[data-analytics-download]');
+    if (!link || event.button > 1 || link === confirmedDownload) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!downloadDialog?.showModal) {
+      if (window.confirm(downloadMessage)) {
+        confirmedDownload = link;
+        try { link.click(); } finally { confirmedDownload = undefined; }
+      }
+      return;
+    }
+    pendingDownload = link;
+    if (!downloadDialog.open) {
+      downloadOverflow = body.style.overflow;
+      body.style.overflow = 'hidden';
+      downloadDialog.showModal();
+    }
+  };
+  document.addEventListener('click', requestDownload, true);
+  document.addEventListener('auxclick', requestDownload, true);
+  downloadDialog?.querySelectorAll('[data-download-cancel]').forEach((button) => {
+    button.addEventListener('click', () => downloadDialog.close());
+  });
+  downloadDialog?.querySelector('[data-download-confirm]')?.addEventListener('click', () => {
+    const link = pendingDownload;
+    if (!link) return;
+    // Read the original link at confirmation so a newly loaded release URL is respected.
+    downloadDialog.close();
+    confirmedDownload = link;
+    try { link.click(); } finally { confirmedDownload = undefined; }
+  });
+  downloadDialog?.addEventListener('close', () => {
+    body.style.overflow = downloadOverflow;
+    pendingDownload?.focus({ preventScroll: true });
+    pendingDownload = undefined;
+  });
+
   document.querySelectorAll('[data-analytics-download]').forEach((link) => {
     link.addEventListener('click', () => track('download_click', {
       platform: link.dataset.platform || '',
