@@ -27,7 +27,7 @@ final class SettingsNavigationTests: XCTestCase {
     func testPrimaryDestinationTitlesAndOrderMatchWindows() {
         XCTAssertEqual(SettingsPage.allCases.dropLast().map(\.title), [
             "今日桌宠", "桌宠小铺", "陪伴日常", "桌宠小窝", "灵感口袋", "贴心提醒",
-            "搭子", "桌宠大厅", "心愿信箱", "我们的日常", "版本更新"
+            "搭子", "桌宠大厅", "心愿信箱", "我们的日常", "作者分享", "版本更新"
         ])
         XCTAssertEqual(SettingsPage.allCases.last, .uninstall, "Keep the existing macOS uninstall flow reachable")
     }

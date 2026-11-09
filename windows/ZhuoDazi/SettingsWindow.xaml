@@ -1080,6 +1080,9 @@
                 </ScrollViewer>
             </TabItem>
 
+            <TabItem x:Name="AuthorSharesTab" Header="作者分享">
+                <ContentControl x:Name="AuthorSharesContent"/>
+            </TabItem>
             <TabItem x:Name="UpdatesTab">
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal"><TextBlock Text="版本更新"/></StackPanel>
@@ -1111,6 +1114,7 @@
                         <Button x:Name="DownloadUpdateButton" Content="下载更新" Click="DownloadUpdate_Click" Margin="0,0,8,0" Visibility="Collapsed" />
                         <Button x:Name="InstallUpdateButton" Content="更新并重启" Style="{StaticResource PrimaryButton}" Click="InstallUpdate_Click" Margin="0,0,8,0" Visibility="Collapsed" />
                         <Button x:Name="IgnoreUpdateButton" Content="忽略该版本" Click="IgnoreUpdate_Click" Visibility="Collapsed" />
+                        <Button x:Name="ContactAuthorButton" Content="联系作者" Click="ContactAuthor_Click" Margin="8,0,0,0" />
                     </WrapPanel>
                     <Border x:Name="UpdateNotesPanel" Style="{StaticResource SurfacePanel}" Padding="20" Margin="0,20,0,0" Visibility="Collapsed">
                         <StackPanel><TextBlock Text="本次更新" Style="{StaticResource SectionTitle}"/>

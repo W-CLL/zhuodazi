@@ -1,4 +1,5 @@
 using System.IO;
+using System.Text.Json;
 using System.Linq;
 using System.Security.Cryptography;
 
@@ -51,6 +52,16 @@ public sealed class GifLibraryService
 
         try
         {
+            if (Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar).Equals(
+                Path.GetFullPath(BuiltInDirectory).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase))
+            {
+                using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(directory, "manifest.json")));
+                return manifest.RootElement.GetProperty("files").EnumerateArray()
+                    .Select(item => item.GetProperty("file").GetString())
+                    .Where(name => !string.IsNullOrWhiteSpace(name) && Path.GetFileName(name) == name
+                        && name.EndsWith(".gif", StringComparison.OrdinalIgnoreCase))
+                    .Select(name => Path.Combine(directory, name!)).Where(File.Exists).Take(500).ToArray();
+            }
             return Directory.EnumerateFiles(directory, "*.gif", SearchOption.AllDirectories)
                 .OrderBy(item => item, StringComparer.CurrentCultureIgnoreCase)
                 .Take(500)

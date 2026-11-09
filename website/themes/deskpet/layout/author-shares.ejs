@@ -1,0 +1,9 @@
+<section class="site-shell section-pad">
+  <p class="overline">作者分享</p>
+  <h1>一些好用的，也有一些好玩的。</h1>
+  <div class="share-toolbar"><div data-share-categories class="share-categories" role="group" aria-label="分享分类"></div><button type="button" class="button button-secondary" data-share-refresh>刷新</button></div>
+  <p data-share-status role="status" aria-live="polite">正在加载分享…</p>
+  <div class="share-grid" data-share-items></div>
+  <noscript><p>开启 JavaScript 后即可查看作者分享。</p></noscript>
+</section>
+<script src="<%= url_for('/js/author-shares.js') %>?v=<%= theme.asset_version %>" defer></script>

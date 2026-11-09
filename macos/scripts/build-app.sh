@@ -78,6 +78,7 @@ for size in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET_DIR" -o "$CONTENTS_DIR/Resources/AppIcon.icns"
 mkdir -p "$CONTENTS_DIR/Resources/Pets/default"
+cp "$ROOT_DIR/../assets/default-pets/manifest.json" "$CONTENTS_DIR/Resources/Pets/default/"
 cp "$ROOT_DIR/../assets/default-pets/"*.gif \
     "$CONTENTS_DIR/Resources/Pets/default/"
 chmod +x "$CONTENTS_DIR/MacOS/ZhuoDazi"

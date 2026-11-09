@@ -1610,7 +1610,18 @@ final class PetWindowController {
         let bundledLibrary = Bundle.main.resourceURL?.appendingPathComponent("Pets/default", isDirectory: true)
         let sharedLibrary = sourceRoot.deletingLastPathComponent().appendingPathComponent("assets/default-pets", isDirectory: true)
         for candidate in [bundledLibrary, sharedLibrary].compactMap({ $0 }) {
-            let urls = scanPetURLs(in: candidate)
+            struct Manifest: Decodable {
+                struct Entry: Decodable { let file: String }
+                let files: [Entry]
+            }
+            guard let bytes = try? Data(contentsOf: candidate.appendingPathComponent("manifest.json")),
+                  let manifest = try? JSONDecoder().decode(Manifest.self, from: bytes) else { continue }
+            let urls = manifest.files.compactMap { entry -> URL? in
+                guard (entry.file as NSString).lastPathComponent == entry.file,
+                      entry.file.lowercased().hasSuffix(".gif") else { return nil }
+                let url = candidate.appendingPathComponent(entry.file)
+                return FileManager.default.fileExists(atPath: url.path) ? url : nil
+            }
             if !urls.isEmpty { return urls }
         }
         return []

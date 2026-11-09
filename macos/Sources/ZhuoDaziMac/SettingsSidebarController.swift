@@ -2,7 +2,7 @@ import AppKit
 
 /// Keep the main destinations in the same order as the Windows settings sidebar.
 enum SettingsPage: String, CaseIterable {
-    case today, shop, companionship, pets, inspiration, reminders, companion, hall, feedback, daily, updates, uninstall
+    case today, shop, companionship, pets, inspiration, reminders, companion, hall, feedback, daily, shares, updates, uninstall
 
     var title: String {
         switch self {
@@ -16,6 +16,7 @@ enum SettingsPage: String, CaseIterable {
         case .hall: return "桌宠大厅"
         case .feedback: return "心愿信箱"
         case .daily: return "我们的日常"
+        case .shares: return "作者分享"
         case .updates: return "版本更新"
         case .uninstall: return "卸载与反馈"
         }

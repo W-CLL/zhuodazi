@@ -6,7 +6,7 @@ platforms:
   - macOS
   - Android
 features:
-  - 20 只默认桌宠、拖动与换宠
+  - 桌面端默认月薪喵、拖动与换宠
   - 趣味问答与日常台词
   - 双宠小剧场
   - 自定义提醒
@@ -23,6 +23,9 @@ activation:
   description: 6.88 元一次购买永久激活，不按月续费。一组 6 位激活码最多授权两台设备，属于同一账号。
   purchase_url: https://www.goofish.com/item?id=1083348954733
 links:
+  - name: 作者分享
+    path: /author-shares/
+    description: 按分类浏览作者整理的网站、工具与介绍。
   - name: 桌宠玩法
     path: /gameplay/
     description: 对照十张桌面版菜单截图，了解今日桌宠、陪伴日常、小窝、灵感口袋、提醒、搭子和大厅等功能。

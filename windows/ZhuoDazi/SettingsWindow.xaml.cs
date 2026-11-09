@@ -24,6 +24,7 @@ public partial class SettingsWindow : Window
     private readonly System.Windows.Threading.DispatcherTimer _hallClock = new() { Interval = TimeSpan.FromSeconds(1) };
     private string? _editingReminderId;
     private PetShopView? _petMarketView;
+    private AuthorSharesView? _authorSharesView;
 
     public SettingsWindow(AppController controller)
     {
@@ -720,6 +721,11 @@ public partial class SettingsWindow : Window
             _petMarketView ??= new PetShopView(_controller);
             PetMarketContent.Content = _petMarketView;
         }
+        else if (MainTabs.SelectedItem == AuthorSharesTab)
+        {
+            _authorSharesView ??= new AuthorSharesView(_controller.IsLocalPreview);
+            AuthorSharesContent.Content = _authorSharesView;
+        }
         else if (MainTabs.SelectedItem == FeedbackTab) await LoadFeedbackAsync();
         else if (MainTabs.SelectedItem == CompanionTab) await LoadCompanionAsync();
         else if (MainTabs.SelectedItem == HallTab) await LoadHallAsync();
@@ -1051,6 +1057,17 @@ public partial class SettingsWindow : Window
     private void Reactivate_Click(object sender, RoutedEventArgs e)
     {
         if (_controller.ShowActivation(this)) RefreshAll();
+    }
+
+    private async void ContactAuthor_Click(object sender, RoutedEventArgs e)
+    {
+        ContactAuthorButton.IsEnabled = false;
+        try
+        {
+            if (!_controller.IsLocalPreview) await _controller.RefreshRemoteConfigAsync();
+            new AuthorContactWindow(_controller.RemoteConfig) { Owner = this }.ShowDialog();
+        }
+        finally { ContactAuthorButton.IsEnabled = true; }
     }
 
     private async void CheckUpdate_Click(object sender, RoutedEventArgs e)

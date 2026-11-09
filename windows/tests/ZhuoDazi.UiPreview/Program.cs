@@ -128,8 +128,8 @@ internal static class Program
         controller.Settings.RandomPetEnabled = false;
         var pet = new PetDefinition
         {
-            Id = "offline-preview-pet", Name = "Kitty1 · 默认桌宠",
-            Path = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "default", "Kitty1.gif")
+            Id = "offline-preview-pet", Name = "月薪喵 · 默认桌宠",
+            Path = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "default", "017-90d741d6.gif")
         };
         controller.Settings.Pets.Add(pet);
         controller.Settings.ActivePetId = pet.Id;
@@ -232,7 +232,7 @@ internal static class Program
         foreach (var path in defaults) GifImportValidator.Validate(path);
 
         // Simulate a portable upgrade that leaves the old collection beside the new one.
-        var legacyDirectory = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "yuexinmiao");
+        var legacyDirectory = Path.Combine(AppContext.BaseDirectory, "resources", "pet-libraries", "default");
         Directory.CreateDirectory(legacyDirectory);
         var legacyPet = Path.Combine(legacyDirectory, $"upgrade-test-{Guid.NewGuid():N}.gif");
         File.Copy(defaults[0], legacyPet);

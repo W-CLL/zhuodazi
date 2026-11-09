@@ -6,7 +6,7 @@
         <h1 id="activate-title"><span><%= site.data.product.activation.price %> 元</span>，<br>把小搭子正式留下。</h1>
         <p class="activate-lead">少加一份小料的钱，换一只长期住在屏幕角落的小搭子。<strong>一次购买，永久激活</strong>；不用按月续费，也没有自动扣款。</p>
         <div class="activate-actions">
-          <a class="button button-primary" data-xianyu-link href="<%= site.data.product.activation.purchase_url %>" target="_blank" rel="noopener">去购买激活码 <span aria-hidden="true">↗</span></a>
+          <a class="button button-primary" href="<%= url_for('/download/') %>">在客户端购买激活 <span aria-hidden="true">↗</span></a>
           <a class="button button-secondary" href="<%= url_for('/download/') %>">先免费体验 7 天 <span aria-hidden="true">↓</span></a>
         </div>
         <p class="activate-reassurance">先体验，觉得它真的让日常多了一点开心再买。合适才买，才不吃亏。</p>
@@ -74,8 +74,8 @@
     <div class="site-shell">
       <div class="activate-heading"><div><p class="overline">买好以后</p><h2 id="activate-steps-title">三步，把它留下。</h2></div></div>
       <ol>
-        <li><span>1</span><div><h3>购买激活码</h3><p>从本站购买入口了解并下单，获得一组 6 位激活码。</p></div></li>
-        <li><span>2</span><div><h3>打开激活入口</h3><p>在桌搭子内找到激活入口，输入 6 位激活码并完成兑换。</p></div></li>
+        <li><span>1</span><div><h3>购买激活码</h3><p>在 Windows 或 macOS 客户端点击“激活”，确认订单后前往支付宝付款。</p></div></li>
+        <li><span>2</span><div><h3>打开激活入口</h3><p>在桌搭子内找到激活入口，支付宝付款完成后回到客户端，系统自动同步激活。已有激活码也可直接兑换。</p></div></li>
         <li><span>3</span><div><h3>继续好好陪伴</h3><p>激活后不按月续费；同一组码最多可授权两台设备。</p></div></li>
       </ol>
     </div>
@@ -97,7 +97,7 @@
   <section class="activate-final">
     <div class="site-shell activate-final-inner">
       <div><p class="overline">一次购买 · 不按月续费</p><h2>6.88 元，让它继续住在这里。</h2><p>买一份完整陪伴，也给这个小产品一点继续长大的力气。</p></div>
-      <div class="activate-actions"><a class="button button-primary" data-xianyu-link href="<%= site.data.product.activation.purchase_url %>" target="_blank" rel="noopener">购买永久激活 <span aria-hidden="true">↗</span></a><a class="button button-secondary" href="<%= url_for('/download/') %>">先下载体验</a></div>
+      <div class="activate-actions"><a class="button button-primary" href="<%= url_for('/download/') %>">在客户端购买激活 <span aria-hidden="true">↗</span></a><a class="button button-secondary" href="<%= url_for('/download/') %>">先下载体验</a></div>
     </div>
   </section>
 </div>

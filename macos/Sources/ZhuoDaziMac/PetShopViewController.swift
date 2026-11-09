@@ -445,6 +445,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     }
 
     private func renderPayment(_ order: PetMarketOrder) {
+        guard client.isPreview || order.payment?.method == "alipay_page" else { return }
         let content = column()
         let remaining = max(0, Int(ceil(order.expiresAt.timeIntervalSince(client.serverNow))))
         let countdown = label(String(format: "%02d:%02d", remaining / 60, remaining % 60), bold: true); countdownLabel = countdown

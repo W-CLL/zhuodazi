@@ -110,7 +110,8 @@ public partial class PetMarketOrdersWindow : Window
             ? Visibility.Visible : Visibility.Collapsed;
         RetryInstallButton.IsEnabled = !row.Install.InProgress;
 
-        var payment = order.Payment;
+        var payment = alipay ? order.Payment : null;
+        ReferencePanel.Visibility = Visibility.Collapsed;
         RecipientNameRow.Visibility = alipay || string.IsNullOrWhiteSpace(payment?.RecipientName)
             ? Visibility.Collapsed : Visibility.Visible;
         RecipientNameText.Text = string.IsNullOrWhiteSpace(payment?.RecipientName) ? "未提供" : payment.RecipientName;

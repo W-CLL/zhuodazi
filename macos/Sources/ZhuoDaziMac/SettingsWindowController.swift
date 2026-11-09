@@ -31,6 +31,7 @@ enum ActivationPrompts {
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private var authorContactWindow: AuthorContactWindowController?
     private let petController: PetWindowController
     private let licenses: LicenseService
     private let updates: UpdateService
@@ -210,6 +211,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         dailyPage = daily
         destinations.append(.init(page: .daily, controller: daily))
         petController.dailyChanged = { [weak daily] in daily?.refresh() }
+        destinations.append(.init(page: .shares, controller: AuthorSharesViewController()))
         destinations.append(.init(page: .updates, controller: buildUpdatePage()))
         destinations.append(.init(page: .uninstall, controller: buildUninstallPage()))
         let navigation = SettingsSidebarController(destinations: destinations)
@@ -571,7 +573,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         installUpdateButton.action = #selector(installUpdate)
         ignoreUpdateButton.target = self
         ignoreUpdateButton.action = #selector(ignoreUpdate)
-        stack.addArrangedSubview(buttonRow([checkUpdateButton, downloadUpdateButton, installUpdateButton, ignoreUpdateButton]))
+        let contact = NSButton(title: "联系作者", target: self, action: #selector(contactAuthor))
+        stack.addArrangedSubview(buttonRow([checkUpdateButton, downloadUpdateButton, installUpdateButton, ignoreUpdateButton, contact]))
         addSection("这个版本更新了什么", to: stack)
         stack.addArrangedSubview(readOnlyTextArea(releaseNotes, height: 180))
         return page
@@ -1416,6 +1419,15 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 petController.refreshPremiumAccess()
             }
             refresh()
+        }
+    }
+
+    @objc private func contactAuthor() {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await refreshDailyConfig()
+            authorContactWindow = AuthorContactWindowController(config: remoteConfig())
+            authorContactWindow?.showWindow(nil); authorContactWindow?.window?.makeKeyAndOrderFront(nil)
         }
     }
 

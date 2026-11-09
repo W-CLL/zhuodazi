@@ -354,7 +354,8 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         if (_product is null || _busy) return;
         if (!await EnsureActivatedForPurchaseAsync()) return;
         if (_order is { Status: "pending_payment" } pending && pending.ProductId == _product.Id
-            && pending.ExpiresAt > ServerNow)
+            && pending.ExpiresAt > ServerNow
+            && (_controller.PaymentCheckout is null || pending.Payment?.Method == "alipay_page"))
         {
             if (_controller.PaymentCheckout is { } existingPayment)
             {
@@ -575,7 +576,8 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
 
     private PetMarketOrder? FindPendingOrder(string productId)
         => _orders.FirstOrDefault(order => order.ProductId.Equals(productId, StringComparison.OrdinalIgnoreCase)
-            && order.Status == "pending_payment" && order.ExpiresAt > ServerNow);
+            && order.Status == "pending_payment" && order.ExpiresAt > ServerNow
+            && (_controller.IsLocalPreview || order.Payment?.Method == "alipay_page"));
 
     private bool HasPendingOrders()
         => _orders.Any(order => order.Status == "pending_payment" && order.ExpiresAt > ServerNow);
@@ -756,7 +758,8 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
 
     private void ApplyOrder()
     {
-        if (_order is null || _order.Status != "pending_payment" || _product?.Id != _order.ProductId)
+        if (_order is null || _order.Status != "pending_payment" || _product?.Id != _order.ProductId
+            || (!_controller.IsLocalPreview && _order.Payment?.Method != "alipay_page"))
         {
             PaymentPanel.Visibility = Visibility.Collapsed;
             PaymentQrImage.Source = null;
@@ -827,7 +830,8 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         UseButton.Visibility = installed is not null ? Visibility.Visible : Visibility.Collapsed;
         ClaimButton.IsEnabled = !_busy && (!activated || product?.Claimable == true);
         var hasPendingOrder = product is not null && _order is { Status: "pending_payment" }
-            && _order.ProductId == product.Id && _order.ExpiresAt > ServerNow;
+            && _order.ProductId == product.Id && _order.ExpiresAt > ServerNow
+            && (_controller.IsLocalPreview || _order.Payment?.Method == "alipay_page");
         var paymentUnavailable = NewOrderPaymentUnavailableReason();
         BuyButton.IsEnabled = !_busy && (!activated || hasPendingOrder
             || product?.Purchasable == true && string.IsNullOrWhiteSpace(paymentUnavailable));
