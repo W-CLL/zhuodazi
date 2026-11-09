@@ -98,18 +98,26 @@
             </Grid>
 
             <StackPanel Grid.Row="2" Margin="0,20,0,0">
-                <TextBlock Text="已有 6 位激活码（电脑和手机填同一组）" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
+                <Border x:Name="AlipayActivationPanel" Visibility="Collapsed" Background="#EDF7F3" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+                    <StackPanel>
+                        <TextBlock x:Name="AlipayProductTitle" Text="桌搭子完整功能" FontSize="14" FontWeight="SemiBold" />
+                        <Button x:Name="AlipayActivationButton" Content="正在加载…" IsEnabled="False" Click="AlipayActivation_Click" MinHeight="40" Margin="0,12,0,0" />
+                    </StackPanel>
+                </Border>
+                <TextBlock x:Name="ExistingCodeLabel" Text="已有 6 位激活码（电脑和手机填同一组）" FontSize="13" FontWeight="SemiBold" Foreground="{StaticResource InkBrush}" />
                 <TextBox x:Name="CodeTextBox" Height="54" Margin="0,8,0,0" MaxLength="6"
                          Padding="14,4" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
                          FontFamily="Consolas" FontSize="26" FontWeight="SemiBold" CharacterCasing="Upper"
                          BorderBrush="{StaticResource LineBrush}" BorderThickness="1" Background="White"
                          TextChanged="CodeTextBox_TextChanged" />
-                <TextBlock Text="设备码（联系作者手动激活时提供）" FontSize="11" Margin="0,10,0,4" Foreground="{StaticResource MutedBrush}" />
-                <TextBox x:Name="DeviceCodeText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" Padding="6" />
-                <WrapPanel Margin="0,6,0,0">
-                    <Button Content="复制设备码" Click="CopyDeviceCode_Click" MinHeight="30" Padding="10,4" Margin="0,0,8,0" />
-                    <Button x:Name="SyncActivationButton" Content="同步后台激活" Click="SyncActivation_Click" MinHeight="30" Padding="10,4" />
-                </WrapPanel>
+                <StackPanel x:Name="DeviceActivationPanel">
+                    <TextBlock Text="设备码（联系作者手动激活时提供）" FontSize="11" Margin="0,10,0,4" Foreground="{StaticResource MutedBrush}" />
+                    <TextBox x:Name="DeviceCodeText" IsReadOnly="True" FontFamily="Consolas" FontSize="12" Padding="6" />
+                    <WrapPanel Margin="0,6,0,0">
+                        <Button Content="复制设备码" Click="CopyDeviceCode_Click" MinHeight="30" Padding="10,4" Margin="0,0,8,0" />
+                        <Button x:Name="SyncActivationButton" Content="同步后台激活" Click="SyncActivation_Click" MinHeight="30" Padding="10,4" />
+                    </WrapPanel>
+                </StackPanel>
             </StackPanel>
 
             <Grid Grid.Row="3" Margin="0,10,0,0" MinHeight="28">
@@ -117,7 +125,7 @@
                 <ProgressBar x:Name="ActivationProgress" Height="4" VerticalAlignment="Bottom" IsIndeterminate="True" Visibility="Collapsed" />
             </Grid>
 
-            <Border Grid.Row="4" Margin="0,8,0,0" Background="White" BorderBrush="{StaticResource LineBrush}"
+            <Border x:Name="ManualActivationContactPanel" Grid.Row="4" Margin="0,8,0,0" Background="White" BorderBrush="{StaticResource LineBrush}"
                     BorderThickness="1" CornerRadius="8" Padding="16">
                 <Grid>
                     <Grid.ColumnDefinitions>

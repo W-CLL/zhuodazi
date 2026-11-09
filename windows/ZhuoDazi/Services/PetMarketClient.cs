@@ -166,6 +166,11 @@ internal sealed class PetMarketClient : IDisposable
     {
     }
 
+    internal PetMarketClient(LicenseService licenses, string dataDirectory, Uri origin, byte[] signingPublicKey)
+        : this(new LicensePetMarketIdentity(licenses), dataDirectory, origin, signingPublicKey)
+    {
+    }
+
     private PetMarketClient(IPetMarketIdentity identity, string dataDirectory, Uri origin, byte[]? debugSigningPublicKey)
     {
         _identity = identity;
@@ -422,7 +427,7 @@ internal sealed class PetMarketClient : IDisposable
                 return destination;
             File.Delete(destination);
         }
-        var partial = destination + $".{Environment.ProcessId}.partial";
+        var partial = destination + $".{Guid.NewGuid():N}.partial";
         try
         {
             using var request = CreateRequest(HttpMethod.Get, path, authenticated: false);

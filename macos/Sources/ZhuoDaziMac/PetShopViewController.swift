@@ -23,6 +23,7 @@ private final class PetShopButton: NSButton {
 final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private let licenses: LicenseService
     private let client: PetMarketClient
+    private let checkout: PaymentCheckoutClient?
     private let resources: ResourcePackClient
     private let installedPets: () -> [PetMarketInstallation]
     private let onInstallPet: (PetMarketInstallation) -> Void
@@ -71,6 +72,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
          onToggleResources: @escaping (String) throws -> Void,
          requestActivation: @escaping () -> Void) {
         self.licenses = licenses; self.client = client; resources = ResourcePackClient(transport: client)
+        checkout = client.isPreview ? nil : PaymentCheckoutClient(licenses: licenses)
         self.installedPets = installedPets; self.onInstallPet = onInstallPet; self.onRefreshPet = onRefreshPet
         self.isPetEnabled = isPetEnabled; self.onTogglePet = onTogglePet; self.resourceState = resourceState
         self.onInstallResources = onInstallResources; self.onToggleResources = onToggleResources
@@ -93,7 +95,6 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
             PetShopButton("订单记录") { [weak self] in self?.showOrders() },
             PetShopButton("刷新") { [weak self] in self?.reload() }])
         addFullWidth(heading, to: root)
-        addFullWidth(label("挑一只喜欢的，预览后再领取或购买；安装后由你手动启用。", secondary: true), to: root)
         if client.isPreview { addFullWidth(label("本地独立预览 · 只连接配置的本机后台", secondary: true), to: root) }
         if !licenses.isActivated {
             let activate = PetShopButton("正式激活") { [weak self] in self?.requestActivation() }
@@ -240,7 +241,11 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
             nextPoll = Date().addingTimeInterval(orders.contains { $0.status == "pending_payment" } ? 3 : 30)
         }
         do {
-            let updatedOrders = try await client.orders()
+            let pending = try await checkout?.pendingPetOrders() ?? []
+            var updatedOrders = try await client.orders()
+            let existing = Set(updatedOrders.map(\.id))
+            updatedOrders += pending.filter { !existing.contains($0.id) }
+            updatedOrders.sort { $0.createdAt > $1.createdAt }
             try Task.checkCancellation()
             guard !stopped else { return }
             let changed = orders != updatedOrders
@@ -425,15 +430,13 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
             let pending = displayedOrder.map { $0.status == "pending_payment" && $0.expiresAt > client.serverNow } ?? false
             let button = PetShopButton(pending ? "等待付款确认" : product.isFree ? "免费领取并安装" : "购买 \(product.priceLabel)") { [weak self] in self?.purchase(product) }
             button.identifier = NSUserInterfaceItemIdentifier("shop-primary-action")
-            button.isEnabled = !pending && (product.isFree || !licenses.isActivated || payment?.canOrder != false)
+            button.isEnabled = !pending && (checkout != nil || product.isFree || !licenses.isActivated || payment?.canOrder != false)
             addFullWidth(button, to: detailActions)
-            if !product.isFree, let payment, !payment.canOrder {
+            if checkout == nil, !product.isFree, let payment, !payment.canOrder {
                 let message = label(payment.unavailableReason, secondary: true); message.maximumNumberOfLines = 2
                 addFullWidth(message, to: detailActions)
             }
         }
-        let note = label(licenses.isActivated ? "安装完成后点击「启用桌宠」，不会自动替换当前桌宠。" : "可以先看预览，点击领取或购买后前往正式激活。", size: 11, secondary: true)
-        addFullWidth(note, to: detailActions)
         if selectionChanged { scrollToTop(detailScroll) }
     }
     private func movePreview(_ step: Int) {
@@ -447,6 +450,16 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
         let countdown = label(String(format: "%02d:%02d", remaining / 60, remaining % 60), bold: true); countdownLabel = countdown
         content.addArrangedSubview(row([label("完成付款", size: 18, bold: true), NSView(), countdown]))
         content.addArrangedSubview(label(String(format: "应付 ¥%.2f", Double(order.amountFen) / 100), size: 20, bold: true))
+        if order.payment?.method == "alipay_page" {
+            content.addArrangedSubview(PetShopButton("前往支付宝付款") { [weak self] in
+                do { try self?.checkout?.reopen(order.id) } catch { self?.show(error) }
+            })
+            fillColumn(content)
+            let paymentCard = card(content, selected: true)
+            detailStack.addArrangedSubview(paymentCard)
+            paymentCard.widthAnchor.constraint(equalTo: detailStack.widthAnchor).isActive = true
+            return
+        }
         content.addArrangedSubview(row([label(order.paymentReference, size: 24, bold: true),
             PetShopButton("复制备注码") { Self.copy(order.paymentReference) }]))
         if let payment = order.payment {
@@ -487,6 +500,12 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
             if product.isFree {
                 try await client.claim(product.id); await installPet(product.id, title: product.title); reload()
             } else {
+                if let checkout {
+                    let result = try await checkout.purchase(activation: false, productId: product.id)
+                    selectedOrderId = result.order.id; status.stringValue = "等待付款"
+                    await syncOrders(); nextPoll = .distantPast
+                    return
+                }
                 let order = try await client.createOrder(product.id)
                 try Task.checkCancellation()
                 guard !stopped else { return }
@@ -507,7 +526,7 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
             let installation = try await client.install(id, title: title)
             try Task.checkCancellation()
             guard !stopped else { return }
-            onInstallPet(installation); status.stringValue = "\(installation.title) 已安装，等待你启用。"
+            onInstallPet(installation); status.stringValue = "\(installation.title) 已安装"
         } catch is CancellationError { }
         catch { if !stopped { installErrors[id] = "安装未完成：\(error.localizedDescription)" } }
     }
@@ -601,12 +620,11 @@ final class PetShopViewController: NSViewController, NSSearchFieldDelegate {
     private func renderOrderList() {
         guard !stopped, let stack = orderStack else { return }; clear(stack)
         stack.addArrangedSubview(label("订单与安装记录", size: 22, bold: true))
-        stack.addArrangedSubview(label("付款记录保存在账号中；安装与启用状态只代表这台 Mac。", secondary: true))
-        if orders.isEmpty { stack.addArrangedSubview(label("暂无付款订单。免费领取不会产生付款记录。", secondary: true)) }
+        if orders.isEmpty { stack.addArrangedSubview(label("暂无订单", secondary: true)) }
         for order in orders {
             let content = column()
             content.addArrangedSubview(row([label(order.productTitle ?? order.productId, size: 16, bold: true), NSView(), label(order.statusLabel, bold: true)]))
-            content.addArrangedSubview(label(String(format: "¥%.2f · v%@ · 备注 %@", Double(order.amountFen) / 100, order.productVersion, order.paymentReference)))
+            content.addArrangedSubview(label(String(format: "¥%.2f", Double(order.amountFen) / 100)))
             content.addArrangedSubview(label("订单号：\(order.id)", secondary: true))
             content.addArrangedSubview(label("下单：\(order.createdAt.formatted(date: .numeric, time: .shortened))"
                 + (order.paidAt.map { " · 付款：\($0.formatted(date: .numeric, time: .shortened))" } ?? ""), secondary: true))

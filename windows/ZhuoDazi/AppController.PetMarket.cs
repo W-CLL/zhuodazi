@@ -11,6 +11,19 @@ public sealed partial class AppController
     private PetMarketWindow? _petMarketWindow;
     private PetMarketClient? _petMarketClient;
     private PetMarketDebugConfig? _petMarketDebugConfig;
+    private readonly Dictionary<string, string> _petMarketTitles = new(StringComparer.OrdinalIgnoreCase);
+    internal FullAppPaymentClient? PaymentCheckout { get; private set; }
+    internal bool IsLocalPaymentTest => PaymentTestOrigin is not null;
+    internal Uri? PaymentTestOrigin { get; private set; }
+    internal bool LocalServicesDisabled => IsLocalPreview && !IsLocalPaymentTest;
+
+    internal void ConfigureLocalPaymentTest(LocalPaymentTestEnvironment environment)
+    {
+        if (!IsLocalPreview || _petMarketClient is not null) throw new InvalidOperationException("请在启动前配置独立支付测试。");
+        PaymentCheckout = new FullAppPaymentClient(_licenses, origin: environment.Origin);
+        PaymentTestOrigin = environment.Origin;
+        _petMarketClient = new PetMarketClient(_licenses, _store.DataDirectory, environment.Origin, environment.SigningPublicKey);
+    }
     private readonly SemaphoreSlim _petMarketInstallGate = new(1, 1);
     private readonly DispatcherTimer _petMarketGrantTimer = new() { Interval = TimeSpan.FromMinutes(1) };
     private bool _petMarketGrantTimerConfigured;
@@ -62,8 +75,23 @@ public sealed partial class AppController
         return _petMarketWindow!;
     }
 
-    internal Task<PetMarketCatalog> LoadPetMarketCatalogAsync(CancellationToken cancellationToken)
-        => PetMarketClient.GetCatalogAsync(cancellationToken);
+    internal async Task<PetMarketCatalog> LoadPetMarketCatalogAsync(CancellationToken cancellationToken)
+    {
+        var catalog = await PetMarketClient.GetCatalogAsync(cancellationToken);
+        var changed = false;
+        foreach (var product in catalog.Products)
+        {
+            _petMarketTitles[product.Id] = product.Title;
+            var installed = FindMarketInstallation(product.Id);
+            if (installed is not null && installed.Title != product.Title)
+            {
+                installed.Title = product.Title;
+                changed = true;
+            }
+        }
+        if (changed) Save();
+        return catalog;
+    }
 
     internal Task<PetMarketClaimResponse> ClaimMarketProductAsync(string productId, CancellationToken cancellationToken)
         => PetMarketClient.ClaimAsync(productId, cancellationToken);
@@ -71,8 +99,16 @@ public sealed partial class AppController
     internal Task<PetMarketOrderResponse> CreatePetMarketOrderAsync(string productId, CancellationToken cancellationToken)
         => PetMarketClient.CreateOrderAsync(productId, cancellationToken);
 
-    internal Task<PetMarketOrderListResponse> ListPetMarketOrdersAsync(CancellationToken cancellationToken)
-        => PetMarketClient.ListOrdersAsync(cancellationToken);
+    internal async Task<PetMarketOrderListResponse> ListPetMarketOrdersAsync(CancellationToken cancellationToken)
+    {
+        var response = await PetMarketClient.ListOrdersAsync(cancellationToken);
+        if (PaymentCheckout is not null)
+        {
+            var pending = await PaymentCheckout.PendingPetOrdersAsync(cancellationToken);
+            response.Orders.AddRange(pending.Where(item => !response.Orders.Any(existing => existing.Id == item.Id)));
+        }
+        return response;
+    }
 
     internal Task<PetMarketOrder> GetPetMarketOrderAsync(string orderId, CancellationToken cancellationToken)
         => PetMarketClient.GetOrderAsync(orderId, cancellationToken);
@@ -179,7 +215,8 @@ public sealed partial class AppController
             {
                 ProductId = installed.ProductId,
                 Version = installed.Version,
-                Title = string.IsNullOrWhiteSpace(installed.Title) ? product.Title : installed.Title,
+                Title = _petMarketTitles.GetValueOrDefault(product.Id)
+                    ?? (string.IsNullOrWhiteSpace(product.Title) ? installed.Title : product.Title),
                 Directory = installed.Directory,
                 Files = installed.Files.ToList(),
                 ManifestSha256 = descriptor.ManifestSha256,
@@ -315,6 +352,7 @@ public sealed partial class AppController
 
     private void ClosePetMarket()
     {
+        PaymentCheckout?.Dispose();
         _petMarketWindow?.Close();
         _petMarketWindow = null;
         _petMarketClient?.Dispose();

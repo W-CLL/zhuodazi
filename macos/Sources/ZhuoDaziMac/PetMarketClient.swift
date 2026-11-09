@@ -91,7 +91,8 @@ final class PetMarketClient {
         guard UUID(uuidString: order.id) != nil, PetMarketJSON.validPart(order.productId),
               ["paid", "pending_payment", "canceled", "expired"].contains(order.status),
               order.currency == "CNY", order.amountFen >= 0,
-              order.paymentReference.range(of: "^[0-9]{3}[A-Za-z]{2}$", options: .regularExpression) != nil,
+              (order.paymentReference.range(of: "^[0-9]{3}[A-Za-z]{2}$", options: .regularExpression) != nil
+                || order.status == "paid" && order.paymentReference.lowercased() == "alipay:\(order.id.lowercased())"),
               order.expiresAt >= order.createdAt else { throw PetMarketError.invalid("订单内容无效") }
     }
 

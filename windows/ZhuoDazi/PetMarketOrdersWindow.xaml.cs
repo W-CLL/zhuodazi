@@ -94,12 +94,14 @@ public partial class PetMarketOrdersWindow : Window
         if (row is null) return;
 
         var order = row.Order;
+        var alipay = order.Payment?.Method == "alipay_page"
+            || order.PaymentReference?.StartsWith("alipay:", StringComparison.Ordinal) == true;
         ProductTitleText.Text = row.ProductTitle;
         OrderStatusText.Text = StatusLabel(order, _serverNow);
         AmountText.Text = AmountLabel(order);
         ReferenceText.Text = string.IsNullOrWhiteSpace(order.PaymentReference)
             ? "不可用" : order.PaymentReference.ToUpperInvariant();
-        ReferencePanel.Visibility = string.IsNullOrWhiteSpace(order.PaymentReference)
+        ReferencePanel.Visibility = alipay || string.IsNullOrWhiteSpace(order.PaymentReference)
             ? Visibility.Collapsed : Visibility.Visible;
 
         PaidSuccessPanel.Visibility = order.Status == "paid" ? Visibility.Visible : Visibility.Collapsed;
@@ -109,15 +111,17 @@ public partial class PetMarketOrdersWindow : Window
         RetryInstallButton.IsEnabled = !row.Install.InProgress;
 
         var payment = order.Payment;
+        RecipientNameRow.Visibility = alipay || string.IsNullOrWhiteSpace(payment?.RecipientName)
+            ? Visibility.Collapsed : Visibility.Visible;
         RecipientNameText.Text = string.IsNullOrWhiteSpace(payment?.RecipientName) ? "未提供" : payment.RecipientName;
         RecipientAccountText.Text = payment?.RecipientAccount ?? string.Empty;
-        RecipientAccountRow.Visibility = string.IsNullOrWhiteSpace(payment?.RecipientAccount)
+        RecipientAccountRow.Visibility = alipay || string.IsNullOrWhiteSpace(payment?.RecipientAccount)
             ? Visibility.Collapsed : Visibility.Visible;
         PaymentInstructionsText.Text = payment?.Instructions ?? string.Empty;
-        PaymentInstructionsText.Visibility = string.IsNullOrWhiteSpace(payment?.Instructions)
+        PaymentInstructionsText.Visibility = alipay || string.IsNullOrWhiteSpace(payment?.Instructions)
             ? Visibility.Collapsed : Visibility.Visible;
         QrImage.Source = TryGetQrImage(payment, out var qrImage) ? qrImage : null;
-        QrPanel.Visibility = QrImage.Source is null ? Visibility.Collapsed : Visibility.Visible;
+        QrPanel.Visibility = alipay || QrImage.Source is null ? Visibility.Collapsed : Visibility.Visible;
 
         var warning = PendingWarning(order, payment, QrImage.Source is not null, _serverNow);
         PaymentWarningText.Text = warning;

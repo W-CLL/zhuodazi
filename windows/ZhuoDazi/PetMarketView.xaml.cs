@@ -159,7 +159,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         ActivationBanner.Visibility = _controller.HasActivatedMarketIdentity
             ? Visibility.Collapsed : Visibility.Visible;
         if (showSuccessStatus)
-            StatusText.Text = catalog.Products.Count == 0 ? "小铺暂时没有可展示的桌宠。" : $"已上架 {catalog.Products.Count} 个桌宠。";
+            StatusText.Text = catalog.Products.Count == 0 ? "暂无商品" : string.Empty;
         StartThumbnailLoading();
     }
 
@@ -212,7 +212,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
 
     private async void Activation_Click(object sender, RoutedEventArgs e)
     {
-        if (_controller.ShowActivation(Window.GetWindow(this), "正式激活后可以领取、购买、下载、安装和启用小铺桌宠。"))
+        if (_controller.ShowActivation(Window.GetWindow(this)))
         {
             await LoadCatalogAsync(_product?.Id);
             await RefreshOrderHistoryAsync(ViewToken, showError: true);
@@ -345,7 +345,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         {
             await _controller.ClaimMarketProductAsync(selected.Id, token);
             await FetchCatalogAsync(selected.Id, token, showSuccessStatus: false);
-            StatusText.Text = "已领取，可以下载安装。";
+            StatusText.Text = "领取成功";
         }, token);
     }
 
@@ -356,6 +356,10 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         if (_order is { Status: "pending_payment" } pending && pending.ProductId == _product.Id
             && pending.ExpiresAt > ServerNow)
         {
+            if (_controller.PaymentCheckout is { } existingPayment)
+            {
+                try { existingPayment.OpenOrder(pending.Id); } catch (Exception error) { StatusText.Text = SafeError(error); }
+            }
             ApplyOrder();
             ScrollPaymentIntoView();
             return;
@@ -370,6 +374,14 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         var token = ViewToken;
         await RunBusyAsync(async () =>
         {
+            if (_controller.PaymentCheckout is { } payments)
+            {
+                await payments.OpenAsync(false, selected.Id, token);
+                _nextPollAt = ServerNow;
+                await RefreshOrderHistoryAsync(token, showError: true);
+                StatusText.Text = "等待付款";
+                return;
+            }
             var response = await _controller.CreatePetMarketOrderAsync(selected.Id, token);
             if (!ReferenceEquals(_product, selected)) return;
             if (string.IsNullOrWhiteSpace(response.Order.ProductTitle)) response.Order.ProductTitle = selected.Title;
@@ -395,10 +407,17 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         {
             var installed = await _controller.DownloadAndInstallMarketProductAsync(selected, token);
             ClearAutomaticInstallErrors(selected.Id);
-            StatusText.Text = $"{installed.Title} 已安装。需要时再点击“启用这个桌宠”。";
+            StatusText.Text = $"{installed.Title} 已安装";
             ShowProduct();
             UpdateOrdersWindow();
         }, token);
+    }
+
+    private void AlipayOrder_Click(object sender, RoutedEventArgs e)
+    {
+        if (_order is null || _controller.PaymentCheckout is null) return;
+        try { _controller.PaymentCheckout.OpenOrder(_order.Id); }
+        catch (Exception error) { StatusText.Text = SafeError(error); }
     }
 
     private async void Use_Click(object sender, RoutedEventArgs e)
@@ -412,12 +431,12 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
             if (_controller.IsMarketProductEnabled(installation.ProductId))
             {
                 _controller.DisableMarketProduct(installation.ProductId);
-                StatusText.Text = $"已停用 {installation.Title}，已安装资源保留。";
+                StatusText.Text = $"已停用 {installation.Title}";
             }
             else
             {
                 await _controller.UseMarketProductAsync(installation, token);
-                StatusText.Text = $"已启用 {installation.Title} · 已启用 {_controller.EnabledPetSourceCount}/3 个桌宠来源。";
+                StatusText.Text = $"已启用 {installation.Title}";
             }
             ShowProduct();
         }, token);
@@ -426,12 +445,11 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
     private async Task<bool> EnsureActivatedForPurchaseAsync()
     {
         if (_controller.HasActivatedMarketIdentity) return true;
-        var activated = _controller.ShowActivation(Window.GetWindow(this),
-            "购买或领取桌宠需要先正式激活桌搭子。体验期可以浏览和预览，正式激活后再购买。");
+        var activated = _controller.ShowActivation(Window.GetWindow(this));
         if (activated)
         {
             await LoadCatalogAsync(_product?.Id);
-            StatusText.Text = "已完成激活，请再次点击购买或领取。";
+            StatusText.Text = "激活成功";
         }
         return false;
     }
@@ -612,7 +630,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
             ClearAutomaticInstallErrors(order.ProductId);
             if (_viewLoaded)
             {
-                StatusText.Text = $"{installed.Title} 付款验证成功，已自动下载安装；需要使用时请自行启用。";
+                StatusText.Text = $"{installed.Title} 已安装";
                 if (_product?.Id.Equals(order.ProductId, StringComparison.OrdinalIgnoreCase) == true)
                     ShowProduct();
                 var catalogToken = ViewToken;
@@ -635,7 +653,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
             var message = SafeError(error);
             _automaticInstallErrors[order.Id] = message;
             if (_viewLoaded)
-                StatusText.Text = $"付款已确认，但自动下载安装失败：{message} 请在订单记录中重试。";
+                StatusText.Text = $"安装失败：{message}";
         }
         finally
         {
@@ -677,19 +695,19 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
     {
         if (order.Status != "paid") return new(string.Empty, false, false, false);
         if (!IsLatestPaidOrderForProduct(order))
-            return new("该商品已有更新的已付款订单，此版本仅保留记录。", false, false, false);
+            return new("历史版本", false, false, false);
         if (_controller.IsPaidMarketOrderInstalled(order))
         {
             var enabled = _controller.IsMarketProductEnabled(order.ProductId);
             return enabled
-                ? new("已自动下载安装，当前已启用。", true, false, false)
-                : new("已自动下载安装，尚未启用。需要使用时请点击“启用这个桌宠”。", true, false, false);
+                ? new("已安装 · 已启用", true, false, false)
+                : new("已安装 · 未启用", true, false, false);
         }
         var inProgress = _automaticInstallInProgress.Contains(AutomaticInstallKey(order));
-        if (inProgress) return new("正在自动下载安装…", false, true, false);
+        if (inProgress) return new("正在安装…", false, true, false);
         if (_automaticInstallErrors.TryGetValue(order.Id, out var error))
-            return new($"自动下载安装失败：{error}", false, false, true);
-        return new("等待自动下载安装。", false, false, true);
+            return new($"安装失败：{error}", false, false, true);
+        return new("等待安装", false, false, true);
     }
 
     private string ProductTitle(PetMarketOrder order)
@@ -763,6 +781,10 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         CancelOrderButton.IsEnabled = !_busy;
 
         var payment = _order.Payment;
+        var alipay = payment?.Method == "alipay_page";
+        AlipayOrderButton.Visibility = alipay ? Visibility.Visible : Visibility.Collapsed;
+        PaymentReferencePanel.Visibility = alipay ? Visibility.Collapsed : Visibility.Visible;
+        CancelOrderButton.Visibility = alipay ? Visibility.Collapsed : Visibility.Visible;
         PersonalTransferPanel.Visibility = payment is { IsPersonalTransfer: true, HasRecipient: true }
             ? Visibility.Visible : Visibility.Collapsed;
         PaymentRecipientNameText.Text = payment?.RecipientName ?? string.Empty;
@@ -809,7 +831,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         var paymentUnavailable = NewOrderPaymentUnavailableReason();
         BuyButton.IsEnabled = !_busy && (!activated || hasPendingOrder
             || product?.Purchasable == true && string.IsNullOrWhiteSpace(paymentUnavailable));
-        BuyButton.Content = hasPendingOrder ? "去付款" : product is null ? "购买" : $"购买 · {product.PriceLabel}";
+        BuyButton.Content = hasPendingOrder ? "继续支付" : product is null ? "购买" : $"购买 · {product.PriceLabel}";
         PaymentAvailabilityText.Visibility = product is { Owned: false, IsFree: false }
             && !hasPendingOrder && activated && !string.IsNullOrWhiteSpace(paymentUnavailable)
                 ? Visibility.Visible : Visibility.Collapsed;
@@ -824,13 +846,15 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
         UseButton.Content = installed is not null && _controller.IsMarketProductEnabled(installed.ProductId)
             ? "停用这个桌宠" : "启用这个桌宠";
         ActivationText.Text = activated
-            ? "当前设备已正式激活。"
-            : "游客和试用可以浏览预览；领取、购买、下载和启用需要正式激活。";
+            ? "已激活"
+            : "激活后可领取、购买和使用桌宠。";
     }
 
     private string NewOrderPaymentUnavailableReason()
     {
         if (_product is null || _product.IsFree || _product.Owned) return string.Empty;
+        if (_controller.PaymentCheckout is not null) return _product.Purchasable || !_controller.HasActivatedMarketIdentity
+            ? string.Empty : "当前商品暂不可购买。";
         var payment = _catalog?.Payment;
         if (payment is null) return "当前服务未提供付款信息，请刷新或更新桌搭子后再试。";
         if (!payment.Enabled)
@@ -853,6 +877,7 @@ public partial class PetMarketView : System.Windows.Controls.UserControl, IDispo
     {
         if (orderPollingUnavailable)
             return "暂时无法核对订单，请等待连接恢复后再付款。";
+        if (payment?.Method == "alipay_page") return string.Empty;
         if (payment is null)
             return "订单已保留，但当前服务未返回收款信息。请勿盲目转账，可取消后刷新再试。";
         if (payment.IsPersonalTransfer && !payment.HasRecipient)

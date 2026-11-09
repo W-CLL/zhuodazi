@@ -1,0 +1,176 @@
+name: Build desktop candidate
+
+on:
+  push:
+    branches: ["cll/payment-release-candidate-*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-candidate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Test and package Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Run Windows checks
+        shell: pwsh
+        run: |
+          python scripts/check-release-consistency.py
+          if ($LASTEXITCODE -ne 0) { throw "Release metadata checks failed" }
+          dotnet run --project windows/tests/DeviceHeartbeat.Checks/DeviceHeartbeat.Checks.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Device heartbeat checks failed" }
+          dotnet run --project windows/tests/GifLibraryService.Checks/GifLibraryService.Checks.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Windows checks failed" }
+          dotnet run --project windows/tests/DailyJournal.Checks/DailyJournal.Checks.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Daily journal checks failed" }
+          dotnet run --project windows/tests/DailySummary.Checks/DailySummary.Checks.csproj --configuration Release
+          if ($LASTEXITCODE -ne 0) { throw "Daily summary and remote configuration checks failed" }
+          $featureChecks = @(
+            'AppPreview.Checks', 'CompanionSend.Checks', 'ContentSelection.Checks',
+            'ConversationPresentation.Checks', 'PetMarketClient.Checks', 'AlipayPreview.Checks', 'LocalPaymentTest.Checks',
+            'PetMarketInstaller.Checks', 'PetMarketView.Checks', 'UninstallLifecycle.Checks'
+          )
+          foreach ($check in $featureChecks) {
+            dotnet run --project "windows/tests/$check/$check.csproj" --configuration Release
+            if ($LASTEXITCODE -ne 0) { throw "$check failed" }
+          }
+          dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --library-check
+          if ($LASTEXITCODE -ne 0) { throw "Default pet upgrade checks failed" }
+          dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --activation-check "$env:RUNNER_TEMP/activation-check"
+          if ($LASTEXITCODE -ne 0) { throw "Activation configuration UI checks failed" }
+          dotnet run --project windows/tests/ZhuoDazi.UiPreview/ZhuoDazi.UiPreview.csproj --configuration Release -- --daily-smoke "$env:RUNNER_TEMP/daily-smoke"
+          if ($LASTEXITCODE -ne 0) { throw "Daily interaction UI checks failed" }
+
+      - name: Read application version
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content windows/ZhuoDazi/ZhuoDazi.csproj
+          "APP_VERSION=$($project.Project.PropertyGroup.Version)" >> $env:GITHUB_ENV
+
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: ./windows/scripts/build-native.ps1 -Version $env:APP_VERSION
+
+      - name: Verify bundled default pets
+        shell: pwsh
+        run: |
+          python scripts/check-default-pets.py --root windows/publish/win-x64/resources/pet-libraries/default
+          if ($LASTEXITCODE -ne 0) { throw "Default pet verification failed" }
+          if (Test-Path windows/publish/win-x64/resources/pet-libraries/yuexinmiao) {
+            throw "Legacy default pets must not be packaged"
+          }
+
+      - name: Verify installed application with isolated preview
+        shell: pwsh
+        run: |
+          $installDirectory = Join-Path $env:RUNNER_TEMP "ZhuoDazi-install-smoke"
+          $installer = Resolve-Path "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION.exe"
+          $installProcess = Start-Process `
+            -FilePath $installer `
+            -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/NOAPPSTART", "/DIR=$installDirectory", "/MERGETASKS=!desktopicon" `
+            -PassThru
+          $installProcess.WaitForExit()
+
+          if ($installProcess.ExitCode -ne 0) {
+            throw "Installer failed with exit code $($installProcess.ExitCode)"
+          }
+
+          $application = Join-Path $installDirectory "app/ZhuoDazi.exe"
+          if (-not (Test-Path -LiteralPath $application)) {
+            throw "Installed application was not found at $application"
+          }
+
+          $unexpectedEntries = Get-ChildItem -LiteralPath $installDirectory -Force |
+            Where-Object { $_.Name -notin @("app", "uninstall") }
+          if ($unexpectedEntries) {
+            $names = ($unexpectedEntries.Name | Sort-Object) -join ", "
+            throw "Unexpected entries in the installation root: $names"
+          }
+
+          ./windows/scripts/test-package-offline.ps1 -ApplicationPath $application -DataDirectory "$env:RUNNER_TEMP/installed-preview"
+
+      - name: Verify published application with isolated preview
+        shell: pwsh
+        run: |
+          $application = Resolve-Path "windows/publish/win-x64/ZhuoDazi.exe"
+          ./windows/scripts/test-package-offline.ps1 -ApplicationPath $application -DataDirectory "$env:RUNNER_TEMP/published-preview"
+
+      - name: Build portable archive
+        shell: pwsh
+        run: |
+          $archive = "windows/dist/ZhuoDazi-Desktop-Pet-$env:APP_VERSION-portable.zip"
+          Compress-Archive -Path "windows/publish/win-x64/*" -DestinationPath $archive -CompressionLevel Optimal -Force
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-candidate-x64
+          path: windows/dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  macos:
+    name: Test and package ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    env:
+      BUILD_ARCH: ${{ matrix.arch }}
+      ARCH_LABEL: ${{ matrix.arch }}
+      ZHUODAZI_REVIEW_OUTPUT: ${{ github.workspace }}/macos-review
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check native toolchain and metadata
+        run: |
+          test "$(uname -m)" = "$BUILD_ARCH"
+          swift --version
+          xcodebuild -version
+          python3 scripts/check-release-consistency.py
+      - name: Run native tests and capture layout evidence
+        run: |
+          mkdir -p "$ZHUODAZI_REVIEW_OUTPUT"
+          set -o pipefail
+          swift test --package-path macos --arch "$BUILD_ARCH" 2>&1 | tee "$ZHUODAZI_REVIEW_OUTPUT/tests.log"
+          bash macos/scripts/test-device-heartbeat.sh
+      - name: Build and verify candidate application
+        run: |
+          bash macos/scripts/build-app.sh
+          bash macos/scripts/verify-app.sh
+          shasum -a 256 macos/dist/*.zip > "$ZHUODAZI_REVIEW_OUTPUT/packages.sha256"
+      - name: Save review evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-review-${{ matrix.arch }}
+          path: macos-review/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Save candidate package
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-candidate-${{ matrix.arch }}
+          path: macos/dist/*.zip
+          if-no-files-found: error
+          retention-days: 30

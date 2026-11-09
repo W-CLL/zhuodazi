@@ -245,7 +245,7 @@ public partial class SettingsWindow : Window
         if (!_companionLoading && !CompanionNameText.IsKeyboardFocusWithin)
             CompanionNameText.Text = companionProfile?.DisplayName ?? string.Empty;
         CompanionCodeText.Text = companionProfile?.PairingCode ?? string.Empty;
-        CompanionStatusText.Text = _controller.IsLocalPreview
+        CompanionStatusText.Text = _controller.LocalServicesDisabled
             ? "本地预览用于体验日常互动，搭子与大厅请在正式版中使用。"
             : !_controller.HasActivatedLicense
             ? "绑定一位熟人后，可以把当前 GIF 发到对方桌角。"
@@ -262,7 +262,7 @@ public partial class SettingsWindow : Window
         CompanionPreviewImage.FilePath = sendPreviewPath;
         CompanionSendPreview.Visibility = companionProfile?.Partner is not null && File.Exists(sendPreviewPath)
             ? Visibility.Visible : Visibility.Collapsed;
-        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading && !_controller.IsCompanionSending && !_controller.IsLocalPreview;
+        var companionEnabled = _controller.HasActivatedLicense && !_companionLoading && !_controller.IsCompanionSending && !_controller.LocalServicesDisabled;
         CompanionNameText.IsEnabled = companionEnabled;
         SaveCompanionNameButton.IsEnabled = companionEnabled;
         CompanionCodeText.IsEnabled = companionEnabled;
@@ -281,7 +281,7 @@ public partial class SettingsWindow : Window
             ? Visibility.Collapsed : Visibility.Visible;
         CompanionActivateButton.Content = _controller.IsTrialActive ? "体验结束后继续使用" : "继续完整体验后使用";
 
-        var hallAllowed = premium && _controller.RemoteConfig.CompanionHall && !_controller.IsLocalPreview;
+        var hallAllowed = premium && _controller.RemoteConfig.CompanionHall && !_controller.LocalServicesDisabled;
         var hallEnabled = hallAllowed && companionProfile?.HallEnabled == true;
         if (!_hallLoading && !HallNicknameText.IsKeyboardFocusWithin)
             HallNicknameText.Text = companionProfile?.DisplayName ?? string.Empty;
@@ -291,7 +291,7 @@ public partial class SettingsWindow : Window
         CompanionHallEnabledCheck.IsEnabled = hallAllowed && !_hallLoading && companionProfile is not null;
         RefreshHallButton.IsEnabled = hallAllowed && !_hallLoading;
         RefreshHallButton.Content = _hallLoading ? "正在连接…" : "刷新大厅";
-        CompanionHallStatusText.Text = _controller.IsLocalPreview
+        CompanionHallStatusText.Text = _controller.LocalServicesDisabled
             ? "本地预览用于体验日常互动，搭子与大厅请在正式版中使用。"
             : !hallAllowed
             ? "试用已结束。正式激活后可以继续加入大厅并发送表情。"
@@ -305,7 +305,7 @@ public partial class SettingsWindow : Window
         CompanionHallList.SelectedItem = hallItems.FirstOrDefault(item => item.Id == selectedHallId);
         CompanionHallList.IsEnabled = hallEnabled && !_hallLoading;
         CompanionHallEmptyText.Visibility = hallItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        CompanionHallEmptyText.Text = _controller.IsLocalPreview ? "请在正式版中使用搭子与大厅。"
+        CompanionHallEmptyText.Text = _controller.LocalServicesDisabled ? "请在正式版中使用搭子与大厅。"
             : _hallLoading ? "正在寻找此刻在线的朋友…"
             : !hallAllowed ? "大厅支持有效试用与正式激活设备。"
             : !hallEnabled ? "先加入大厅，再看看谁在这里。"
@@ -728,7 +728,7 @@ public partial class SettingsWindow : Window
 
     private async Task LoadCompanionAsync()
     {
-        if (_companionLoading || !_controller.HasActivatedLicense || _controller.IsLocalPreview) return;
+        if (_companionLoading || !_controller.HasActivatedLicense || _controller.LocalServicesDisabled) return;
         _companionLoading = true;
         CompanionErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
@@ -754,7 +754,7 @@ public partial class SettingsWindow : Window
 
     private async Task LoadHallAsync()
     {
-        if (_hallLoading || !_controller.HasPremiumAccess || _controller.IsLocalPreview) return;
+        if (_hallLoading || !_controller.HasPremiumAccess || _controller.LocalServicesDisabled) return;
         _hallLoading = true;
         HallErrorText.Visibility = Visibility.Collapsed;
         RefreshAll();
@@ -775,7 +775,7 @@ public partial class SettingsWindow : Window
     {
         var seconds = Math.Max(0, (int)Math.Ceiling((_hallSendAllowedAt - DateTimeOffset.UtcNow).TotalSeconds));
         SendHallButton.Content = _hallLoading ? "处理中…" : seconds > 0 ? $"{seconds} 秒后可再发送" : "发送这只 GIF";
-        SendHallButton.IsEnabled = !_controller.IsLocalPreview && _controller.HasPremiumAccess && _controller.Companions.Profile?.HallEnabled == true
+        SendHallButton.IsEnabled = !_controller.LocalServicesDisabled && _controller.HasPremiumAccess && _controller.Companions.Profile?.HallEnabled == true
             && CompanionHallList.SelectedItem is HallListItem && File.Exists(_controller.CurrentPetPath()) && !_hallLoading && seconds == 0;
     }
 

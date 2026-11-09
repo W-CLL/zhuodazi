@@ -36,7 +36,6 @@
 
         <StackPanel Margin="0,0,0,14">
             <TextBlock Text="订单记录" FontSize="23" FontWeight="SemiBold" />
-            <TextBlock Text="待付款、已付款和已结束的订单都会保留在这里。" Foreground="#687470" Margin="0,5,0,0" />
         </StackPanel>
 
         <Grid Grid.Row="1">
@@ -95,9 +94,7 @@
                     </ListBox>
                     <StackPanel x:Name="EmptyPanel" Visibility="Collapsed" HorizontalAlignment="Center"
                                 VerticalAlignment="Center" MaxWidth="220">
-                        <TextBlock Text="还没有订单记录" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" />
-                        <TextBlock Text="购买付费桌宠后，订单会显示在这里。" Foreground="#71807B"
-                                   TextAlignment="Center" Margin="0,7,0,0" />
+                        <TextBlock Text="暂无订单" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" />
                     </StackPanel>
                 </Grid>
             </Border>
@@ -123,7 +120,7 @@
                             <Border x:Name="PaidSuccessPanel" Visibility="Collapsed" Background="#EAF6F1"
                                     BorderBrush="#92C9B8" BorderThickness="1" CornerRadius="7" Padding="11,9" Margin="0,13,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="付款验证成功" Foreground="#126452" FontWeight="SemiBold" />
+                                    <TextBlock Text="已付款" Foreground="#126452" FontWeight="SemiBold" />
                                     <TextBlock x:Name="InstallStatusText" Foreground="#47665C" Margin="0,4,0,0" />
                                 </StackPanel>
                             </Border>
@@ -146,7 +143,7 @@
                                 </Grid>
                             </Border>
 
-                            <Grid Margin="0,13,0,0">
+                            <Grid x:Name="RecipientNameRow" Margin="0,13,0,0">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                 <TextBlock Text="收款人" Foreground="#6B7874" />
                                 <TextBlock x:Name="RecipientNameText" Grid.Column="1" FontWeight="SemiBold" Margin="12,0,0,0" />

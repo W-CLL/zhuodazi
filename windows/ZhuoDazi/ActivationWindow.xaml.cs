@@ -22,6 +22,10 @@ public partial class ActivationWindow : Window
     private readonly DispatcherTimer _refreshTimer = new() { Interval = TimeSpan.FromSeconds(15) };
     private bool _refreshing;
     private bool _configurationRefreshing;
+    private readonly FullAppPaymentClient? _payments;
+    private bool _creatingPayment;
+    private bool _paymentOfferRefreshing;
+    private bool _paymentAvailable;
 
     public ActivationWindow(
         LicenseService licenses,
@@ -33,17 +37,33 @@ public partial class ActivationWindow : Window
     }
 
     internal ActivationWindow(LicenseService licenses, bool replacingExisting, string? initialStatus,
-        bool trialEnded, RemoteConfigService? remoteConfig)
+        bool trialEnded, RemoteConfigService? remoteConfig, FullAppPaymentClient? payments = null)
     {
         _licenses = licenses;
         _replacingExisting = replacingExisting;
         _remoteConfig = remoteConfig ?? new RemoteConfigService(new SettingsStore(licenses.DataDirectory));
         InitializeComponent();
+        _payments = replacingExisting ? null : payments;
+        AlipayActivationPanel.Visibility = _payments is null ? Visibility.Collapsed : Visibility.Visible;
+        if (_payments is not null)
+        {
+            SubtitleText.Visibility = Visibility.Collapsed;
+            ExistingCodeLabel.Text = "使用激活码";
+            DeviceActivationPanel.Visibility = Visibility.Collapsed;
+            ManualActivationContactPanel.Visibility = Visibility.Collapsed;
+            WebsiteButton.Visibility = Visibility.Collapsed;
+        }
+        Activated += async (_, _) => { if (_payments is not null) await RefreshActivationAsync(); };
         DeviceCodeText.Text = licenses.InstallationId;
         SyncActivationButton.IsEnabled = !replacingExisting;
         ApplyContactConfiguration();
         _remoteConfig.Changed += OnRemoteConfigurationChanged;
         ContinueButton.Content = replacingExisting ? "取消" : "先留下桌宠";
+        if (_payments is not null)
+        {
+            ContinueButton.Content = "稍后";
+            ActivateButton.Content = "激活";
+        }
         if (replacingExisting)
         {
             Title = "更换激活码";
@@ -60,6 +80,14 @@ public partial class ActivationWindow : Window
             ActivateButton.Content = "解锁完整功能";
             ActivateButton.Width = 118;
             TrialSummary.Visibility = Visibility.Visible;
+        }
+        if (_payments is not null)
+        {
+            Title = "激活桌搭子";
+            HeadingText.Text = "激活桌搭子";
+            TrialSummary.Visibility = Visibility.Collapsed;
+            MinHeight = 440;
+            Height = 480;
         }
         StatusText.Text = initialStatus ?? string.Empty;
         ContentRendered += (_, _) => CodeTextBox.Focus();
@@ -87,6 +115,25 @@ public partial class ActivationWindow : Window
         CodeTextBox.Text = normalized;
         CodeTextBox.CaretIndex = normalized.Length;
         _normalizing = false;
+    }
+
+    private async void AlipayActivation_Click(object sender, RoutedEventArgs e)
+    {
+        if (_payments is null || _creatingPayment) return;
+        _creatingPayment = true;
+        AlipayActivationButton.IsEnabled = false;
+        try
+        {
+            await _licenses.CheckTrialAsync(_lifetime.Token);
+            if (_licenses.IsActivated) { DialogResult = true; return; }
+            var catalog = await _payments.CatalogAsync(_lifetime.Token);
+            AlipayActivationButton.Content = $"支付宝支付 · ¥{catalog.Activation.AmountFen / 100m:F2}";
+            await _payments.OpenAsync(true, null, _lifetime.Token);
+            StatusText.Text = "等待付款";
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch (Exception error) { StatusText.Text = error is InvalidOperationException ? error.Message : "暂时无法创建订单，请稍后重试。"; }
+        finally { _creatingPayment = false; AlipayActivationButton.IsEnabled = _paymentAvailable; }
     }
 
     private async void ActivateButton_Click(object sender, RoutedEventArgs e)
@@ -161,7 +208,33 @@ public partial class ActivationWindow : Window
         => await RefreshCardAsync(true);
 
     private Task RefreshCardAsync(bool showStatus = false)
-        => Task.WhenAll(RefreshContactConfigurationAsync(), RefreshActivationAsync(showStatus));
+        => Task.WhenAll(RefreshContactConfigurationAsync(), RefreshActivationAsync(showStatus), RefreshPaymentOfferAsync());
+
+    private async Task RefreshPaymentOfferAsync()
+    {
+        if (_payments is null || _paymentOfferRefreshing || _lifetime.IsCancellationRequested) return;
+        _paymentOfferRefreshing = true;
+        try
+        {
+            var catalog = await _payments.CatalogAsync(_lifetime.Token);
+            if (_lifetime.IsCancellationRequested) return;
+            AlipayProductTitle.Text = catalog.Activation.Title;
+            _paymentAvailable = catalog.Provider.Configured;
+            AlipayActivationButton.Content = _paymentAvailable
+                ? $"支付宝支付 · ¥{catalog.Activation.AmountFen / 100m:F2}" : "暂时无法支付";
+        }
+        catch (OperationCanceledException) when (_lifetime.IsCancellationRequested) { }
+        catch
+        {
+            _paymentAvailable = false;
+            AlipayActivationButton.Content = "暂时无法支付";
+        }
+        finally
+        {
+            _paymentOfferRefreshing = false;
+            AlipayActivationButton.IsEnabled = _paymentAvailable && !_creatingPayment;
+        }
+    }
 
     private async Task RefreshContactConfigurationAsync()
     {
@@ -189,6 +262,7 @@ public partial class ActivationWindow : Window
         {
             if (!_replacingExisting)
             {
+                if (_payments is not null) await _payments.RefreshActivationOrdersAsync(_lifetime.Token);
                 await _licenses.CheckTrialAsync(_lifetime.Token);
                 if (_lifetime.IsCancellationRequested) return;
                 if (_licenses.IsActivated)
@@ -196,7 +270,8 @@ public partial class ActivationWindow : Window
                     DialogResult = true;
                     return;
                 }
-                if (showStatus) StatusText.Text = "后台尚未为此设备激活，请核对设备码后稍后重试。";
+                if (showStatus) StatusText.Text = _payments is null
+                    ? "后台尚未为此设备激活，请核对设备码后稍后重试。" : "尚未激活";
             }
         }
         catch

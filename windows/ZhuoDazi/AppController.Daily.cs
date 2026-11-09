@@ -24,7 +24,7 @@ public sealed partial class AppController
 
     private void EnsureCompanionAvailable()
     {
-        if (IsLocalPreview) throw new InvalidOperationException("本地预览用于体验日常互动，请在正式版中使用搭子与大厅。");
+        if (LocalServicesDisabled) throw new InvalidOperationException("本地预览用于体验日常互动，请在正式版中使用搭子与大厅。");
     }
 
     private void InitializeDailyJournal()
@@ -89,7 +89,7 @@ public sealed partial class AppController
             "legacy-quiet" => "quiet",
             _ => "standard"
         };
-        if (!IsLocalPreview) Interactions.MarkProfileDirty(Settings.InteractionMode, enabled);
+        if (!LocalServicesDisabled) Interactions.MarkProfileDirty(Settings.InteractionMode, enabled);
         RestartInteractionTimer(true);
         SaveAndRefresh();
         ScheduleInteractionSync();

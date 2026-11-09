@@ -37,7 +37,7 @@ internal static class Program
         DeskPetHttp.HandlerFactory = () => new OfflineHandler();
         var directory = Path.Combine(Path.GetTempPath(), "ZhuoDazi-OfflinePreview", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        var automated = args.Any(argument => argument is "--library-check" or "--daily-smoke" or "--guide-check" or "--activation-check");
+        var automated = args.Any(argument => argument is "--library-check" or "--daily-smoke" or "--guide-check" or "--activation-check" or "--local-payment-check");
         // A ThreadPool timer can terminate this isolated test process even when
         // the STA dispatcher or synchronous disposal is blocked.
         using var watchdog = automated ? new System.Threading.Timer(_ =>
@@ -70,6 +70,25 @@ internal static class Program
         resources.SetAttributeValue(XNamespace.Xmlns + "x", x.NamespaceName);
         app.Resources = (ResourceDictionary)XamlReader.Parse(resources.ToString());
         Stage("WPF resources loaded");
+        if (args.Length == 3 && args[0] == "--local-payment-check")
+        {
+            System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));
+            app.Dispatcher.BeginInvoke(async () =>
+            {
+                try
+                {
+                    await LocalPaymentFlowChecks.Run(args[1], args[2]);
+                    app.Shutdown(0);
+                }
+                catch (Exception error)
+                {
+                    Console.Error.WriteLine(error);
+                    app.Shutdown(1);
+                }
+            });
+            app.Run();
+            return;
+        }
         if (args.Contains("--activation-check"))
         {
             System.Threading.SynchronizationContext.SetSynchronizationContext(new System.Windows.Threading.DispatcherSynchronizationContext(app.Dispatcher));

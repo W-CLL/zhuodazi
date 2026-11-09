@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application
     private bool _localMarketMode;
     private bool _petMarketDebugMode;
     private bool _appPreviewMode;
+    private bool _alipayPreviewMode;
     private bool _uninstallFeedbackMode;
     private string _instanceSuffix = string.Empty;
     internal AppController? Controller { get; private set; }
@@ -35,9 +36,10 @@ public partial class App : System.Windows.Application
                 Shutdown(UninstallHelperFailureExitCode);
                 return;
             }
-            if (_localMarketMode || _petMarketDebugMode || _appPreviewMode)
+            if (_alipayPreviewMode || _localMarketMode || _petMarketDebugMode || _appPreviewMode)
             {
-                var title = _appPreviewMode ? "桌搭子完整本地预览" : _petMarketDebugMode ? "桌宠小铺调试" : "本地付款测试";
+                var title = LocalPaymentTestEnvironment.IsTestBuild ? "桌搭子"
+                    : _alipayPreviewMode ? "支付宝本地预览" : _appPreviewMode ? "桌搭子完整本地预览" : _petMarketDebugMode ? "桌宠小铺调试" : "本地付款测试";
                 System.Windows.MessageBox.Show($"{title}遇到错误，请关闭窗口后重试。", title, MessageBoxButton.OK, MessageBoxImage.Error);
                 args.Handled = true;
                 return;
@@ -48,22 +50,87 @@ public partial class App : System.Windows.Application
         };
         AppDomain.CurrentDomain.UnhandledException += (_, args) =>
         {
-            if (!_uninstallFeedbackMode && !_localMarketMode && !_petMarketDebugMode && !_appPreviewMode
+            if (!_uninstallFeedbackMode && !_alipayPreviewMode && !_localMarketMode && !_petMarketDebugMode && !_appPreviewMode
                 && args.ExceptionObject is Exception error) WriteCrashLog(error);
         };
     }
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        if (LocalPaymentTestEnvironment.IsTestBuild)
+        {
+            _appPreviewMode = true;
+            base.OnStartup(e);
+            try
+            {
+                var environment = LocalPaymentTestEnvironment.Load(Path.Combine(AppContext.BaseDirectory, "payment-test.json"));
+                _instanceSuffix = ".AlipayFullTest." + environment.Profile;
+                _singleInstanceMutex = new Mutex(true, "Local\\ZhuoDazi.Native.Singleton" + _instanceSuffix, out var ownsTestMutex);
+                if (!ownsTestMutex)
+                {
+                    try { EventWaitHandle.OpenExisting(ShowSettingsSignalName + _instanceSuffix).Set(); } catch { }
+                    Shutdown();
+                    return;
+                }
+                DeskPetHttp.HandlerFactory = environment.CreateHandler;
+                var testStore = new SettingsStore(environment.DataDirectory);
+                var testSettings = testStore.Load();
+                testSettings.StartWithWindows = false;
+                testSettings.AutoCheckUpdates = false;
+                testStore.Save(testSettings);
+                _licenseService = new LicenseService(environment.DataDirectory);
+                Controller = new AppController(_licenseService, testStore, localPreview: true,
+                    new InteractionService(testStore, _licenseService, environment.CreateHandler(), environment.SigningPublicKey));
+                Controller.ConfigureLocalPaymentTest(environment);
+                Controller.TrialVerificationRequested += async () => await VerifyTrialAsync();
+                StartSettingsSignalListener();
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                Controller.Start(synchronizeStartupRegistration: false);
+                Controller.ShowSettings();
+                await VerifyTrialAsync();
+            }
+            catch
+            {
+                System.Windows.MessageBox.Show("启动失败，请检查应用文件和网络连接后重试。",
+                    "桌搭子", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(1);
+            }
+            return;
+        }
         var localMarketArgument = Array.FindIndex(e.Args, argument => argument.Equals("--local-market-config", StringComparison.OrdinalIgnoreCase));
         var petMarketArgument = Array.FindIndex(e.Args, argument => argument.Equals("--pet-market-config", StringComparison.OrdinalIgnoreCase));
         var appPreviewArgument = Array.FindIndex(e.Args, argument => argument.Equals("--app-preview-config", StringComparison.OrdinalIgnoreCase));
+        var alipayPreviewArgument = Array.FindIndex(e.Args, argument => argument.Equals("--alipay-preview-config", StringComparison.OrdinalIgnoreCase));
         var uninstallFeedbackArgument = Array.FindIndex(e.Args, argument => argument.Equals("--uninstall-feedback", StringComparison.OrdinalIgnoreCase));
         _localMarketMode = localMarketArgument >= 0;
         _petMarketDebugMode = petMarketArgument >= 0;
         _appPreviewMode = appPreviewArgument >= 0;
+        _alipayPreviewMode = alipayPreviewArgument >= 0;
         _uninstallFeedbackMode = uninstallFeedbackArgument >= 0;
         base.OnStartup(e);
+        if (_alipayPreviewMode)
+        {
+            // Enter before the production mutex, settings, license store, trial checks or analytics.
+            // The preview owns only its explicitly configured local identities and data directory.
+            try
+            {
+                if (_localMarketMode || _petMarketDebugMode || _appPreviewMode || _uninstallFeedbackMode)
+                    throw new InvalidOperationException("支付宝预览不能与其他启动模式同时使用。");
+                if (alipayPreviewArgument + 1 >= e.Args.Length)
+                    throw new InvalidOperationException("请提供支付宝本地预览配置文件的绝对路径。");
+                var configuration = AlipayPreviewConfig.Load(e.Args[alipayPreviewArgument + 1]);
+                ShutdownMode = ShutdownMode.OnMainWindowClose;
+                MainWindow = new AlipayPreviewWindow(configuration);
+                MainWindow.Show();
+            }
+            catch (Exception error)
+            {
+                var message = error is InvalidOperationException ? error.Message : "支付宝本地预览无法启动，请检查配置和本地目录权限。";
+                System.Windows.MessageBox.Show(message, "支付宝本地预览", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(1);
+            }
+            return;
+        }
         if (_uninstallFeedbackMode)
         {
             ShutdownMode = ShutdownMode.OnExplicitShutdown;

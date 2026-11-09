@@ -11,11 +11,11 @@ public sealed partial class AppController
     {
         get
         {
-            if (IsLocalPreview && _petMarketDebugConfig is null)
+            if (IsLocalPreview && _petMarketDebugConfig is null && !IsLocalPaymentTest)
                 throw new InvalidOperationException("本地预览尚未配置资源后台。");
             return _resourcePackClient ??= new ResourcePackClient(
-                _petMarketDebugConfig?.Origin ?? new Uri(DeskPetApi.BaseUrl), _store.DataDirectory,
-                _petMarketDebugConfig is not null);
+                PaymentTestOrigin ?? _petMarketDebugConfig?.Origin ?? new Uri(DeskPetApi.BaseUrl), _store.DataDirectory,
+                IsLocalPaymentTest || _petMarketDebugConfig is not null);
         }
     }
 

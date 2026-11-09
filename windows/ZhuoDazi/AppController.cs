@@ -112,6 +112,7 @@ public sealed partial class AppController : IDisposable
         IsLocalPreview = localPreview;
         _store = store ?? new SettingsStore();
         _licenses = licenses;
+        if (!localPreview) PaymentCheckout = new FullAppPaymentClient(licenses);
         _analytics = new AnalyticsService(_licenses, _store.DataDirectory);
         Settings = _store.Load();
         InitializeDailyJournal();
@@ -183,7 +184,7 @@ public sealed partial class AppController : IDisposable
             _interactionSyncTimer.Interval = TimeSpan.FromSeconds(5);
             _interactionSyncTimer.Start();
         }
-        if (!IsLocalPreview && (_licenses.IsActivated || _licenses.IsTrialActive))
+        if (!LocalServicesDisabled && (_licenses.IsActivated || _licenses.IsTrialActive))
         {
             _companionTimer.Start();
             if (_licenses.IsActivated) _ = RefreshCompanionAsync();
@@ -299,7 +300,9 @@ public sealed partial class AppController : IDisposable
         if (_settingsWindow is null)
         {
             _settingsWindow = new SettingsWindow(this);
-            if (IsLocalPreview) _settingsWindow.Title = $"桌搭子 {UpdateService.CurrentVersion} · Windows 本地预览";
+            if (IsLocalPreview) _settingsWindow.Title = IsLocalPaymentTest
+                ? "桌搭子"
+                : $"桌搭子 {UpdateService.CurrentVersion} · Windows 本地预览";
             _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         }
         _settingsWindow.Show();
@@ -324,7 +327,7 @@ public sealed partial class AppController : IDisposable
         var previousInbox = Companions.Inbox;
         var previousWasTrialIdentity = !_licenses.IsActivated;
         var previousInstallation = _licenses.InstallationId;
-        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status, trialEnded, _remoteConfig);
+        var activationWindow = new ActivationWindow(_licenses, _licenses.IsActivated, status, trialEnded, _remoteConfig, PaymentCheckout);
         if (owner is not null) activationWindow.Owner = owner;
         var activated = activationWindow.ShowDialog() == true;
         if (activated)
@@ -366,7 +369,7 @@ public sealed partial class AppController : IDisposable
         _interactionSyncTimer.Stop();
         if (HasPremiumAccess) ScheduleInteractionSync();
         _companionTimer.Stop();
-        if (!IsLocalPreview && (_licenses.IsActivated || _licenses.IsTrialActive))
+        if (!LocalServicesDisabled && (_licenses.IsActivated || _licenses.IsTrialActive))
         {
             _companionTimer.Start();
             if (_licenses.IsActivated) _ = RefreshCompanionAsync();
@@ -506,7 +509,7 @@ public sealed partial class AppController : IDisposable
 
     public async Task RefreshCompanionAsync(CancellationToken cancellationToken = default)
     {
-        if (IsLocalPreview) return;
+        if (LocalServicesDisabled) return;
         if (!HasPremiumAccess) return;
         await Companions.RefreshProfileAsync(cancellationToken);
         RefreshTray();
@@ -516,7 +519,7 @@ public sealed partial class AppController : IDisposable
     public async Task<IReadOnlyList<CompanionHallPerson>> RefreshCompanionHallAsync(
         CancellationToken cancellationToken = default)
     {
-        if (IsLocalPreview) return [];
+        if (LocalServicesDisabled) return [];
         if (!RemoteConfig.CompanionHall) return [];
         if (!HasPremiumAccess) return [];
         var people = await Companions.RefreshHallAsync(cancellationToken);
@@ -1262,7 +1265,7 @@ public sealed partial class AppController : IDisposable
 
     private async Task FlushInteractionEventsAsync()
     {
-        if (IsLocalPreview) return;
+        if (LocalServicesDisabled) return;
         try { await Interactions.FlushEventsAsync(); }
         catch { }
         StateChanged?.Invoke();
@@ -1295,8 +1298,8 @@ public sealed partial class AppController : IDisposable
             var profile = await Interactions.SyncProfileAsync(
                 Settings.InteractionMode,
                 Settings.RandomInteractionsEnabled);
-            if (!IsLocalPreview) ApplyInteractionProfile(profile);
-            if (!IsLocalPreview) await Interactions.FlushEventsAsync();
+            if (!LocalServicesDisabled) ApplyInteractionProfile(profile);
+            if (!LocalServicesDisabled) await Interactions.FlushEventsAsync();
         }
         catch { }
         finally
@@ -1764,7 +1767,7 @@ public sealed partial class AppController : IDisposable
 
     private async Task PollCompanionAsync()
     {
-        if (IsLocalPreview || _disposed || IsExiting || !(_licenses.IsActivated || _licenses.IsTrialActive))
+        if (LocalServicesDisabled || _disposed || IsExiting || !(_licenses.IsActivated || _licenses.IsTrialActive))
             return;
         if (_companionSyncing)
         {
