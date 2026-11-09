@@ -299,6 +299,7 @@ internal sealed class PetMarketClient : IDisposable
             || string.IsNullOrWhiteSpace(payload.FileName)
             || !ValidDownloadPath(payload.DownloadPath, payload.ProductId, payload.Version))
             throw new InvalidOperationException("市场下载授权内容无效，请刷新后重试。");
+        if (payload.DownloadUrl is not null) ValidateOssDownloadUrl(payload);
         return payload;
     }
 
@@ -365,7 +366,11 @@ internal sealed class PetMarketClient : IDisposable
         var partial = destination + ".partial";
         try
         {
-            using var request = CreateRequest(HttpMethod.Get, descriptor.DownloadPath, authenticated: true);
+            // The URL is covered by the verified Ed25519 grant. A fresh request
+            // keeps device credentials on the API origin only.
+            using var request = descriptor.DownloadUrl is null
+                ? CreateRequest(HttpMethod.Get, descriptor.DownloadPath, authenticated: true)
+                : CreateOssDownloadRequest(descriptor);
             using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             await EnsureSuccessAsync(response, cancellationToken);
             if (response.Content.Headers.ContentLength is { } contentLength && contentLength != descriptor.SizeBytes)
@@ -717,6 +722,26 @@ internal sealed class PetMarketClient : IDisposable
 
     private static string SafeFilePart(string value)
         => new(value.Where(character => char.IsLetterOrDigit(character) || character is '-' or '_' or '.').Take(80).ToArray());
+
+    internal static Uri ValidateOssDownloadUrl(PetMarketDownloadPayload descriptor)
+    {
+        var suffix = $"/pet-market/{EscapeSegment(descriptor.ProductId)}/{EscapeSegment(descriptor.Version)}/"
+            + $"{EscapeSegment(descriptor.ProductId + "-" + descriptor.Version + "-" + descriptor.Sha256 + ".zip")}";
+        if (!Uri.TryCreate(descriptor.DownloadUrl, UriKind.Absolute, out var uri)
+            || uri.Scheme != "https" || uri.Host != "oss-download.desktoppet.online" || !uri.IsDefaultPort
+            || uri.UserInfo.Length != 0 || uri.Fragment.Length != 0 || uri.Query.Length == 0
+            || !uri.AbsolutePath.EndsWith(suffix, StringComparison.Ordinal))
+            throw new InvalidOperationException("桌宠下载地址无效，请刷新后重试。");
+        return uri;
+    }
+
+    internal static HttpRequestMessage CreateOssDownloadRequest(PetMarketDownloadPayload descriptor)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Get, ValidateOssDownloadUrl(descriptor));
+        request.Headers.UserAgent.ParseAdd($"ZhuoDazi/{UpdateService.CurrentVersion}");
+        request.Headers.Accept.ParseAdd("application/octet-stream");
+        return request;
+    }
 
     private static bool SameOrigin(Uri left, Uri right)
         => left.Scheme.Equals(right.Scheme, StringComparison.OrdinalIgnoreCase)

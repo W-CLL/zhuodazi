@@ -27,6 +27,7 @@ internal static class Program
             await CheckSignedEnvelopeRejectionsAsync(config, privateKey);
             await CheckExpandedPackageMetadataAsync(config, privateKey);
             await CheckCompletedDownloadsMoveAsync(config);
+            await CheckOssDownloadsAsync(config, privateKey);
             Console.WriteLine($"PetMarketClient checks passed ({_assertions} assertions).");
         }
         finally
@@ -34,6 +35,44 @@ internal static class Program
             DeskPetHttp.HandlerFactory = null;
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    private static async Task CheckOssDownloadsAsync(PetMarketDebugConfig config, Ed25519PrivateKeyParameters privateKey)
+    {
+        var bytes = Encoding.UTF8.GetBytes("verified OSS package");
+        var hash = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        var descriptor = new PetMarketDownloadPayload {
+            SchemaVersion = 1, Kind = "pet-market-download", AccountId = config.AccountId,
+            LicenseId = config.LicenseId, InstallationId = config.InstallationId, ProductId = "oss-pet",
+            Version = "1.0.0", FileName = "pet.zip", SizeBytes = bytes.Length, Sha256 = hash,
+            ManifestSha256 = new string('a', 64), IssuedAt = DateTimeOffset.UtcNow,
+            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(10),
+            DownloadPath = "/api/pet-market/products/oss-pet/versions/1.0.0/download",
+            DownloadUrl = $"https://oss-download.desktoppet.online/releases/pet-market/oss-pet/1.0.0/oss-pet-1.0.0-{hash}.zip?Expires=9999999999&Signature=test"
+        };
+        var downloads = 0;
+        DeskPetHttp.HandlerFactory = () => new StubHandler(request => {
+            if (request.RequestUri!.Host != "oss-download.desktoppet.online") return Json(Sign(descriptor, privateKey));
+            downloads++;
+            Require(request.Headers.Authorization is null && !request.Headers.Contains("X-DeskPet-Installation-Id")
+                && !request.Headers.Contains("Cookie"), "OSS never receives device credentials or cookies.");
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };
+        });
+        using var client = new PetMarketClient(config);
+        var verified = await client.GetDownloadDescriptorAsync("oss-pet");
+        Require(File.ReadAllBytes(await client.DownloadPackageAsync(verified)).SequenceEqual(bytes), "Signed OSS bytes are verified and downloaded directly.");
+        var good = descriptor.DownloadUrl;
+        foreach (var invalid in new[] { good.Replace("https:", "http:"), good.Replace("oss-download.desktoppet.online", "evil.example"),
+            good.Replace("https://", "https://user:password@"), good.Replace(".online/", ".online:444/"), good + "#fragment",
+            good.Replace(hash, new string('b', 64)) }) {
+            descriptor.DownloadUrl = invalid;
+            await ThrowsAsync(() => client.GetDownloadDescriptorAsync("oss-pet"), "Even a signed grant cannot select an untrusted object source.");
+        }
+        descriptor.DownloadUrl = good;
+        descriptor.Sha256 = new string('b', 64);
+        descriptor.DownloadUrl = good.Replace(hash, descriptor.Sha256);
+        await ThrowsAsync(() => client.DownloadPackageAsync(descriptor), "Corrupt OSS bytes must fail SHA-256 validation.");
+        Require(downloads == 2, "Invalid OSS URLs must fail before a download request.");
     }
 
     private static async Task CheckOrderHistoryAsync(PetMarketDebugConfig config)

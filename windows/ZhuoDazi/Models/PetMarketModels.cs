@@ -124,6 +124,7 @@ public sealed class PetMarketPreviewFile
 
     [JsonPropertyName("downloadPath")]
     public string DownloadPath { get; set; } = string.Empty;
+
 }
 
 public sealed class PetMarketPaymentInfo
@@ -354,6 +355,9 @@ public sealed class PetMarketDownloadPayload
 
     [JsonPropertyName("downloadPath")]
     public string DownloadPath { get; set; } = string.Empty;
+
+    [JsonPropertyName("downloadUrl")]
+    public string? DownloadUrl { get; set; }
 
     [JsonPropertyName("issuedAt")]
     public DateTimeOffset IssuedAt { get; set; }

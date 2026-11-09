@@ -92,6 +92,41 @@ private final class PetMarketTransferProtocol: URLProtocol {
 final class PetMarketTransferTests: XCTestCase {
     private let origin = URL(string: "https://pet-market.test")!
 
+    @MainActor
+    func testOssArchiveUsesFreshRequestAndRestrictsTheSignedObject() async throws {
+        let hash = String(repeating: "a", count: 64)
+        let good = "https://oss-download.desktoppet.online/releases/pet-market/oss-pet/1/oss-pet-1-\(hash).zip?Expires=9999999999&Signature=test"
+        let json: [String: Any] = ["schemaVersion": 1, "kind": "pet-market-download", "accountId": "account",
+            "licenseId": "license", "installationId": "installation", "productId": "oss-pet", "version": "1",
+            "manifestSha256": hash, "sha256": hash, "sizeBytes": 3,
+            "issuedAt": "2026-11-09T00:00:00.000Z", "expiresAt": "2026-11-09T00:10:00.000Z", "downloadUrl": good]
+        var descriptor = try PetMarketJSON.decoder().decode(PetMarketGrant.self, from: JSONSerialization.data(withJSONObject: json))
+        let request = try XCTUnwrap(PetMarketClient.ossDownloadRequest(descriptor))
+        let url = try XCTUnwrap(request.url)
+        let payload = Data([1, 2, 3])
+        PetMarketTransferProtocol.register(.init(data: payload, declaredLength: 3), at: url)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [PetMarketTransferProtocol.self]
+        let transfer = PetMarketTransfer(origin: URL(string: "https://oss-download.desktoppet.online")!, maximum: 3,
+            policy: try .archive(validFor: 600), configuration: configuration)
+        let received = try await transfer.data(for: request)
+        XCTAssertEqual(received, payload)
+        let sent = try XCTUnwrap(PetMarketTransferProtocol.request(at: url))
+        XCTAssertNil(sent.value(forHTTPHeaderField: "Authorization"))
+        XCTAssertNil(sent.value(forHTTPHeaderField: "X-DeskPet-Installation-Id"))
+        XCTAssertNil(sent.value(forHTTPHeaderField: "Cookie"))
+        for invalid in [good.replacingOccurrences(of: "https:", with: "http:"),
+            good.replacingOccurrences(of: "oss-download.desktoppet.online", with: "evil.example"),
+            good.replacingOccurrences(of: "https://", with: "https://user:password@"),
+            good.replacingOccurrences(of: ".online/", with: ".online:444/"), good + "#fragment",
+            good.replacingOccurrences(of: hash, with: String(repeating: "b", count: 64))] {
+            descriptor.downloadUrl = invalid
+            XCTAssertThrowsError(try PetMarketClient.ossDownloadRequest(descriptor))
+        }
+        descriptor.downloadUrl = nil
+        XCTAssertNil(try PetMarketClient.ossDownloadRequest(descriptor), "Older backends keep using the authenticated API download")
+    }
+
     private func fixture(_ scenario: PetMarketTransferProtocol.Scenario, maximum: Int,
                          policy: PetMarketTransferPolicy = .asset) -> (URL, PetMarketTransfer) {
         let url = origin.appendingPathComponent(UUID().uuidString)

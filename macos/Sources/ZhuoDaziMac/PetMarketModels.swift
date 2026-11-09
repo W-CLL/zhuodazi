@@ -98,6 +98,7 @@ struct PetMarketGrant: Decodable {
     var sha256: String?
     var sizeBytes: Int?
     var downloadPath: String?
+    var downloadUrl: String?
 }
 struct PetMarketManifest: Decodable {
     struct File: Decodable { var path: String; var sha256: String; var sizeBytes: Int }

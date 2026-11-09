@@ -168,7 +168,15 @@ final class PetMarketClient {
               let size = descriptor.sizeBytes, (1...PetMarketLimits.maximumArchiveBytes).contains(size),
               let hash = descriptor.sha256, PetMarketJSON.validHash(hash) else { throw PetMarketError.invalid("下载授权内容无效") }
         let policy = try PetMarketTransferPolicy.archive(validFor: descriptor.expiresAt.timeIntervalSince(serverNow))
-        let bytes = try await data(expected, authenticated: true, limit: size, policy: policy)
+        let bytes: Data
+        if let request = try Self.ossDownloadRequest(descriptor) {
+            // Signature and entitlement were verified above. Never attach the
+            // device's Authorization header to an object-storage request.
+            let ossOrigin = URL(string: "https://oss-download.desktoppet.online")!
+            bytes = try await PetMarketTransfer(origin: ossOrigin, maximum: size, policy: policy).data(for: request)
+        } else {
+            bytes = try await data(expected, authenticated: true, limit: size, policy: policy)
+        }
         try Task.checkCancellation()
         let root = storage
         let work = Task.detached(priority: .utility) {
@@ -189,6 +197,21 @@ final class PetMarketClient {
             }
             throw error
         }
+    }
+
+    static func ossDownloadRequest(_ descriptor: PetMarketGrant) throws -> URLRequest? {
+        guard let value = descriptor.downloadUrl else { return nil }
+        let suffix = "/pet-market/\(descriptor.productId)/\(descriptor.version)/\(descriptor.productId)-\(descriptor.version)-\(descriptor.sha256 ?? "").zip"
+        guard let url = URL(string: value), url.scheme == "https", url.host == "oss-download.desktoppet.online",
+              url.port == nil || url.port == 443, url.user == nil, url.password == nil,
+              url.fragment == nil, let query = url.query, !query.isEmpty, url.path.hasSuffix(suffix) else {
+            throw PetMarketError.invalid("桌宠下载地址无效，请刷新后重试")
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("ZhuoDazi/\(AppVersion.current)", forHTTPHeaderField: "User-Agent")
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
+        return request
     }
 
     func preview(_ product: PetMarketProduct, index: Int) async throws -> Data? {

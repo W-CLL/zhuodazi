@@ -71,6 +71,7 @@ final class PetMarketTransfer: NSObject, URLSessionDataDelegate, @unchecked Send
         configuration.timeoutIntervalForRequest = policy.idleTimeout
         configuration.timeoutIntervalForResource = policy.resourceTimeout
         configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
         configuration.urlCache = nil
         configuration.connectionProxyDictionary = [:]
         let queue = OperationQueue()
