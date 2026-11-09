@@ -63,7 +63,8 @@ internal sealed class FullAppPaymentClient : IDisposable
     private async Task<AlipayPreviewOrderResponse> UpdateOrderAsync(AlipayPreviewOrderResponse saved, CancellationToken token)
     {
         var response = await _client.OrderAsync(Identity, saved.Order.Id, token);
-        if ((response.Order.Status == "pending" || response.Order.Status == "paid" && response.Order.FulfillmentStatus != "fulfilled")
+        if (response.Order.Id != saved.Order.Id) throw new InvalidOperationException("订单编号不匹配。");
+        if ((response.Order.Status is "pending" or "expired" || response.Order.Status == "paid" && response.Order.FulfillmentStatus != "fulfilled")
             && (!_nextRefresh.TryGetValue(saved.Order.Id, out var next) || DateTimeOffset.UtcNow >= next))
         {
             _nextRefresh[saved.Order.Id] = DateTimeOffset.UtcNow.AddSeconds(30);
@@ -71,8 +72,11 @@ internal sealed class FullAppPaymentClient : IDisposable
             catch (OperationCanceledException) { throw; }
             catch { /* Keep the authenticated order result when Alipay query is temporarily unavailable. */ }
         }
+        if (response.Order.Id != saved.Order.Id) throw new InvalidOperationException("订单编号不匹配。");
         response = response with { CheckoutUrl = saved.CheckoutUrl };
-        _pending[response.Order.Id] = response;
+        if (response.Order.Status == "paid" && response.Order.FulfillmentStatus == "fulfilled")
+            _pending.Remove(response.Order.Id);
+        else _pending[response.Order.Id] = response;
         return response;
     }
 

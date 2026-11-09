@@ -126,7 +126,7 @@ final class PaymentCheckoutClient {
         guard busyOrders.insert(id).inserted else { return pending[id] ?? saved }
         defer { busyOrders.remove(id) }
         var response: CheckoutResponse = try await send("orders/\(id)")
-        if (response.order.status == "pending" || response.order.status == "paid" && response.order.fulfillmentStatus != "fulfilled"),
+        if (["pending", "expired"].contains(response.order.status) || response.order.status == "paid" && response.order.fulfillmentStatus != "fulfilled"),
            Date() >= (nextRefresh[id] ?? .distantPast) {
             nextRefresh[id] = Date().addingTimeInterval(30)
             do { response = try await send("orders/\(id)/refresh", method: "POST") }
@@ -135,7 +135,8 @@ final class PaymentCheckoutClient {
         }
         guard response.order.id == id else { throw PetMarketError.invalid("订单编号不匹配") }
         response.checkoutUrl = saved.checkoutUrl
-        pending[id] = response
+        if response.order.status == "paid", response.order.fulfillmentStatus == "fulfilled" { pending[id] = nil }
+        else { pending[id] = response }
         return response
     }
 

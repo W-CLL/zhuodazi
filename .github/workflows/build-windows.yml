@@ -55,7 +55,8 @@ jobs:
         shell: pwsh
         run: |
           [xml]$project = Get-Content windows/ZhuoDazi/ZhuoDazi.csproj
-          "APP_VERSION=$($project.Project.PropertyGroup.Version)" >> $env:GITHUB_ENV
+          $version = $project.SelectSingleNode('/Project/PropertyGroup/Version').InnerText.Trim()
+          "APP_VERSION=$version" >> $env:GITHUB_ENV
 
       - name: Install Inno Setup
         shell: pwsh

@@ -16,7 +16,7 @@ $compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | S
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     [xml]$project = Get-Content -LiteralPath $projectPath
-    $Version = [string]$project.Project.PropertyGroup.Version
+    $Version = $project.SelectSingleNode('/Project/PropertyGroup/Version').InnerText.Trim()
 }
 if ($Version -notmatch '^\d+\.\d+\.\d+$') {
     throw "Version must use MAJOR.MINOR.PATCH format, received '$Version'."

@@ -43,6 +43,7 @@ final class InvitationWindowController: NSObject, NSWindowDelegate {
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool { finish(); NSApp.stopModal(); return true }
+    func windowDidBecomeKey(_ notification: Notification) { requestRefresh() }
 
     private func buildInterface(statusMessage: String?) {
         let root = NSView(), stack = NSStackView()
