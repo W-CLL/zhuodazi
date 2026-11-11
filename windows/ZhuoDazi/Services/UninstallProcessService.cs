@@ -101,15 +101,15 @@ internal static class UninstallProcessService
                     if (handle.IsInvalid)
                     {
                         if (Marshal.GetLastWin32Error() == ProcessNoLongerExists) continue;
-                        return false; // An unreadable candidate cannot safely be ruled out.
+                        return ReportFailure("query-open", processId); // An unreadable candidate cannot safely be ruled out.
                     }
                     var wait = WaitForSingleObject(handle, 0);
                     if (wait == WaitObjectSignaled) continue;
-                    if (wait != WaitTimeout) return false;
+                    if (wait != WaitTimeout) return ReportFailure("query-wait", processId);
                     if (!TryReadExecutablePath(handle, out var path))
                     {
                         if (WaitForSingleObject(handle, 0) == WaitObjectSignaled) continue;
-                        return false;
+                        return ReportFailure("query-path", processId);
                     }
                     if (paths.Contains(path)) matches.Add(processId);
                 }
@@ -126,16 +126,22 @@ internal static class UninstallProcessService
     {
         if (processId == Environment.ProcessId) return true;
         using var handle = OpenProcess(QueryLimitedInformation | Synchronize | Terminate, false, processId);
-        if (handle.IsInvalid) return Marshal.GetLastWin32Error() == ProcessNoLongerExists;
+        if (handle.IsInvalid) return Marshal.GetLastWin32Error() == ProcessNoLongerExists || ReportFailure("terminate-open", processId);
         if (WaitForSingleObject(handle, 0) == WaitObjectSignaled) return true;
         if (!TryReadExecutablePath(handle, out var path))
-            return WaitForSingleObject(handle, 0) == WaitObjectSignaled;
+            return WaitForSingleObject(handle, 0) == WaitObjectSignaled || ReportFailure("terminate-path", processId);
         if (!paths.Contains(path)) return true; // The PID may have been reused after enumeration.
 
         // Query and terminate through the same handle so PID reuse cannot target
         // a different process between the final path check and termination.
         return TerminateProcess(handle, 0)
-            || WaitForSingleObject(handle, 0) == WaitObjectSignaled;
+            || WaitForSingleObject(handle, 0) == WaitObjectSignaled || ReportFailure("terminate", processId);
+    }
+
+    private static bool ReportFailure(string operation, int processId)
+    {
+        Trace.WriteLine($"Uninstall process check failed: {operation}, PID={processId}, Win32={Marshal.GetLastWin32Error()}.");
+        return false;
     }
 
     private static bool TryReadExecutablePath(SafeProcessHandle process, out string path)

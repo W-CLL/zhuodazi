@@ -9,6 +9,8 @@ internal static class Program
     private static async Task<int> Main(string[] args)
     {
         if (args is ["--fixture", var behavior]) return RunFixture(behavior);
+        Trace.Listeners.Add(new TextWriterTraceListener(Console.Out));
+        Trace.AutoFlush = true;
         var root = Path.Combine(Path.GetTempPath(), "zhuodazi-uninstall-process-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         var fixtures = new List<Process>();
