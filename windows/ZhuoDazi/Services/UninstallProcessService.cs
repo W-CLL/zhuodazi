@@ -134,13 +134,20 @@ internal static class UninstallProcessService
 
         // Query and terminate through the same handle so PID reuse cannot target
         // a different process between the final path check and termination.
-        return TerminateProcess(handle, 0)
-            || WaitForSingleObject(handle, 0) == WaitObjectSignaled || ReportFailure("terminate", processId);
+        if (!TerminateProcess(handle, 0))
+            return WaitForSingleObject(handle, 0) == WaitObjectSignaled || ReportFailure("terminate", processId);
+
+        // TerminateProcess starts asynchronous teardown. On some Windows builds
+        // the image path disappears before the process handle becomes signaled.
+        // Keep this already-verified handle until exit instead of immediately
+        // re-enumerating a process whose executable can no longer be queried.
+        return WaitForSingleObject(handle, (uint)TerminationTimeout.TotalMilliseconds) == WaitObjectSignaled
+            || ReportFailure("terminate-wait", processId);
     }
 
     private static bool ReportFailure(string operation, int processId)
     {
-        Trace.WriteLine($"Uninstall process check failed: {operation}, PID={processId}, Win32={Marshal.GetLastWin32Error()}.");
+        Trace.WriteLine($"Uninstall process check failed: {operation}, PID={processId}.");
         return false;
     }
 

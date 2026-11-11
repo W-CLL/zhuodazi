@@ -37,6 +37,7 @@ internal static class Program
                 Require(!other.HasExited, "A same-named process in another installation directory stays alive.");
             }
 
+            for (var attempt = 0; attempt < 3; attempt++)
             {
                 var target = await StartFixture(first, "ignore");
                 fixtures.Add(target);
