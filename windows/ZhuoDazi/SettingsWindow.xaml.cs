@@ -20,11 +20,14 @@ public partial class SettingsWindow : Window
     private bool _companionLoading;
     private bool _hallLoading;
     private bool _sourceSelectionBusy;
+    private bool _closed;
+    private System.Windows.Threading.DispatcherOperation? _pendingRefresh;
     private DateTimeOffset _hallSendAllowedAt;
     private readonly System.Windows.Threading.DispatcherTimer _hallClock = new() { Interval = TimeSpan.FromSeconds(1) };
     private string? _editingReminderId;
     private PetShopView? _petMarketView;
     private AuthorSharesView? _authorSharesView;
+    private (string Id, string Name, string Path)[]? _petListSnapshot;
 
     public SettingsWindow(AppController controller)
     {
@@ -40,10 +43,13 @@ public partial class SettingsWindow : Window
             RefreshAll();
         };
         Closing += OnClosing;
+        IsVisibleChanged += (_, _) => UpdateWindowActivity();
+        StateChanged += (_, _) => UpdateWindowActivity();
         _hallClock.Tick += (_, _) => { RefreshHallSendButton(); RefreshDailySummaryClock(); };
-        _hallClock.Start();
         Closed += (_, _) =>
         {
+            _closed = true;
+            _pendingRefresh?.Abort();
             _hallClock.Stop();
             _petMarketView?.Dispose();
             _controller.StateChanged -= Controller_StateChanged;
@@ -90,8 +96,26 @@ public partial class SettingsWindow : Window
 
     private void Controller_StateChanged()
     {
-        if (!Dispatcher.CheckAccess()) Dispatcher.BeginInvoke(RefreshAll);
-        else RefreshAll();
+        if (!Dispatcher.CheckAccess()) { Dispatcher.BeginInvoke(Controller_StateChanged); return; }
+        if (!IsUiActive || _pendingRefresh?.Status == System.Windows.Threading.DispatcherOperationStatus.Pending) return;
+        _pendingRefresh = Dispatcher.BeginInvoke(RefreshAll, System.Windows.Threading.DispatcherPriority.Background);
+    }
+
+    private bool IsUiActive => !_closed && IsVisible && WindowState != WindowState.Minimized;
+
+    private void UpdateWindowActivity()
+    {
+        if (IsUiActive)
+        {
+            _hallClock.Start();
+            RefreshAll();
+        }
+        else
+        {
+            _hallClock.Stop();
+            _pendingRefresh?.Abort();
+            ReleaseDailyDisplay();
+        }
     }
 
     private void Controller_TrialClockChanged()
@@ -102,7 +126,7 @@ public partial class SettingsWindow : Window
 
     private void RefreshLicenseBanner()
     {
-        if (LicenseBannerText is null || LicenseStatusText is null) return;
+        if (!IsUiActive || LicenseBannerText is null || LicenseStatusText is null) return;
         GuideButton.Content = _controller.GuideActionLabel;
         RetryTrialButton.Visibility = _controller.HasActivatedLicense ? Visibility.Collapsed : Visibility.Visible;
         RetryTrialButton.IsEnabled = !_controller.IsTrialVerificationPending;
@@ -127,6 +151,7 @@ public partial class SettingsWindow : Window
     /// </summary>
     private void RefreshAll()
     {
+        if (!IsUiActive) { _refreshing = false; return; }
         _refreshing = true;
         try
         {
@@ -183,9 +208,13 @@ public partial class SettingsWindow : Window
         foreach (var item in TheaterIntervalCombo.Items.OfType<ComboBoxItem>())
             if (item.Tag?.ToString() == settings.TheaterIntervalSeconds.ToString(CultureInfo.InvariantCulture)) item.IsSelected = true;
 
-        PetList.ItemsSource = null;
-        PetList.ItemsSource = settings.Pets;
-        PetList.SelectedItem = settings.Pets.FirstOrDefault(item => item.Id == settings.ActivePetId);
+        var petSnapshot = settings.Pets.Select(item => (item.Id, item.Name, item.Path)).ToArray();
+        if (_petListSnapshot is null || !_petListSnapshot.SequenceEqual(petSnapshot))
+        {
+            PetList.ItemsSource = settings.Pets.ToArray();
+            _petListSnapshot = petSnapshot;
+        }
+        PetList.SelectedItem = PetList.Items.OfType<PetDefinition>().FirstOrDefault(item => item.Id == settings.ActivePetId);
         PetCountText.Text = $"已添加 {settings.Pets.Count}/3 个自定义桌宠";
 
         var selectedLibraryId = (LibraryList.SelectedItem as LibraryListItem)?.Id;
@@ -198,8 +227,8 @@ public partial class SettingsWindow : Window
         libraryItems.AddRange(settings.PetMarketInstallations.Select(item => new LibraryListItem(
             item.ProductId, item.Title, $"小铺桌宠 · {item.Files.Count} 个动作", false,
             _controller.IsMarketProductEnabled(item.ProductId), true)));
-        LibraryList.ItemsSource = libraryItems;
-        LibraryList.SelectedItem = libraryItems.FirstOrDefault(item => item.Id == selectedLibraryId) ?? libraryItems[0];
+        var boundLibraries = BindChangedItems(LibraryList, libraryItems);
+        LibraryList.SelectedItem = boundLibraries.FirstOrDefault(item => item.Id == selectedLibraryId) ?? boundLibraries[0];
         LibrarySummary.Text = premium
             ? $"已启用 {_controller.EnabledPetSourceCount}/3 个来源 · {_controller.LibraryCount} 个 GIF 参与切换"
             : $"正在使用内置图鉴 · {_controller.LibraryCount} 个 GIF";
@@ -216,16 +245,16 @@ public partial class SettingsWindow : Window
         wordPackItems.AddRange(settings.InteractionWordPacks.Select(item => new WordPackListItem(
             item.Id, item.Name, $"{item.WordCount} 条互动台词 · {(item.Enabled ? "已启用" : "待启用")}", false,
             item.Enabled || item.Id == settings.ActiveInteractionWordPackId)));
-        WordPackList.ItemsSource = wordPackItems;
-        WordPackList.SelectedItem = wordPackItems.FirstOrDefault(item => item.Id == selectedWordPackId) ?? wordPackItems[0];
+        var boundWords = BindChangedItems(WordPackList, wordPackItems);
+        WordPackList.SelectedItem = boundWords.FirstOrDefault(item => item.Id == selectedWordPackId) ?? boundWords[0];
         WordPackSummary.Text = $"已收藏 {settings.InteractionWordPacks.Count} 套 · 已启用 {_controller.EnabledInteractionWordPacks.Count}/10 套";
         DeleteWordPackButton.IsEnabled = WordPackList.SelectedItem is WordPackListItem { Id: not null };
 
         var selectedTheaterScriptId = (TheaterScriptList.SelectedItem as TheaterScriptListItem)?.Id;
         var theaterScriptItems = settings.TheaterScripts.Select(item => new TheaterScriptListItem(
             item.Id, item.Name, $"{item.Scenes.Count} 轮对白 · {(item.Enabled ? "已启用" : "待启用")}", item.Enabled)).ToList();
-        TheaterScriptList.ItemsSource = theaterScriptItems;
-        TheaterScriptList.SelectedItem = theaterScriptItems.FirstOrDefault(item => item.Id == selectedTheaterScriptId);
+        var boundScripts = BindChangedItems(TheaterScriptList, theaterScriptItems);
+        TheaterScriptList.SelectedItem = boundScripts.FirstOrDefault(item => item.Id == selectedTheaterScriptId);
         TheaterScriptSummary.Text = settings.TheaterScripts.Count == 0
             ? "尚未导入剧本，演出将使用内置性格对白"
             : $"已收藏 {settings.TheaterScripts.Count} 个剧本 · 已启用 {settings.TheaterScripts.Count(item => item.Enabled)}/10 个";
@@ -302,8 +331,8 @@ public partial class SettingsWindow : Window
         HallCountText.Text = $"{_controller.Companions.HallPeople.Count} 人在线";
         var selectedHallId = (CompanionHallList.SelectedItem as HallListItem)?.Id;
         var hallItems = _controller.Companions.HallPeople.Select(person => new HallListItem(person)).ToList();
-        CompanionHallList.ItemsSource = hallItems;
-        CompanionHallList.SelectedItem = hallItems.FirstOrDefault(item => item.Id == selectedHallId);
+        var boundPeople = BindChangedItems(CompanionHallList, hallItems);
+        CompanionHallList.SelectedItem = boundPeople.FirstOrDefault(item => item.Id == selectedHallId);
         CompanionHallList.IsEnabled = hallEnabled && !_hallLoading;
         CompanionHallEmptyText.Visibility = hallItems.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         CompanionHallEmptyText.Text = _controller.LocalServicesDisabled ? "请在正式版中使用搭子与大厅。"
@@ -327,8 +356,16 @@ public partial class SettingsWindow : Window
         RefreshDailyJournal();
     }
 
+    private static IReadOnlyList<T> BindChangedItems<T>(ItemsControl control, IReadOnlyList<T> items)
+    {
+        if (control.ItemsSource is IReadOnlyList<T> current && current.SequenceEqual(items)) return current;
+        control.ItemsSource = items;
+        return items;
+    }
+
     private void RenderUpdateState(UpdateState state)
     {
+        if (!IsUiActive) return;
         UpdateStatusText.Text = state.Message;
         UpdateNotesText.Text = state.Manifest?.Notes?.Trim() is { Length: > 0 } notes
             ? notes : "此版本暂未提供详细更新说明。";
@@ -716,6 +753,7 @@ public partial class SettingsWindow : Window
     private async void MainTabs_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!ReferenceEquals(e.OriginalSource, MainTabs)) return;
+        if (MainTabs.SelectedItem != DailyJournalTab) ReleaseDailyDisplay();
         if (MainTabs.SelectedItem == PetMarketTab)
         {
             _petMarketView ??= new PetShopView(_controller);
@@ -1160,7 +1198,7 @@ public partial class SettingsWindow : Window
         }
     }
 
-    private sealed class HallListItem
+    private sealed record HallListItem
     {
         public string Id { get; }
         public string DisplayName { get; }

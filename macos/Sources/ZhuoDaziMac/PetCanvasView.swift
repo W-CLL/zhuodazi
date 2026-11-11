@@ -105,6 +105,9 @@ final class PetCanvasView: NSView {
     func showPet(at url: URL) {
         animationTimer?.invalidate()
         animationTimer = nil
+        imageView.animates = false
+        imageView.image = nil
+        currentPetImage = nil
         currentPetImage = NSImage(contentsOf: url)
         restartAnimation()
 
@@ -142,7 +145,10 @@ final class PetCanvasView: NSView {
     }
 
     private static func animationDuration(at url: URL) -> TimeInterval? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        // This second source is only used for timing metadata. The image view
+        // owns playback, so do not retain decoded frames in a second cache.
+        let options = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else { return nil }
         let frameCount = CGImageSourceGetCount(source)
         guard frameCount > 1 else { return nil }
 

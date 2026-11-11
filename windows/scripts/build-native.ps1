@@ -1,5 +1,6 @@
 param(
-    [string]$Version
+    [string]$Version,
+    [string]$CompilerPath
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +13,8 @@ $compilerCandidates = @(
     (Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'),
     (Join-Path $env:LOCALAPPDATA 'Programs\Inno Setup 6\ISCC.exe')
 )
-$compiler = $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+$compiler = if ($CompilerPath) { (Resolve-Path -LiteralPath $CompilerPath).Path }
+    else { $compilerCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1 }
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
     [xml]$project = Get-Content -LiteralPath $projectPath
@@ -23,7 +25,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+$') {
 }
 
 if (-not $compiler) {
-    throw 'Inno Setup 6 was not found. Install it with: winget install --id JRSoftware.InnoSetup --exact'
+    throw 'Inno Setup 6.7.1 or newer is required. Install it or pass -CompilerPath to ISCC.exe.'
 }
 
 $resolvedNativeRoot = [System.IO.Path]::GetFullPath($nativeRoot)

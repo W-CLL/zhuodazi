@@ -11,9 +11,12 @@ public partial class App : System.Windows.Application
     private const int UninstallHelperFailureExitCode = 21;
     private const string ShowSettingsSignalName = "Local\\ZhuoDazi.Native.ShowSettings";
     private const string ShowFakeAdSignalName = "Local\\ZhuoDazi.Native.ShowFakeAd";
+    private const string UninstallInProgressMutexName = "Local\\ZhuoDazi.Uninstall.InProgress";
     private Mutex? _singleInstanceMutex;
     private EventWaitHandle? _showSettingsSignal;
     private EventWaitHandle? _showFakeAdSignal;
+    private EventWaitHandle? _uninstallExitSignal;
+    private Thread? _uninstallExitThread;
     private Thread? _signalThread;
     private LicenseService? _licenseService;
     private DispatcherTimer? _trialTimer;
@@ -57,6 +60,30 @@ public partial class App : System.Windows.Application
 
     protected override async void OnStartup(StartupEventArgs e)
     {
+        // This helper must run before opening settings, credentials, or any network service.
+        if (e.Args.Length == 1 && e.Args[0].Equals("--prepare-uninstall", StringComparison.OrdinalIgnoreCase))
+        {
+            _uninstallFeedbackMode = true;
+            base.OnStartup(e);
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var executable = Environment.ProcessPath!;
+            var directory = Path.GetDirectoryName(executable)!;
+            var legacy = Path.GetFileName(directory).Equals("app", StringComparison.OrdinalIgnoreCase)
+                ? Path.Combine(Path.GetDirectoryName(directory)!, "ZhuoDazi.exe") : null;
+            var stopped = await UninstallProcessService.StopInstalledProcessesAsync(executable, legacy);
+            Shutdown(stopped ? 0 : UninstallHelperFailureExitCode);
+            return;
+        }
+        if (!e.Args.Contains("--uninstall-feedback", StringComparer.OrdinalIgnoreCase)
+            && Mutex.TryOpenExisting(UninstallInProgressMutexName, out var uninstallMutex))
+        {
+            uninstallMutex.Dispose();
+            base.OnStartup(e);
+            Shutdown();
+            return;
+        }
+        if (!e.Args.Contains("--uninstall-feedback", StringComparer.OrdinalIgnoreCase))
+            StartUninstallExitListener();
         if (LocalPaymentTestEnvironment.IsTestBuild)
         {
             _appPreviewMode = true;
@@ -383,6 +410,11 @@ public partial class App : System.Windows.Application
     protected override void OnExit(ExitEventArgs e)
     {
         _stopping = true;
+        // The exit event is shared by this installation. Setting it here would
+        // make an ordinary second-instance exit shut down the primary instance.
+        // The listener observes _stopping after its bounded 400 ms wait.
+        _uninstallExitThread?.Join(TimeSpan.FromSeconds(1));
+        _uninstallExitSignal?.Dispose();
         _trialTimer?.Stop();
         _showSettingsSignal?.Set();
         _showFakeAdSignal?.Set();
@@ -480,6 +512,27 @@ public partial class App : System.Windows.Application
             Name = "ZhuoDazi settings signal"
         };
         _signalThread.Start();
+    }
+
+    private void StartUninstallExitListener()
+    {
+        _uninstallExitSignal = new EventWaitHandle(false, EventResetMode.AutoReset,
+            UninstallProcessService.ExitSignalName(Environment.ProcessPath!));
+        _uninstallExitThread = new Thread(() =>
+        {
+            while (!_stopping)
+            {
+                if (!_uninstallExitSignal.WaitOne(TimeSpan.FromMilliseconds(400))) continue;
+                if (_stopping) return;
+                Dispatcher.BeginInvoke(() =>
+                {
+                    if (Controller is not null) Controller.Exit();
+                    else Shutdown();
+                });
+                return;
+            }
+        }) { IsBackground = true, Name = "ZhuoDazi uninstall exit signal" };
+        _uninstallExitThread.Start();
     }
 
     private static void WriteCrashLog(Exception error)

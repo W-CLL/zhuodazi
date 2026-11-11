@@ -1,4 +1,4 @@
-using System.Windows.Controls;
+using System.IO;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -10,9 +10,10 @@ public sealed class AnimatedGifPlayer : IDisposable
 {
     private readonly System.Windows.Controls.Image _target;
     private readonly DispatcherTimer _timer;
-    private IReadOnlyList<BitmapSource> _frames = [];
+    private GifPlaybackFrames? _frames;
     private IReadOnlyList<TimeSpan> _delays = [];
     private int _index;
+    private bool _disposed;
 
     public AnimatedGifPlayer(System.Windows.Controls.Image target)
     {
@@ -23,18 +24,24 @@ public sealed class AnimatedGifPlayer : IDisposable
 
     public bool Load(string? filePath)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         Stop();
         if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return false;
         try
         {
-            using var stream = new MemoryStream(File.ReadAllBytes(filePath));
-            var decoder = new GifBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            using var stream = File.OpenRead(filePath);
+            var decoder = new GifBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.None);
             var sourceFrames = decoder.Frames.ToArray();
-            _frames = GifFrameCompositor.Compose(sourceFrames, GetMaximumDimension());
+            if (sourceFrames.Length == 1)
+            {
+                _target.Source = GifFrameCompositor.ComposeFrames(sourceFrames, GetMaximumDimension()).Single();
+                return true;
+            }
+            _frames = GifPlaybackFrames.Create(GifFrameCompositor.ComposeFrames(sourceFrames, GetMaximumDimension()));
             _delays = sourceFrames.Select(ReadDelay).ToArray();
-            if (_frames.Count == 0) return false;
+            if (_frames is null) return false;
             _index = 0;
-            _target.Source = _frames[0];
+            _target.Source = _frames.Bitmap;
             if (_frames.Count > 1)
             {
                 _timer.Interval = _delays[0];
@@ -52,7 +59,7 @@ public sealed class AnimatedGifPlayer : IDisposable
     public void Stop()
     {
         _timer.Stop();
-        _frames = [];
+        _frames = null;
         _delays = [];
         _target.Source = null;
         _index = 0;
@@ -60,9 +67,9 @@ public sealed class AnimatedGifPlayer : IDisposable
 
     private void OnTick(object? sender, EventArgs e)
     {
-        if (_frames.Count < 2) return;
+        if (_frames is null || _frames.Count < 2) return;
         _index = (_index + 1) % _frames.Count;
-        _target.Source = _frames[_index];
+        _frames.Show(_index);
         _timer.Interval = _delays[_index];
     }
 
@@ -98,5 +105,11 @@ public sealed class AnimatedGifPlayer : IDisposable
         return null;
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        if (_disposed) return;
+        Stop();
+        _timer.Tick -= OnTick;
+        _disposed = true;
+    }
 }

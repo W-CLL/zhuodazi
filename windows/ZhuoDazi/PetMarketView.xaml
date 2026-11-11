@@ -163,7 +163,7 @@
                             <DataTemplate>
                                 <StackPanel>
                                     <Grid Height="104" Background="#EDF5F1" ClipToBounds="True">
-                                        <Image Source="{Binding ThumbnailPath}" Stretch="Uniform" Margin="8"
+                                        <controls:ThumbnailImage FilePath="{Binding ThumbnailPath}" Stretch="Uniform" Margin="8"
                                                RenderOptions.BitmapScalingMode="HighQuality" />
                                         <Border Background="#167D6C" CornerRadius="8" Padding="7,3" Margin="8"
                                                 HorizontalAlignment="Left" VerticalAlignment="Top"

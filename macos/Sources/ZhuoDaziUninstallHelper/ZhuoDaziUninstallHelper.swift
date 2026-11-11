@@ -1,3 +1,4 @@
+import AppKit
 import Darwin
 import Foundation
 import ZhuoDaziCore
@@ -62,7 +63,7 @@ struct ZhuoDaziUninstallHelper {
         let receipt = try loadReceipt(from: arguments.receiptURL)
         defer { removeReceiptDirectory(receipt) }
 
-        try await waitForExit(processId: arguments.parentProcessId)
+        try await stopInstalledApplication(at: application.url, parentProcessId: arguments.parentProcessId)
         guard let currentIdentifier = resourceIdentifier(at: application.url),
               currentIdentifier.isEqual(application.resourceIdentifier),
               applicationHasExpectedBundleIdentifier(at: application.url) else {
@@ -195,17 +196,34 @@ struct ZhuoDaziUninstallHelper {
         )
     }
 
-    private static func waitForExit(processId: pid_t) async throws {
-        let deadline = Date().addingTimeInterval(30)
-        while processExists(processId) && Date() < deadline {
+    @MainActor
+    private static func stopInstalledApplication(at applicationURL: URL, parentProcessId: pid_t) async throws {
+        // Bundle identifiers alone also match portable copies. Only stop the
+        // exact installation that contains this helper, never another copy.
+        func belongsToInstallation(_ application: NSRunningApplication) -> Bool {
+            application.bundleIdentifier == ControlledUninstallContract.applicationBundleIdentifier
+                && application.bundleURL?.resolvingSymlinksInPath().standardizedFileURL.path == applicationURL.path
+        }
+        func runningInstances() -> [NSRunningApplication] {
+            NSRunningApplication.runningApplications(
+                withBundleIdentifier: ControlledUninstallContract.applicationBundleIdentifier
+            ).filter { !$0.isTerminated && belongsToInstallation($0) }
+        }
+
+        if let parent = NSRunningApplication(processIdentifier: parentProcessId), !parent.isTerminated {
+            guard belongsToInstallation(parent) else { throw HelperError.invalidApplication }
+        }
+        for application in runningInstances() { application.terminate() }
+        let gracefulDeadline = Date().addingTimeInterval(5)
+        while !runningInstances().isEmpty && Date() < gracefulDeadline {
             try await Task.sleep(for: .milliseconds(100))
         }
-        guard !processExists(processId) else { throw HelperError.applicationStillRunning }
-    }
-
-    private static func processExists(_ processId: pid_t) -> Bool {
-        if kill(processId, 0) == 0 { return true }
-        return errno != ESRCH
+        for application in runningInstances() { application.forceTerminate() }
+        let forcedDeadline = Date().addingTimeInterval(3)
+        while !runningInstances().isEmpty && Date() < forcedDeadline {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        guard runningInstances().isEmpty else { throw HelperError.applicationStillRunning }
     }
 
     private static func clearInstallBatch(ifMatching expectedBatchId: String) {
@@ -247,7 +265,10 @@ struct ZhuoDaziUninstallHelper {
                 let (data, response) = try await completionSession.data(for: request)
                 guard data.count <= 32 * 1024,
                       let http = response as? HTTPURLResponse,
-                      (200..<300).contains(http.statusCode) else {
+                      (200..<300).contains(http.statusCode),
+                      ControlledUninstallContract.acknowledgesCompletion(
+                        data, eventId: receipt.completionEventId
+                      ) else {
                     throw HelperError.invalidReceipt
                 }
                 return

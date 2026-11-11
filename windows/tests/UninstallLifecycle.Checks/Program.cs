@@ -135,6 +135,11 @@ internal static class Program
             "Confirmed feedback sends the selected reason through the existing device identity.");
 
         var completionPath = Path.Combine(directory, "completion.json");
+        UninstallFeedbackService.WriteCompletionPayloadTemplate(completionPath, skipped!);
+        using (var skippedCompletion = JsonDocument.Parse(File.ReadAllBytes(completionPath)))
+            Require(skippedCompletion.RootElement.GetProperty("intentEventId").GetString() == skipped!.EventId
+                    && skippedCompletion.RootElement.GetProperty("eventType").GetString() == "uninstall_completed",
+                "Skipping the optional reason prepares the same post-removal completion event as confirming feedback.");
         UninstallFeedbackService.WriteCompletionPayloadTemplate(completionPath, explained!);
         var completionBytes = File.ReadAllBytes(completionPath);
         var completionText = Encoding.UTF8.GetString(completionBytes);
@@ -199,7 +204,7 @@ internal static class Program
                 && installer.Contains("Request.Option(6) := False", StringComparison.Ordinal)
                 && installer.Contains("Request.SetTimeouts", StringComparison.Ordinal),
             "The post stage supplies its own timestamp and uses bounded, non-redirecting best-effort HTTP.");
-        Require(installer.Contains("if not FileExists(ExpandConstant('{app}\\app\\ZhuoDazi.exe')) then", StringComparison.Ordinal),
+        Require(installer.Contains("if not FileExists(ExpandConstant('{app}\\app\\ZhuoDazi.exe')) and", StringComparison.Ordinal),
             "A remaining main executable prevents an unverified completion report.");
         Require(installer.Contains("CaptureInstallBatchMarker;", StringComparison.Ordinal)
                 && installer.Contains("DeleteCapturedInstallBatchMarker;", StringComparison.Ordinal)

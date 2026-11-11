@@ -11,12 +11,25 @@ public sealed class AnimatedGifImage : System.Windows.Controls.Image
         new PropertyMetadata(null, OnFilePathChanged));
 
     private readonly AnimatedGifPlayer _player;
+    private string? _loadedPath;
+    private Window? _host;
 
     public AnimatedGifImage()
     {
         _player = new AnimatedGifPlayer(this);
-        Loaded += (_, _) => _player.Load(FilePath);
-        Unloaded += (_, _) => _player.Stop();
+        Loaded += (_, _) =>
+        {
+            _host = Window.GetWindow(this);
+            if (_host is not null) _host.StateChanged += HostStateChanged;
+            RefreshPlayback();
+        };
+        Unloaded += (_, _) =>
+        {
+            if (_host is not null) _host.StateChanged -= HostStateChanged;
+            _host = null;
+            StopPlayback();
+        };
+        IsVisibleChanged += (_, _) => RefreshPlayback();
     }
 
     public string? FilePath
@@ -28,6 +41,25 @@ public sealed class AnimatedGifImage : System.Windows.Controls.Image
     private static void OnFilePathChanged(DependencyObject sender, DependencyPropertyChangedEventArgs args)
     {
         var image = (AnimatedGifImage)sender;
-        if (image.IsLoaded) image._player.Load(args.NewValue as string);
+        image.RefreshPlayback();
     }
+
+    private void RefreshPlayback()
+    {
+        if (!IsLoaded || !IsVisible || _host?.WindowState == WindowState.Minimized || string.IsNullOrWhiteSpace(FilePath))
+        {
+            StopPlayback();
+            return;
+        }
+        if (_loadedPath is not null && string.Equals(_loadedPath, FilePath, StringComparison.OrdinalIgnoreCase)) return;
+        _loadedPath = _player.Load(FilePath) ? FilePath : null;
+    }
+
+    private void StopPlayback()
+    {
+        _player.Stop();
+        _loadedPath = null;
+    }
+
+    private void HostStateChanged(object? sender, EventArgs e) => RefreshPlayback();
 }

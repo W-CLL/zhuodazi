@@ -52,6 +52,7 @@ public partial class PetWindow : Window
     private HwndSource? _source;
     private string? _currentPetPath;
     private bool _petLoaded;
+    private bool _closed;
     private int _appearanceVersion;
     private long _lastFrameTicks;
     private double _facing = 1;
@@ -86,6 +87,7 @@ public partial class PetWindow : Window
         _motionTimer.Tick += OnMotionTick;
         Loaded += OnLoaded;
         Closed += OnClosed;
+        IsVisibleChanged += (_, _) => UpdatePlaybackActivity();
         MouseLeftButtonDown += OnMouseLeftButtonDown;
         MouseLeftButtonUp += OnMouseLeftButtonUp;
         MouseMove += OnMouseMove;
@@ -112,7 +114,8 @@ public partial class PetWindow : Window
         if (!string.Equals(_currentPetPath, petPath, StringComparison.OrdinalIgnoreCase))
         {
             _currentPetPath = petPath;
-            _petLoaded = _gifPlayer.Load(petPath);
+            _petLoaded = false;
+            if (IsVisible && !_closed) LoadCurrentPet();
         }
         PetImage.Visibility = _petLoaded ? Visibility.Visible : Visibility.Collapsed;
         DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
@@ -172,7 +175,8 @@ public partial class PetWindow : Window
 
         var version = ++_appearanceVersion;
         _currentPetPath = expressionPath;
-        _petLoaded = _gifPlayer.Load(expressionPath);
+        _petLoaded = false;
+        if (IsVisible && !_closed) LoadCurrentPet();
         PetImage.Visibility = _petLoaded ? Visibility.Visible : Visibility.Collapsed;
         DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
         await Task.Delay(TimeSpan.FromSeconds(6));
@@ -322,7 +326,10 @@ public partial class PetWindow : Window
         {
             _scriptCancellation = cancellationToken.Register(() => Dispatcher.BeginInvoke(CancelScriptMotion));
         }
-        return _scriptCompletion.Task;
+        var completion = _scriptCompletion.Task;
+        if (cancellationToken.IsCancellationRequested) CancelScriptMotion();
+        else if (!IsVisible) CompleteScriptMotion();
+        return completion;
     }
 
     public void PlaySecretAnimation()
@@ -346,12 +353,38 @@ public partial class PetWindow : Window
             NativeMethods.RegisterHotKey(_source?.Handle ?? nint.Zero, HotkeyId, 0x0002 | 0x0004, 0x50);
         }
         NativeMethods.SetClickThrough(this, _isCompanion || _controller.Settings.ClickThrough && !_controller.IsGuideActive);
-        _lastFrameTicks = _clock.ElapsedTicks;
-        _motionTimer.Start();
+        UpdatePlaybackActivity();
+    }
+
+    private void LoadCurrentPet()
+    {
+        _petLoaded = _gifPlayer.Load(_currentPetPath);
+        PetImage.Visibility = _petLoaded ? Visibility.Visible : Visibility.Collapsed;
+        DefaultPet.Visibility = _petLoaded ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void UpdatePlaybackActivity()
+    {
+        if (_closed) return;
+        if (IsVisible)
+        {
+            if (!_petLoaded) LoadCurrentPet();
+            _lastFrameTicks = _clock.ElapsedTicks;
+            if (IsLoaded) _motionTimer.Start();
+        }
+        else
+        {
+            _motionTimer.Stop();
+            _gifPlayer.Stop();
+            _petLoaded = false;
+            HideSpeech();
+            if (_scripted && _scriptTarget is not null) CompleteScriptMotion();
+        }
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _closed = true;
         _interactionVersion++;
         HideSpeech();
         _motionTimer.Stop();

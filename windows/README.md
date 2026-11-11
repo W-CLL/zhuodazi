@@ -33,11 +33,13 @@ dotnet run --project .\windows\ZhuoDazi\ZhuoDazi.csproj -- --settings
 
 总结配置来自 `/api/public/site-settings` 的 `dailySummaries`，每 15 分钟同步一次，也可用页面顶部“刷新日常”立即同步；上游未配置时不会使用写死的总结文案。正式交付需同步部署支持总结配置的后台。
 
-先安装 .NET 8 SDK 和 Inno Setup 6，然后运行：
+先安装 .NET 8 SDK 和 Inno Setup 6.7.1 或更新版本，然后运行：
 
 ```powershell
 .\windows\scripts\build-native.ps1 -Version <版本号>
 ```
+
+编译器在自定义位置时可加 `-CompilerPath '<ISCC.exe 的完整路径>'`。3.5.8 起脚本会拒绝低于 6.7.1 的 Inno Setup，以免覆盖安装时保留正式 3.5.7 的旧卸载器。两套 Windows CI 固定使用 6.7.1，并运行隔离安装/卸载及真实客户端覆盖升级回归。详见 [3.5.8 验收说明](../docs/releases/desktop-3.5.8-verification.md)。
 
 输出位于 `windows\dist\ZhuoDazi-Desktop-Pet-<版本号>.exe`。应用内没有更新地址配置项；激活和更新服务地址及 Ed25519 公钥都保留在程序内部。后台发布时上传该安装包即可。
 

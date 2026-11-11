@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\ZhuoDazi\Controls\GifFrameCompositor.cs" Link="GifFrameCompositor.cs" />
+    <Compile Include="..\..\ZhuoDazi\Controls\GifPlaybackFrames.cs" Link="GifPlaybackFrames.cs" />
+    <Compile Include="..\..\ZhuoDazi\Controls\AnimatedGifPlayer.cs" Link="AnimatedGifPlayer.cs" />
+    <Compile Include="..\..\ZhuoDazi\Controls\AnimatedGifImage.cs" Link="AnimatedGifImage.cs" />
+    <None Include="..\..\..\assets\default-pets\*.gif" Link="assets\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\assets\pet-libraries\yuexinmiao\017-90d741d6.gif" Link="assets\partial-frame.gif" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

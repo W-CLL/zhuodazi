@@ -20,6 +20,8 @@ public partial class SettingsWindow
     private DateTime _dailySummaryMinute;
     private DailyJournalStore? _dailySeenJournal;
     private string? _dailyRoutineSnapshot;
+    private IReadOnlyList<DailyJournalEntry>? _dailyDisplayEntries;
+    private (DateOnly From, DateOnly To, DateOnly Month, DateOnly Today, string Period)? _dailyDisplayRange;
 
     public void ShowDailyJournalTab()
     {
@@ -49,7 +51,7 @@ public partial class SettingsWindow
 
     private void RefreshDailyJournal()
     {
-        if (DailyJournalTab is null || DailyStatsPanel is null) return;
+        if (!IsUiActive || DailyJournalTab?.IsSelected != true || DailyStatsPanel is null) return;
         var journal = _controller.Journal;
         if (!ReferenceEquals(_dailySeenJournal, journal))
         {
@@ -58,6 +60,18 @@ public partial class SettingsWindow
         }
         if (_dailyAnchor > DailyToday) _dailyAnchor = DailyToday;
         var (from, to) = DailyRange();
+        var firstMonth = DailyMonthStart(from);
+        var lastMonth = DailyMonthStart(to);
+        if (_dailyCalendarMonth < firstMonth) _dailyCalendarMonth = firstMonth;
+        if (_dailyCalendarMonth > lastMonth) _dailyCalendarMonth = lastMonth;
+        var entries = journal.Entries; // Immutable snapshot, replaced on every journal change.
+        var displayRange = (from, to, _dailyCalendarMonth, DailyToday, DailyPeriod);
+        if (ReferenceEquals(_dailyDisplayEntries, entries) && _dailyDisplayRange == displayRange)
+        {
+            RenderDailySummaries();
+            RefreshDailyRoutine();
+            return;
+        }
         var summary = journal.GetSummary(from, to);
         DailyRangeText.Text = $"{from:yyyy.MM.dd} — {to:yyyy.MM.dd}" + (to == DailyToday ? " · 截至今天" : string.Empty);
         DailyPreviousPeriodButton.IsEnabled = DailyPeriod != "all";
@@ -78,13 +92,22 @@ public partial class SettingsWindow
         foreach (var extra in summary.MoodCounts.Where(pair => pair.Value > 0 && !DailyMoodCatalog.Options.Any(mood => mood.Code == pair.Key)))
             AddDailyMoodCount(extra.Key, DailyMoodCatalog.GetLabel(extra.Key), extra.Value);
 
-        var firstMonth = DailyMonthStart(from);
-        var lastMonth = DailyMonthStart(to);
-        if (_dailyCalendarMonth < firstMonth) _dailyCalendarMonth = firstMonth;
-        if (_dailyCalendarMonth > lastMonth) _dailyCalendarMonth = lastMonth;
         RenderDailyCalendar(from, to);
         RenderDailySummaries();
         RefreshDailyRoutine();
+        _dailyDisplayEntries = entries;
+        _dailyDisplayRange = displayRange;
+    }
+
+    private void ReleaseDailyDisplay()
+    {
+        // Keep date selection and unsaved form values; regenerate only the display
+        // when the user returns, instead of retaining hundreds of calendar controls.
+        DailyStatsPanel?.Children.Clear();
+        DailyMoodCountsPanel?.Children.Clear();
+        DailyCalendarGrid?.Children.Clear();
+        _dailyDisplayEntries = null;
+        _dailyDisplayRange = null;
     }
 
     private void AddDailyMetric(string label, int value, string unit)
@@ -151,7 +174,7 @@ public partial class SettingsWindow
 
     private void RefreshDailySummaryClock()
     {
-        if (!IsVisible || DailyJournalTab?.IsSelected != true) return;
+        if (!IsUiActive || DailyJournalTab?.IsSelected != true) return;
         var now = DateTime.Now;
         var minute = new DateTime(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0);
         if (_dailySummaryMinute == minute) return;

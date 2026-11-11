@@ -18,6 +18,24 @@ public enum ControlledUninstallContract {
                 || byte == 95
         }
     }
+
+    // HTTP success alone is insufficient: stale installation batches are stored
+    // for audit without marking the current installation as uninstalled.
+    public static func acknowledgesCompletion(_ data: Data, eventId: String) -> Bool {
+        guard data.count <= 32 * 1024,
+              let response = try? JSONDecoder().decode(CompletionResponse.self, from: data) else { return false }
+        return response.ok
+            && response.eventId.caseInsensitiveCompare(eventId) == .orderedSame
+            && response.deviceState == "uninstall_reported"
+            && !response.ignoredAsStale
+    }
+
+    private struct CompletionResponse: Decodable {
+        let ok: Bool
+        let eventId: String
+        let deviceState: String
+        let ignoredAsStale: Bool
+    }
 }
 
 public struct ControlledUninstallReceipt: Codable, Equatable {

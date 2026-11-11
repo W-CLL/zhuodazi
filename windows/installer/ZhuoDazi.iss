@@ -1,5 +1,9 @@
+#if Ver < EncodeVer(6, 7, 1)
+  #error Inno Setup 6.7.1 or newer is required to replace the uninstaller shipped with 3.5.7.
+#endif
+
 #ifndef AppVersion
-#define AppVersion "3.5.3"
+#define AppVersion "3.5.8"
 #endif
 
 #ifndef SourceDir
@@ -101,6 +105,12 @@ var
   UninstallBatchPath: string;
   UninstallBatchSnapshot: AnsiString;
   UninstallBatchSnapshotLoaded: Boolean;
+  UninstallMutexHandle: THandle;
+
+function CreateMutexForUninstall(Attributes: Integer; InitialOwner: Boolean; Name: string): THandle;
+  external 'CreateMutexW@kernel32.dll stdcall';
+function CloseUninstallHandle(Handle: THandle): Boolean;
+  external 'CloseHandle@kernel32.dll stdcall';
 
 procedure GetSystemTime(var SystemTime: TSystemTime);
   external 'GetSystemTime@kernel32.dll stdcall';
@@ -198,33 +208,113 @@ begin
   if CurrentBatch = UninstallBatchSnapshot then DeleteFile(UninstallBatchPath);
 end;
 
+function JsonStringField(const Json, Key: string): string;
+var
+  StartIndex, EndIndex: Integer;
+  Remaining: string;
+begin
+  Result := '';
+  StartIndex := Pos('"' + Key + '":"', Json);
+  if StartIndex = 0 then Exit;
+  Remaining := Copy(Json, StartIndex + Length(Key) + 4, Length(Json));
+  EndIndex := Pos('"', Remaining);
+  if EndIndex > 0 then Result := Copy(Remaining, 1, EndIndex - 1);
+end;
+
 procedure TryReportUninstallCompleted;
 var
   PayloadBytes: AnsiString;
-  Payload: string;
+  Payload, EventId, ResponseText: string;
   Request: Variant;
+  Attempt, StatusCode: Integer;
+  Acknowledged, PermanentFailure: Boolean;
 begin
   if (UninstallCompletionPath = '') or
      (not FileExists(UninstallCompletionPath)) or
      (not LoadStringFromFile(UninstallCompletionPath, PayloadBytes)) then
+  begin
+    Log('Uninstall completion unavailable: no receipt (feedback may have been offline).');
     Exit;
+  end;
 
   Payload := String(PayloadBytes);
   if Pos(CompletionTimestampPlaceholder, Payload) = 0 then Exit;
   StringChangeEx(Payload, CompletionTimestampPlaceholder, UtcTimestamp, True);
-
-  try
-    Request := CreateOleObject('WinHttp.WinHttpRequest.5.1');
-    Request.Option(6) := False; { WinHttpRequestOption_EnableRedirects }
-    Request.SetTimeouts(1000, 2000, 2000, 2500);
-    Request.Open('POST', InstallEventsUrl, False);
-    Request.SetRequestHeader('Content-Type', 'application/json; charset=utf-8');
-    Request.SetRequestHeader('User-Agent', 'ZhuoDazi-Uninstaller/{#AppVersion}');
-    Request.SetRequestHeader('X-DeskPet-Platform', 'windows');
-    Request.Send(Payload);
-  except
-    { Completion reporting is best effort and must never block file removal. }
+  EventId := JsonStringField(Payload, 'eventId');
+  if Length(EventId) <> 36 then Exit;
+  { Reuse the exact event and timestamp: retries must not duplicate an uninstall. }
+  for Attempt := 1 to 3 do
+  begin
+    StatusCode := 0;
+    Acknowledged := False;
+    PermanentFailure := False;
+    try
+      Request := CreateOleObject('WinHttp.WinHttpRequest.5.1');
+      Request.Option(6) := False; { WinHttpRequestOption_EnableRedirects }
+      Request.SetProxy(1); { Direct, matching the desktop client's transport. }
+      Request.SetTimeouts(1000, 1500, 1500, 2000);
+      Request.Open('POST', InstallEventsUrl, False);
+      Request.SetRequestHeader('Content-Type', 'application/json; charset=utf-8');
+      Request.SetRequestHeader('User-Agent', 'ZhuoDazi-Uninstaller/{#AppVersion}');
+      Request.SetRequestHeader('X-DeskPet-Platform', 'windows');
+      Request.Send(Payload);
+      StatusCode := Request.Status;
+      ResponseText := Request.ResponseText;
+      if (StatusCode >= 200) and (StatusCode < 300) and (Length(ResponseText) <= 32768) and
+         (Pos('"ok":true', ResponseText) > 0) and
+         (JsonStringField(ResponseText, 'eventId') = EventId) and
+         (Pos('"ignoredAsStale":false', ResponseText) > 0) and
+         (JsonStringField(ResponseText, 'deviceState') = 'uninstall_reported') then
+      begin
+        Acknowledged := True;
+      end
+      else Log('Uninstall completion not acknowledged; HTTP ' + IntToStr(StatusCode) + '.');
+      PermanentFailure := (StatusCode >= 400) and (StatusCode < 500) and
+         (StatusCode <> 408) and (StatusCode <> 429);
+    except
+      Log('Uninstall completion request failed; bounded retry follows.');
+    end;
+    { Keep loop control outside COM exception handling in Pascal Script. }
+    if Acknowledged then
+    begin
+      Log('Uninstall completion acknowledged.');
+      Exit;
+    end;
+    if PermanentFailure then Break;
+    if Attempt < 3 then Sleep(250 * Attempt);
   end;
+  Log('Files were removed, but the server has not confirmed the uninstall.');
+end;
+
+procedure StopInstalledApplication;
+var
+  HelperPath: string;
+  ResultCode: Integer;
+begin
+  { The fence exists only during confirmed removal and is released on every exit. }
+  UninstallMutexHandle := CreateMutexForUninstall(0, False, 'Local\ZhuoDazi.Uninstall.InProgress');
+  if UninstallMutexHandle = 0 then
+    RaiseException('无法准备卸载，请关闭桌搭子后重试。');
+  HelperPath := ExpandConstant('{app}\app\ZhuoDazi.exe');
+  { An older root-level executable may not understand the new helper switch. }
+  if not FileExists(HelperPath) and FileExists(ExpandConstant('{app}\ZhuoDazi.exe')) then
+    RaiseException('程序文件不完整，请重新安装桌搭子后再卸载。');
+  if not FileExists(HelperPath) then Exit;
+  if not Exec(HelperPath, '--prepare-uninstall', ExtractFileDir(HelperPath),
+      SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+    RaiseException('无法关闭桌搭子，请退出桌搭子后重新卸载。');
+  if ResultCode <> 0 then
+    RaiseException('桌搭子仍在运行，卸载已停止。请关闭桌搭子后重试。');
+end;
+
+procedure DeinitializeUninstall;
+begin
+  if UninstallMutexHandle <> 0 then
+  begin
+    CloseUninstallHandle(UninstallMutexHandle);
+    UninstallMutexHandle := 0;
+  end;
+  if UninstallCompletionPath <> '' then DeleteFile(UninstallCompletionPath);
 end;
 
 function ShouldStartApplication: Boolean;
@@ -260,16 +350,19 @@ procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 begin
   if CurUninstallStep = usUninstall then
   begin
+    StopInstalledApplication;
     CaptureInstallBatchMarker;
     RegDeleteValue(HKCU, AutoStartKey, AutoStartValueName)
   end
   else if CurUninstallStep = usPostUninstall then
   begin
-    if not FileExists(ExpandConstant('{app}\app\ZhuoDazi.exe')) then
+    if not FileExists(ExpandConstant('{app}\app\ZhuoDazi.exe')) and
+       not FileExists(ExpandConstant('{app}\ZhuoDazi.exe')) then
     begin
       TryReportUninstallCompleted;
       DeleteCapturedInstallBatchMarker;
-    end;
+    end
+    else Log('Uninstall incomplete: application executable remains; completion was not reported.');
     if UninstallCompletionPath <> '' then DeleteFile(UninstallCompletionPath);
   end;
 end;

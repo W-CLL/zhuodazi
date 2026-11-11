@@ -7,14 +7,17 @@ namespace ZhuoDazi.Controls;
 internal static class GifFrameCompositor
 {
     public static IReadOnlyList<BitmapSource> Compose(IReadOnlyList<BitmapFrame> sourceFrames, int? maximumDimension = null)
+        => ComposeFrames(sourceFrames, maximumDimension).ToArray();
+
+    // Consumers can prepare each frame without retaining every full canvas.
+    internal static IEnumerable<BitmapSource> ComposeFrames(IReadOnlyList<BitmapFrame> sourceFrames, int? maximumDimension = null)
     {
-        if (sourceFrames.Count == 0) return [];
+        if (sourceFrames.Count == 0) yield break;
 
         var frameInfos = sourceFrames.Select(frame => new FrameInfo(frame, ReadBounds(frame))).ToArray();
         var sourceCanvasWidth = frameInfos.Max(info => Math.Max(info.Frame.PixelWidth, info.Bounds.X + info.Bounds.Width));
         var sourceCanvasHeight = frameInfos.Max(info => Math.Max(info.Frame.PixelHeight, info.Bounds.Y + info.Bounds.Height));
         var (canvasWidth, canvasHeight) = GetCanvasSize(sourceCanvasWidth, sourceCanvasHeight, maximumDimension);
-        var frames = new BitmapSource[sourceFrames.Count];
         BitmapSource? canvas = null;
 
         for (var index = 0; index < frameInfos.Length; index++)
@@ -22,7 +25,6 @@ internal static class GifFrameCompositor
             var info = frameInfos[index];
             var beforeFrame = canvas;
             var composed = DrawFrame(canvas, info, sourceCanvasWidth, sourceCanvasHeight, canvasWidth, canvasHeight);
-            frames[index] = composed;
 
             // GIF frames can be deltas, so the next canvas depends on this frame's disposal method.
             canvas = ReadDisposal(info.Frame) switch
@@ -31,9 +33,8 @@ internal static class GifFrameCompositor
                 3 => beforeFrame,
                 _ => composed
             };
+            yield return composed;
         }
-
-        return frames;
     }
 
     private static BitmapSource DrawFrame(

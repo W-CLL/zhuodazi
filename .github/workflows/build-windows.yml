@@ -38,7 +38,8 @@ jobs:
           $featureChecks = @(
             'AppPreview.Checks', 'CompanionSend.Checks', 'ContentSelection.Checks',
             'ConversationPresentation.Checks', 'PetMarketClient.Checks',
-            'PetMarketInstaller.Checks', 'PetMarketView.Checks', 'UninstallLifecycle.Checks'
+            'PetMarketInstaller.Checks', 'PetMarketView.Checks', 'UninstallLifecycle.Checks',
+            'UninstallProcess.Checks', 'GifPlayback.Checks', 'WindowMemory.Checks'
           )
           foreach ($check in $featureChecks) {
             dotnet run --project "windows/tests/$check/$check.csproj" --configuration Release
@@ -60,11 +61,18 @@ jobs:
 
       - name: Install Inno Setup
         shell: pwsh
-        run: choco install innosetup --yes --no-progress
+        run: choco install innosetup --version=6.7.1 --yes --no-progress
 
       - name: Build installer
         shell: pwsh
         run: ./windows/scripts/build-native.ps1 -Version $env:APP_VERSION
+
+      - name: Verify isolated uninstall lifecycle
+        shell: pwsh
+        run: |
+          $compiler = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          ./windows/scripts/test-uninstall-offline.ps1 -CompilerPath $compiler -ArtifactDirectory "$env:RUNNER_TEMP/uninstall-fixtures"
+          ./windows/scripts/test-real-uninstall-offline.ps1 -CompilerPath $compiler -BaselineCompilerPath $compiler -ApplicationDirectory "$pwd/windows/publish/win-x64" -ArtifactDirectory "$env:RUNNER_TEMP/uninstall-upgrade"
 
       - name: Verify bundled default pets
         shell: pwsh
@@ -108,7 +116,7 @@ jobs:
         shell: pwsh
         run: |
           $application = Resolve-Path "windows/publish/win-x64/ZhuoDazi.exe"
-          ./windows/scripts/test-package-offline.ps1 -ApplicationPath $application -DataDirectory "$env:RUNNER_TEMP/published-preview"
+          ./windows/scripts/test-package-offline.ps1 -ApplicationPath $application -DataDirectory "$env:RUNNER_TEMP/published-preview" -VerifyUninstallExit
 
       - name: Build portable archive
         shell: pwsh
